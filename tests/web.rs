@@ -11,6 +11,6 @@ wasm_bindgen_test_configure!(run_in_browser);
 
 #[wasm_bindgen_test]
 fn pass() {
-    let result = libzeropool_wasm::derive_address("5".to_owned());
+    let result = libzeropool_wasm::derive_address(b"12300000000000000000000000000000");
     assert!(result.is_ok());
 }

@@ -1,6 +1,5 @@
 use fawkes_crypto::rand::{Error as RandError, RngCore};
 use getrandom::getrandom;
-use wasm_bindgen::prelude::*;
 
 #[derive(Debug)]
 struct ErrorWrapper(getrandom::Error);
@@ -12,8 +11,6 @@ impl std::fmt::Display for ErrorWrapper {
         self.0.fmt(f)
     }
 }
-
-#[wasm_bindgen]
 #[derive(Default)]
 pub struct CustomRng;
 
