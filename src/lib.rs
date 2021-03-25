@@ -20,7 +20,7 @@ pub fn derive_address(dk: &[u8]) -> Result<String, JsValue> {
     let d = rng.gen();
     let dk = Num::from_uint_reduced(NumRepr(Uint::from_big_endian(dk)));
     let pk_d = tx::derive_key_pk_d(d, dk, &*POOL_PARAMS);
-    let mut buf: Vec<u8> = Vec::with_capacity(64);
+    let mut buf: Vec<u8> = Vec::with_capacity(48);
 
     buf.extend_from_slice(&d.to_uint().0.to_big_endian()[0..10]);
     buf.extend_from_slice(&pk_d.x.to_uint().0.to_big_endian()); // 32 bytes
