@@ -4,10 +4,6 @@ Wasm/JavaScript version of [libzeropool](https://github.com/zeropoolnetwork/libz
 ## Install
 `yarn add libzeropool-wasm` or `npm i libzeropool-wasm -S`
 
-## Configuration
-This package uses NodeJS the `fs` API (fs.readFileSync) to load the Wasm binary.
-Make sure to set up your build tools properly (e.g. using `asset/resource` type of module with webpack.)
-
 ## Usage
 ```js
 import { deriveAddress } from 'libzeropool-wasm';
