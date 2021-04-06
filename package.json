@@ -9,7 +9,12 @@
     "type": "git",
     "url": "https://github.com/zeropoolnetwork/libzeropool-wasm/"
   },
-  "files": ["lib"],
+  "files": [
+    "lib",
+    "LICENSE_APACHE",
+    "LICENSE_MIT",
+    "README.md"
+  ],
   "main": "lib/libzeropool_wasm.js",
   "types": "lib/libzeropool_wasm.d.ts"
 }
