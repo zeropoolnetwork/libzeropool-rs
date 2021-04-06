@@ -2,7 +2,7 @@
 Wasm/JavaScript version of [libzeropool](https://github.com/zeropoolnetwork/libzeropool).
 
 ## Install
-`yarn add libzeropool-wasm` or `npm i libzeropool-wasm -S`
+`yarn add libzeropool-wasm` or `npm i -S libzeropool-wasm`
 
 ## Usage
 ```js
@@ -15,20 +15,13 @@ const newPrivateAddress = deriveAddress(input); // 48 byte base58 encoded addres
 
 ## Development
 
-### Build with `wasm-pack build`
-
+### Build
 ```
-wasm-pack build --target nodejs
+scripts/build
 ```
 
 ### Test in Headless Browsers with `wasm-pack test`
 
 ```
 wasm-pack test --headless --firefox
-```
-
-### Publish to NPM with `wasm-pack publish`
-
-```
-wasm-pack publish
 ```

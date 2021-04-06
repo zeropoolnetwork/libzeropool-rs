@@ -1,0 +1,15 @@
+{
+  "name": "libzeropool-wasm",
+  "collaborators": [
+    "Dmitry Vdovin <voidxnull@gmail.com>"
+  ],
+  "version": "0.1.6",
+  "license": "MIT OR Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/zeropoolnetwork/libzeropool-wasm/"
+  },
+  "files": ["lib"],
+  "main": "lib/libzeropool_wasm.js",
+  "types": "lib/libzeropool_wasm.d.ts"
+}
