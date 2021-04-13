@@ -1,6 +1,6 @@
 [package]
 name = "libzeropool-wasm"
-version = "0.1.5"
+version = "0.1.7"
 authors = ["Dmitry Vdovin <voidxnull@gmail.com>"]
 repository = "https://github.com/zeropoolnetwork/libzeropool-wasm/"
 license = "MIT OR Apache-2.0"
@@ -10,7 +10,7 @@ edition = "2018"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-wasm-bindgen = "0.2.71"
+wasm-bindgen = "0.2.73"
 
 # `wee_alloc` is a tiny allocator for wasm that is only ~1K in code size
 # compared to the default allocator's ~10K. It is slower than the default
@@ -21,7 +21,8 @@ wee_alloc = { version = "0.4.5", optional = true }
 
 libzeropool = { git = "https://github.com/zeropoolnetwork/libzeropool.git" }
 getrandom = { version = "0.2.2", features = ["js"] }
-fawkes-crypto = "3.0.3"
+fawkes-crypto = "3.1.0"
+fawkes-crypto_derive = "3.1.0"
 sha2 = "0.9.3"
 bs58 = "0.4.0"
 
