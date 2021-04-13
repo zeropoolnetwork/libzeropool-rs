@@ -7,6 +7,7 @@ use sha2::{Digest, Sha256};
 use wasm_bindgen::prelude::*;
 
 mod random;
+mod utils;
 
 // When the `wee_alloc` feature is enabled, use `wee_alloc` as the global
 // allocator.
@@ -32,4 +33,48 @@ pub fn derive_address(dk: &[u8]) -> Result<String, JsValue> {
     buf.extend_from_slice(&hash[0..4]);
 
     Ok(bs58::encode(buf).into_string())
+}
+
+#[wasm_bindgen(js_name = testPoseidonMerkleTree)]
+pub fn test_circuit_poseidon_merkle_root() {
+    use fawkes_crypto::backend::bellman_groth16::engines::Bn256;
+    use fawkes_crypto::backend::bellman_groth16::{prover, setup, verifier};
+    use fawkes_crypto::circuit::num::CNum;
+    use fawkes_crypto::circuit::poseidon::{c_poseidon_merkle_proof_root, CMerkleProof};
+    use fawkes_crypto::core::signal::Signal;
+    use fawkes_crypto::core::sizedvec::SizedVec;
+    use fawkes_crypto::engines::bls12_381;
+    use fawkes_crypto::engines::bn256::Fr;
+    use fawkes_crypto::ff_uint::PrimeField;
+    use fawkes_crypto::native::poseidon::{
+        poseidon_merkle_proof_root, MerkleProof, PoseidonParams,
+    };
+
+    fn circuit<Fr: PrimeField>(public: CNum<Fr>, secret: (CNum<Fr>, CMerkleProof<Fr, 32>)) {
+        let poseidon_params = PoseidonParams::<Fr>::new(3, 8, 53);
+        let res = c_poseidon_merkle_proof_root(&secret.0, &secret.1, &poseidon_params);
+        res.assert_eq(&public);
+    }
+
+    utils::set_panic_hook();
+
+    let params = setup::setup::<Bn256, _, _, _>(circuit);
+
+    const PROOF_LENGTH: usize = 32;
+    let mut rng = random::CustomRng;
+    let poseidon_params = PoseidonParams::<Fr>::new(3, 8, 53);
+    let leaf = rng.gen();
+    let sibling = (0..PROOF_LENGTH)
+        .map(|_| rng.gen())
+        .collect::<SizedVec<_, PROOF_LENGTH>>();
+    let path = (0..PROOF_LENGTH)
+        .map(|_| rng.gen())
+        .collect::<SizedVec<bool, PROOF_LENGTH>>();
+    let proof = MerkleProof { sibling, path };
+    let root = poseidon_merkle_proof_root(leaf, &proof, &poseidon_params);
+
+    // let (inputs, snark_proof) = prover::prove(&params, &root, &(leaf, proof), circuit);
+
+    // let res = verifier::verify(&params.get_vk(), &snark_proof, &inputs);
+    // assert!(res, "Verifier result should be true");
 }
