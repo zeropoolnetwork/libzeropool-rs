@@ -1,6 +1,6 @@
 [package]
 name = "libzeropool-wasm"
-version = "0.1.7"
+version = "0.1.8"
 authors = ["Dmitry Vdovin <voidxnull@gmail.com>"]
 repository = "https://github.com/zeropoolnetwork/libzeropool-wasm/"
 license = "MIT OR Apache-2.0"
@@ -44,6 +44,3 @@ wasm-bindgen-test = "0.3.21"
 # Tell `rustc` to optimize for small code size.
 opt-level = "s"
 
-[patch.crates-io]
-fawkes-crypto = { path = '../fawkes-crypto/fawkes-crypto' }
-fawkes-crypto-bellman_ce = { path = '../phase2-bn254/bellman' }
