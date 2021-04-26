@@ -10,7 +10,13 @@ use wasm_bindgen_test::*;
 wasm_bindgen_test_configure!(run_in_browser);
 
 #[wasm_bindgen_test]
-fn pass() {
+fn derive() {
     let result = libzeropool_wasm::derive_address(b"12300000000000000000000000000000");
     assert!(result.is_ok());
+}
+
+#[wasm_bindgen_test]
+fn parse() {
+    let addr = libzeropool_wasm::derive_address(b"12300000000000000000000000000000").unwrap();
+    libzeropool_wasm::parse_address(addr).unwrap();
 }

@@ -36,6 +36,10 @@ sha2 = "0.9.3"
 bs58 = "0.4.0"
 js-sys = "0.3.48"
 web-sys = "0.3.48"
+kvdb-web = "0.9.0"
+kvdb = "0.9.0"
+borsh = "0.8.1"
+base64 = "0.13.0"
 
 [dev-dependencies]
 wasm-bindgen-test = "0.3.21"
