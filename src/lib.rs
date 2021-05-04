@@ -99,6 +99,32 @@ pub fn decrypt_note(data: Vec<u8>) -> Option<String> {
     Some(base64::encode(bytes))
 }
 
+#[wasm_bindgen(js_name = "testMerkleTree")]
+pub fn test_merkle_tree() {
+    use fawkes_crypto::backend::bellman_groth16::engines::Bn256;
+    use fawkes_crypto::backend::bellman_groth16::{prover, setup, verifier};
+    use fawkes_crypto::circuit::num::CNum;
+    use fawkes_crypto::circuit::poseidon::{c_poseidon_merkle_proof_root, CMerkleProof};
+    use fawkes_crypto::core::signal::Signal;
+    use fawkes_crypto::core::sizedvec::SizedVec;
+    use fawkes_crypto::engines::bn256::Fr;
+    use fawkes_crypto::ff_uint::PrimeField;
+    use fawkes_crypto::native::poseidon::{
+        poseidon_merkle_proof_root, MerkleProof, PoseidonParams,
+    };
+
+    fn circuit<Fr: PrimeField>(public: CNum<Fr>, secret: (CNum<Fr>, CMerkleProof<Fr, 32>)) {
+        let poseidon_params = PoseidonParams::<Fr>::new(3, 8, 53);
+        let res = c_poseidon_merkle_proof_root(&secret.0, &secret.1, &poseidon_params);
+        res.assert_eq(&public);
+    }
+
+    utils::set_panic_hook();
+
+    let time = Timer::now();
+    let params = setup::setup::<Bn256, _, _, _>(circuit);
+}
+
 #[wasm_bindgen(js_name = testPoseidonMerkleRoot)]
 pub fn test_circuit_poseidon_merkle_root(callback: Function) {
     use fawkes_crypto::backend::bellman_groth16::engines::Bn256;
