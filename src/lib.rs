@@ -6,10 +6,13 @@ use fawkes_crypto::{
 use js_sys::Function;
 use libzeropool::native::cypher;
 use libzeropool::native::params::PoolParams;
+use libzeropool::native::tx::{derive_key_adk, derive_key_dk, derive_key_sdk, derive_key_xsk};
 use libzeropool::{native::tx, POOL_PARAMS};
 use sha2::{Digest, Sha256};
 use wasm_bindgen::prelude::*;
 use web_sys::Performance;
+
+pub use merkle::*;
 
 mod merkle;
 mod random;
@@ -87,8 +90,18 @@ pub fn parse_address(address: String) -> Result<(), JsValue> {
 }
 
 #[wasm_bindgen(js_name = decryptNote)]
-pub fn decrypt_note(data: Vec<u8>) -> Option<String> {
+pub fn decrypt_note(data: Vec<u8>, sk: String) -> Option<String> {
     utils::set_panic_hook();
+
+    let mut sk = [0; std::mem::size_of::<POOL_PARAMS::Fs>()];
+    bs58::decode(&address)
+        .into(&mut sk)
+        .map_err(|err| JsValue::from(err.to_string()))?;
+
+    let xsk = derive_key_xsk(sk, params).x;
+    let sender_sdk = derive_key_sdk(xsk, &*POOL_PARAMS);
+    let sender_adk = derive_key_adk(xsk, &*POOL_PARAMS);
+    let receiver_dk = derive_key_dk(xsk, &*POOL_PARAMS);
 
     let note = cypher::decrypt_in(receiver_dk, &data, &*POOL_PARAMS).or_else(|| {
         cypher::decrypt_out(sender_xsk, sender_adk, sender_sdk, &data, &*POOL_PARAMS)
