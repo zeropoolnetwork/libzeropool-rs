@@ -1,11 +1,10 @@
-use std::marker::PhantomData;
-
 use borsh::{BorshDeserialize, BorshSerialize};
 use kvdb::{DBTransaction, KeyValueDB};
 use kvdb_web::Database;
 use libzeropool::constants;
+use libzeropool::fawkes_crypto::core::sizedvec::SizedVec;
 use libzeropool::fawkes_crypto::ff_uint::Num;
-use libzeropool::fawkes_crypto::native::poseidon::poseidon;
+use libzeropool::fawkes_crypto::native::poseidon::{poseidon, MerkleProof};
 use libzeropool::native::note::Note;
 use libzeropool::native::params::PoolParams;
 
@@ -14,15 +13,15 @@ type Hash<F> = Num<F>;
 const DB_NAME: &str = "zeropool.smt";
 
 // Key formats:
-//   [node height]:[n] - hash
-//   note.[n] - element data
+//   node_height:index - tree coordinates hash (0:134)
+//   data.n - element data (data.123)
 pub struct MerkleTree<'p, P: PoolParams> {
     // TODO: Use abstract KeyValueDB instead
     db: Database,
     num_elements: usize,
     params: &'p P,
     default_hashes: Vec<Hash<P::Fr>>,
-    _p: PhantomData<P>,
+    needed_nodes: Vec<(usize, usize)>,
 }
 
 impl<'p, P: PoolParams> MerkleTree<'p, P> {
@@ -34,12 +33,15 @@ impl<'p, P: PoolParams> MerkleTree<'p, P> {
             default_hashes[i + 1] = poseidon([t, t].as_ref(), params.compress());
         }
 
+        let db = Database::open(DB_NAME.to_owned(), 1).await.unwrap();
+        let num_elements = db.iter_with_prefix(0, "0:".as_bytes()).count(); // FIXME: fetch total number of transactions
+
         MerkleTree {
-            db: Database::open(DB_NAME.to_owned(), 1).await.unwrap(),
-            num_elements: 0,
+            db,
+            num_elements,
             default_hashes,
             params,
-            _p: Default::default(),
+            needed_nodes: Vec::new(),
         }
     }
 
@@ -57,10 +59,10 @@ impl<'p, P: PoolParams> MerkleTree<'p, P> {
         self.db.write(batch).unwrap();
     }
 
-    pub fn get(&self, height: usize, n: usize) -> Hash<P::Fr> {
+    pub fn get(&self, height: usize, index: usize) -> Hash<P::Fr> {
         assert!(height <= constants::H);
 
-        let key = format!("{}:{}", height, n);
+        let key = format!("{}:{}", height, index);
         let res = self.db.get(0, key.as_bytes());
 
         match res {
@@ -69,9 +71,9 @@ impl<'p, P: PoolParams> MerkleTree<'p, P> {
         }
     }
 
-    pub fn set(&self, height: usize, n: usize, hash: Hash<P::Fr>) {
+    pub fn set(&self, height: usize, index: usize, hash: Hash<P::Fr>) {
         let mut batch = self.db.transaction();
-        self.set_batched(&mut batch, height, n, hash);
+        self.set_batched(&mut batch, height, index, hash);
         self.db.write(batch).unwrap();
     }
 
@@ -91,19 +93,47 @@ impl<'p, P: PoolParams> MerkleTree<'p, P> {
         self.db.write(batch).unwrap();
     }
 
-    fn remove_batched(&mut self, batch: &mut DBTransaction, height: usize, n: usize) {
-        let key = Self::node_key(height, n);
+    pub fn get_proof(&self, index: usize) -> MerkleProof<P::Fr, { constants::H }> {
+        let mut siblings = Vec::with_capacity(constants::H);
+        let mut path = Vec::with_capacity(constants::H);
+
+        let mut index = index;
+        for h in 0..constants::H {
+            let is_left = index % 2 == 0;
+            let sibling_index = index ^ 1;
+            let sibling = self.get(h, sibling_index);
+
+            path.push(is_left);
+            siblings.push(sibling);
+
+            index = index / 2usize.pow(h as u32 + 1) ^ 1;
+        }
+
+        MerkleProof {
+            sibling: siblings.drain(..).collect(),
+            path: path.drain(..).collect(),
+        } // TODO: Optimize
+    }
+
+    fn remove_batched(&mut self, batch: &mut DBTransaction, height: usize, index: usize) {
+        let key = Self::node_key(height, index);
         batch.delete(0, &key);
     }
 
-    fn set_batched(&self, batch: &mut DBTransaction, height: usize, n: usize, hash: Hash<P::Fr>) {
-        let key = Self::node_key(height, n);
+    fn set_batched(
+        &self,
+        batch: &mut DBTransaction,
+        height: usize,
+        index: usize,
+        hash: Hash<P::Fr>,
+    ) {
+        let key = Self::node_key(height, index);
         let hash = hash.try_to_vec().unwrap();
         batch.put(0, &key, &hash);
     }
 
     fn add_note_batched(&mut self, batch: &mut DBTransaction, note: Note<P>) {
-        let key = format!("note.{}", self.num_elements);
+        let key = format!("data.{}", self.num_elements);
         let value = note.try_to_vec().unwrap();
         batch.put(0, key.as_bytes(), &value);
 
@@ -136,7 +166,10 @@ impl<'p, P: PoolParams> MerkleTree<'p, P> {
         self.num_elements += 1;
     }
 
-    fn node_key(height: usize, n: usize) -> Vec<u8> {
-        format!("{}:{}", height, n).into_bytes()
+    fn node_key(height: usize, index: usize) -> Vec<u8> {
+        format!("{}:{}", height, index).into_bytes()
     }
 }
+
+#[cfg(test)]
+mod tests {}
