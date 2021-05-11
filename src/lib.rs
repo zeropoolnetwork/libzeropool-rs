@@ -1,3 +1,4 @@
+use borsh::BorshDeserialize;
 use borsh::BorshSerialize;
 use fawkes_crypto::{
     ff_uint::{Num, NumRepr, Uint},
@@ -5,13 +6,15 @@ use fawkes_crypto::{
 };
 use js_sys::Function;
 use libzeropool::native::cypher;
-use libzeropool::native::params::PoolParams;
+use libzeropool::native::params::{PoolBN256, PoolParams};
 use libzeropool::native::tx::{derive_key_adk, derive_key_dk, derive_key_sdk, derive_key_xsk};
 use libzeropool::{native::tx, POOL_PARAMS};
 use sha2::{Digest, Sha256};
 use wasm_bindgen::prelude::*;
 use web_sys::Performance;
 
+use libzeropool::native::account::Account;
+use libzeropool::native::note::Note;
 pub use merkle::*;
 
 mod merkle;
@@ -39,8 +42,6 @@ impl Timer {
 
 const ADDR_LEN: usize = 46;
 
-// When the `wee_alloc` feature is enabled, use `wee_alloc` as the global
-// allocator.
 #[cfg(feature = "wee_alloc")]
 #[global_allocator]
 static ALLOC: wee_alloc::WeeAlloc = wee_alloc::WeeAlloc::INIT;
@@ -65,7 +66,7 @@ pub fn derive_address(dk: &[u8]) -> Result<String, JsValue> {
     Ok(bs58::encode(buf).into_string())
 }
 
-pub fn parse_address(address: String) -> Result<(), JsValue> {
+pub fn parse_address<P: PoolParams>(address: String) -> Result<(Num<P::Fr>, Num<P::Fr>), JsValue> {
     let mut bytes = [0; ADDR_LEN];
     bs58::decode(&address)
         .into(&mut bytes)
@@ -83,60 +84,62 @@ pub fn parse_address(address: String) -> Result<(), JsValue> {
         return Err(JsValue::from("Invalid address: incorrect hash"));
     }
 
-    // let d = Num::from(d);
-    // let pk_d = Num::from(pk_d);
+    let d = Num::<P::Fr>::try_from_slice(d).unwrap();
+    let pk_d = Num::<P::Fr>::try_from_slice(pk_d).unwrap();
 
-    Ok(())
+    Ok((d, pk_d))
 }
 
 #[wasm_bindgen(js_name = decryptNote)]
-pub fn decrypt_note(data: Vec<u8>, sk: String) -> Option<String> {
+pub fn decrypt_note(data: Vec<u8>, sk_enc: String) -> Result<Option<String>, JsValue> {
     utils::set_panic_hook();
 
-    let mut sk = [0; std::mem::size_of::<POOL_PARAMS::Fs>()];
-    bs58::decode(&address)
+    let mut sk = [0; std::mem::size_of::<<PoolBN256 as PoolParams>::Fr>()];
+    bs58::decode(&sk_enc)
         .into(&mut sk)
         .map_err(|err| JsValue::from(err.to_string()))?;
 
-    let xsk = derive_key_xsk(sk, params).x;
+    let num_sk = Num::try_from_slice(&sk).map_err(|err| JsValue::from(err.to_string()))?;
+
+    let xsk = derive_key_xsk(num_sk, &*POOL_PARAMS).x;
     let sender_sdk = derive_key_sdk(xsk, &*POOL_PARAMS);
     let sender_adk = derive_key_adk(xsk, &*POOL_PARAMS);
     let receiver_dk = derive_key_dk(xsk, &*POOL_PARAMS);
 
-    let note = cypher::decrypt_in(receiver_dk, &data, &*POOL_PARAMS).or_else(|| {
-        cypher::decrypt_out(sender_xsk, sender_adk, sender_sdk, &data, &*POOL_PARAMS)
-            .map(|(_, note)| note)
-    })?;
+    let note = cypher::decrypt_in(receiver_dk, &data, &*POOL_PARAMS)
+        .or_else(|| {
+            cypher::decrypt_out(xsk, sender_adk, sender_sdk, &data, &*POOL_PARAMS)
+                .map(|(_, note)| note)
+        })
+        .map(|note| base64::encode(note.try_to_vec().unwrap()));
 
-    let bytes = note.try_to_vec().unwrap();
-    Some(base64::encode(bytes))
+    Ok(note)
 }
 
-#[wasm_bindgen(js_name = "testMerkleTree")]
-pub fn test_merkle_tree() {
-    use fawkes_crypto::backend::bellman_groth16::engines::Bn256;
-    use fawkes_crypto::backend::bellman_groth16::{prover, setup, verifier};
-    use fawkes_crypto::circuit::num::CNum;
-    use fawkes_crypto::circuit::poseidon::{c_poseidon_merkle_proof_root, CMerkleProof};
-    use fawkes_crypto::core::signal::Signal;
-    use fawkes_crypto::core::sizedvec::SizedVec;
-    use fawkes_crypto::engines::bn256::Fr;
-    use fawkes_crypto::ff_uint::PrimeField;
-    use fawkes_crypto::native::poseidon::{
-        poseidon_merkle_proof_root, MerkleProof, PoseidonParams,
-    };
-
-    fn circuit<Fr: PrimeField>(public: CNum<Fr>, secret: (CNum<Fr>, CMerkleProof<Fr, 32>)) {
-        let poseidon_params = PoseidonParams::<Fr>::new(3, 8, 53);
-        let res = c_poseidon_merkle_proof_root(&secret.0, &secret.1, &poseidon_params);
-        res.assert_eq(&public);
-    }
-
-    utils::set_panic_hook();
-
-    let time = Timer::now();
-    let params = setup::setup::<Bn256, _, _, _>(circuit);
-}
+// pub async fn test_merkle_tree() {
+//     use fawkes_crypto::backend::bellman_groth16::engines::Bn256;
+//     use fawkes_crypto::backend::bellman_groth16::{prover, setup, verifier};
+//     use fawkes_crypto::circuit::num::CNum;
+//     use fawkes_crypto::circuit::poseidon::{c_poseidon_merkle_proof_root, CMerkleProof};
+//     use fawkes_crypto::core::signal::Signal;
+//     use fawkes_crypto::core::sizedvec::SizedVec;
+//     use fawkes_crypto::engines::bn256::Fr;
+//     use fawkes_crypto::ff_uint::PrimeField;
+//     use fawkes_crypto::native::poseidon::{
+//         poseidon_merkle_proof_root, MerkleProof, PoseidonParams,
+//     };
+//
+//     utils::set_panic_hook();
+//
+//     const N_ITEMS: usize = 432;
+//
+//     let mut items: Vec<(Account<_>, Note<_>)> =
+//         (0..N_ITEMS).map(|_| (rng.gen(), rng.gen())).collect();
+//
+//     let tree = MerkleTree::new(&*POOL_PARAMS).await;
+//
+//     tree.add_note();
+// }
 
 #[wasm_bindgen(js_name = testPoseidonMerkleRoot)]
 pub fn test_circuit_poseidon_merkle_root(callback: Function) {
