@@ -1,31 +1,24 @@
 use borsh::{BorshDeserialize, BorshSerialize};
 use kvdb::{DBTransaction, KeyValueDB};
-use kvdb_web::Database;
+use kvdb_web::Database as WebDatabase;
+
 use libzeropool::constants;
-use libzeropool::fawkes_crypto::core::sizedvec::SizedVec;
 use libzeropool::fawkes_crypto::ff_uint::Num;
 use libzeropool::fawkes_crypto::native::poseidon::{poseidon, MerkleProof};
-use libzeropool::native::note::Note;
 use libzeropool::native::params::PoolParams;
 
 type Hash<F> = Num<F>;
 
 const DB_NAME: &str = "zeropool.smt";
 
-// Key formats:
-//   node_height:index - tree coordinates hash (0:134)
-//   data.n - element data (data.123)
-pub struct MerkleTree<'p, P: PoolParams> {
-    // TODO: Use abstract KeyValueDB instead
-    db: Database,
-    num_elements: usize,
+pub struct MerkleTree<'p, D: KeyValueDB, P: PoolParams> {
+    db: D,
     params: &'p P,
     default_hashes: Vec<Hash<P::Fr>>,
-    needed_nodes: Vec<(usize, usize)>,
 }
 
-impl<'p, P: PoolParams> MerkleTree<'p, P> {
-    pub async fn new(params: &'p P) -> MerkleTree<'p, P> {
+impl<'p, P: PoolParams> MerkleTree<'p, WebDatabase, P> {
+    pub async fn new(params: &'p P) -> MerkleTree<'p, WebDatabase, P> {
         let mut default_hashes = vec![Num::ZERO; constants::H];
 
         for i in 0..constants::H {
@@ -33,26 +26,17 @@ impl<'p, P: PoolParams> MerkleTree<'p, P> {
             default_hashes[i + 1] = poseidon([t, t].as_ref(), params.compress());
         }
 
-        let db = Database::open(DB_NAME.to_owned(), 1).await.unwrap();
-        let num_elements = db.iter_with_prefix(0, "0:".as_bytes()).count(); // FIXME: fetch total number of transactions
+        let db = WebDatabase::open(DB_NAME.to_owned(), 1).await.unwrap();
 
         MerkleTree {
             db,
-            num_elements,
             default_hashes,
             params,
-            needed_nodes: Vec::new(),
         }
     }
+}
 
-    /// Add a known note
-    pub fn add_note(&mut self, note: Note<P>) {
-        let mut batch = self.db.transaction();
-        self.add_note_batched(&mut batch, note);
-        self.db.write(batch).unwrap();
-    }
-
-    /// Add a hash of an unknown note
+impl<'p, D: KeyValueDB, P: PoolParams> MerkleTree<'p, D, P> {
     pub fn add_hash(&mut self, index: usize, hash: Hash<P::Fr>) {
         let mut batch = self.db.transaction();
         self.add_hash_batched(&mut batch, index, hash);
@@ -77,7 +61,7 @@ impl<'p, P: PoolParams> MerkleTree<'p, P> {
         self.db.write(batch).unwrap();
     }
 
-    pub fn remove_note(&mut self, index: usize) {
+    pub fn remove_hash(&mut self, index: usize) {
         let hash = self.get(0, index);
 
         if hash == self.default_hashes[0] {
@@ -112,7 +96,7 @@ impl<'p, P: PoolParams> MerkleTree<'p, P> {
         MerkleProof {
             sibling: siblings.drain(..).collect(),
             path: path.drain(..).collect(),
-        } // TODO: Optimize
+        }
     }
 
     fn remove_batched(&mut self, batch: &mut DBTransaction, height: usize, index: usize) {
@@ -130,15 +114,6 @@ impl<'p, P: PoolParams> MerkleTree<'p, P> {
         let key = Self::node_key(height, index);
         let hash = hash.try_to_vec().unwrap();
         batch.put(0, &key, &hash);
-    }
-
-    fn add_note_batched(&mut self, batch: &mut DBTransaction, note: Note<P>) {
-        let key = format!("data.{}", self.num_elements);
-        let value = note.try_to_vec().unwrap();
-        batch.put(0, key.as_bytes(), &value);
-
-        let hash = note.hash(self.params);
-        self.add_hash_batched(batch, self.num_elements, hash);
     }
 
     fn add_hash_batched(&mut self, batch: &mut DBTransaction, index: usize, hash: Hash<P::Fr>) {
@@ -162,8 +137,6 @@ impl<'p, P: PoolParams> MerkleTree<'p, P> {
         }
 
         // TODO: Collect garbage
-
-        self.num_elements += 1;
     }
 
     fn node_key(height: usize, index: usize) -> Vec<u8> {

@@ -7,15 +7,20 @@ use fawkes_crypto::{
 use js_sys::Function;
 use libzeropool::native::cypher;
 use libzeropool::native::params::{PoolBN256, PoolParams};
-use libzeropool::native::tx::{derive_key_adk, derive_key_dk, derive_key_sdk, derive_key_xsk};
+use libzeropool::native::tx::{
+    derive_key_adk, derive_key_dk, derive_key_sdk, derive_key_xsk, TransferPub, TransferSec,
+};
 use libzeropool::{native::tx, POOL_PARAMS};
 use sha2::{Digest, Sha256};
 use wasm_bindgen::prelude::*;
 use web_sys::Performance;
 
-use libzeropool::native::account::Account;
-use libzeropool::native::note::Note;
+use libzeropool::native::account::Account as NativeAccount;
+use libzeropool::native::boundednum::BoundedNum;
+use libzeropool::native::note::Note as NativeNote;
 pub use merkle::*;
+use std::convert::TryInto;
+use std::str::FromStr;
 
 mod merkle;
 mod random;
@@ -45,6 +50,14 @@ const ADDR_LEN: usize = 46;
 #[cfg(feature = "wee_alloc")]
 #[global_allocator]
 static ALLOC: wee_alloc::WeeAlloc = wee_alloc::WeeAlloc::INIT;
+
+#[wasm_bindgen(js_name = deriveSecretKey)]
+pub fn derive_sk(seed: &[u8]) -> Vec<u8> {
+    let sk = Num::<<PoolBN256 as PoolParams>::Fr>::from_uint_reduced(NumRepr(
+        Uint::from_big_endian(seed),
+    ));
+    sk.to_uint().0.to_big_endian()
+}
 
 #[wasm_bindgen(js_name = deriveAddress)]
 pub fn derive_address(dk: &[u8]) -> Result<String, JsValue> {
@@ -90,30 +103,185 @@ pub fn parse_address<P: PoolParams>(address: String) -> Result<(Num<P::Fr>, Num<
     Ok((d, pk_d))
 }
 
-#[wasm_bindgen(js_name = decryptNote)]
-pub fn decrypt_note(data: Vec<u8>, sk_enc: String) -> Result<Option<String>, JsValue> {
-    utils::set_panic_hook();
+#[wasm_bindgen]
+#[derive(Clone)]
+pub struct Note {
+    d: String,
+    pk_d: String,
+    v: String,
+    st: String,
+}
 
-    let mut sk = [0; std::mem::size_of::<<PoolBN256 as PoolParams>::Fr>()];
-    bs58::decode(&sk_enc)
-        .into(&mut sk)
-        .map_err(|err| JsValue::from(err.to_string()))?;
+#[wasm_bindgen]
+impl Note {
+    #[wasm_bindgen(getter)]
+    pub fn d(&self) -> String {
+        self.d.clone()
+    }
 
+    #[wasm_bindgen(getter)]
+    pub fn pk_d(&self) -> String {
+        self.pk_d.clone()
+    }
+
+    #[wasm_bindgen(getter)]
+    pub fn v(&self) -> String {
+        self.v.clone()
+    }
+
+    #[wasm_bindgen(getter)]
+    pub fn st(&self) -> String {
+        self.st.clone()
+    }
+}
+
+impl<P: PoolParams> From<NativeNote<P>> for Note {
+    fn from(note: NativeNote<P>) -> Note {
+        Note {
+            d: note.d.to_num().to_string(),
+            pk_d: note.pk_d.to_string(),
+            v: note.v.to_num().to_string(),
+            st: note.st.to_num().to_string(),
+        }
+    }
+}
+
+#[wasm_bindgen]
+#[derive(Clone)]
+pub struct Account {
+    xsk: String,
+    interval: String,
+    v: String,
+    e: String,
+    st: String,
+}
+
+#[wasm_bindgen]
+impl Account {
+    #[wasm_bindgen(getter)]
+    pub fn xsk(&self) -> String {
+        self.xsk.clone()
+    }
+
+    #[wasm_bindgen(getter)]
+    pub fn interval(&self) -> String {
+        self.interval.clone()
+    }
+
+    #[wasm_bindgen(getter)]
+    pub fn v(&self) -> String {
+        self.v.clone()
+    }
+
+    #[wasm_bindgen(getter)]
+    pub fn e(&self) -> String {
+        self.e.clone()
+    }
+
+    #[wasm_bindgen(getter)]
+    pub fn st(&self) -> String {
+        self.st.clone()
+    }
+}
+
+impl<P: PoolParams> From<NativeAccount<P>> for Account {
+    fn from(account: NativeAccount<P>) -> Account {
+        Account {
+            xsk: account.xsk.to_string(),
+            interval: account.interval.to_num().to_string(),
+            v: account.v.to_num().to_string(),
+            e: account.e.to_num().to_string(),
+            st: account.st.to_num().to_string(),
+        }
+    }
+}
+
+impl<P: PoolParams> TryInto<NativeAccount<P>> for Account {
+    type Error = <P::Fr as FromStr>::Err;
+
+    fn try_into(self) -> Result<NativeAccount<P>, Self::Error> {
+        Ok(NativeAccount {
+            xsk: Num::from_str(&self.xsk)?,
+            interval: BoundedNum::new(Num::from_str(&self.interval)?),
+            v: BoundedNum::new(Num::from_str(&self.v)?),
+            e: BoundedNum::new(Num::from_str(&self.e)?),
+            st: BoundedNum::new(Num::from_str(&self.st)?),
+        })
+    }
+}
+
+#[wasm_bindgen]
+pub struct Pair {
+    account: Account,
+    note: Note,
+}
+
+#[wasm_bindgen]
+impl Pair {
+    #[wasm_bindgen(getter)]
+    pub fn account(&self) -> Account {
+        self.account.clone()
+    }
+
+    #[wasm_bindgen(getter)]
+    pub fn note(&self) -> Note {
+        self.note.clone()
+    }
+}
+
+pub fn derive_keys<P: PoolParams>(
+    sk: &[u8],
+    params: &P,
+) -> Result<(Num<P::Fr>, Num<P::Fs>, Num<P::Fs>, Num<P::Fs>), JsValue> {
     let num_sk = Num::try_from_slice(&sk).map_err(|err| JsValue::from(err.to_string()))?;
 
-    let xsk = derive_key_xsk(num_sk, &*POOL_PARAMS).x;
-    let sender_sdk = derive_key_sdk(xsk, &*POOL_PARAMS);
-    let sender_adk = derive_key_adk(xsk, &*POOL_PARAMS);
-    let receiver_dk = derive_key_dk(xsk, &*POOL_PARAMS);
+    let xsk = derive_key_xsk(num_sk, params).x;
+    let sdk = derive_key_sdk(xsk, params);
+    let adk = derive_key_adk(xsk, params);
+    let dk = derive_key_dk(xsk, params);
 
-    let note = cypher::decrypt_in(receiver_dk, &data, &*POOL_PARAMS)
-        .or_else(|| {
-            cypher::decrypt_out(xsk, sender_adk, sender_sdk, &data, &*POOL_PARAMS)
-                .map(|(_, note)| note)
-        })
-        .map(|note| base64::encode(note.try_to_vec().unwrap()));
+    Ok((xsk, sdk, adk, dk)) // TODO: Return a structure
+}
+
+#[wasm_bindgen(js_name = decryptNote)]
+pub fn decrypt_note(data: Vec<u8>, sk: &[u8]) -> Result<Option<Note>, JsValue> {
+    utils::set_panic_hook();
+
+    let (_, _, _, dk) = derive_keys(sk, &*POOL_PARAMS)?; // TODO: Only derive dk
+    let note = cypher::decrypt_in(dk, &data, &*POOL_PARAMS).map(Into::into);
 
     Ok(note)
+}
+
+#[wasm_bindgen(js_name = decryptPair)]
+pub fn decrypt_pair(data: Vec<u8>, sk: &[u8]) -> Result<Option<Pair>, JsValue> {
+    utils::set_panic_hook();
+
+    let (xsk, sdk, adk, _) = derive_keys(sk, &*POOL_PARAMS)?;
+
+    let pair =
+        cypher::decrypt_out(xsk, adk, sdk, &data, &*POOL_PARAMS).map(|(account, note)| Pair {
+            account: account.into(),
+            note: note.into(),
+        });
+
+    Ok(pair)
+}
+
+pub fn make_deposit_tx(sk: &[u8], address: String) -> (TransferPub, TransferSec) {
+    let (_, pk_d) = parse_address(address)?;
+    let (xsk, sdk, adk, _) = derive_keys(&sk, &*POOL_PARAMS)?;
+
+    let mut account: NativeAccount<PoolBN256> = rng.gen();
+    let mut note: NativeNote<PoolBN256> = rng.gen();
+
+    let data = cypher::encrypt(
+        esk,
+        sdk,
+        adk,
+        (account.clone(), note.clone()),
+        &*POOL_PARAMS,
+    );
 }
 
 // pub async fn test_merkle_tree() {
