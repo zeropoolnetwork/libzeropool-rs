@@ -79,7 +79,8 @@ impl<'p, D: KeyValueDB, P: PoolParams> MerkleTree<'p, D, P> {
     pub fn get_opt(&self, height: u32, index: u32) -> Option<Hash<P::Fr>> {
         assert!(height <= constants::H as u32);
 
-        let res = Self::with_node_key(height, index, |key| self.db.get(0, key));
+        let key = Self::node_key(height, index);
+        let res = self.db.get(0, &key);
 
         match res {
             Ok(Some(ref val)) => Some(Hash::<P::Fr>::try_from_slice(val).unwrap()),
@@ -103,18 +104,16 @@ impl<'p, D: KeyValueDB, P: PoolParams> MerkleTree<'p, D, P> {
 
         let mut batch = self.db.transaction();
 
-        Self::with_retained_node_key(index, |key| {
-            batch.delete(0, key);
-        });
+        let key = Self::retained_node_key(index);
+        batch.delete(0, &key);
 
         let _ = self.db.write(batch);
     }
 
     pub fn get_proof(&self, index: u32) -> Option<MerkleProof<P::Fr, { constants::H }>> {
         // TODO: Add Default for SizedVec or make it's member public to replace all those iterators.
-        let leaf_present = Self::with_retained_node_key(index, |key| {
-            self.db.get(0, key).map_or(false, |value| value.is_some())
-        });
+        let key = Self::retained_node_key(index);
+        let leaf_present = self.db.get(0, &key).map_or(false, |value| value.is_some());
 
         if !leaf_present {
             return None;
@@ -198,16 +197,14 @@ impl<'p, D: KeyValueDB, P: PoolParams> MerkleTree<'p, D, P> {
     }
 
     fn remove_batched(&mut self, batch: &mut DBTransaction, height: u32, index: u32) {
-        Self::with_node_key(height, index, |key| {
-            batch.delete(0, key);
-        });
+        let key = Self::node_key(height, index);
+        batch.delete(0, &key);
     }
 
     fn set_batched(&self, batch: &mut DBTransaction, height: u32, index: u32, hash: Hash<P::Fr>) {
-        Self::with_node_key(height, index, |key| {
-            let hash = hash.try_to_vec().unwrap();
-            batch.put(0, &key, &hash);
-        });
+        let key = Self::node_key(height, index);
+        let hash = hash.try_to_vec().unwrap();
+        batch.put(0, &key, &hash);
     }
 
     fn add_hash_batched(
@@ -219,15 +216,13 @@ impl<'p, D: KeyValueDB, P: PoolParams> MerkleTree<'p, D, P> {
     ) {
         let hash_serialized = hash.try_to_vec().unwrap();
 
-        Self::with_node_key(0, index, |key| {
-            batch.put(0, &key, &hash_serialized);
-        });
+        let key = Self::node_key(0, index);
+        batch.put(0, &key, &hash_serialized);
 
         if !temporary {
             // mark this hash as non-removable for later
-            Self::with_retained_node_key(index, |key| {
-                batch.put(0, key, &hash_serialized);
-            });
+            let key = Self::retained_node_key(index);
+            batch.put(0, &key, &hash_serialized);
         }
 
         // update inner nodes
@@ -243,9 +238,9 @@ impl<'p, D: KeyValueDB, P: PoolParams> MerkleTree<'p, D, P> {
         }
     }
 
-    // TODO: Find a better way to serialize keys without allocation
-    fn with_node_key<R, F: FnOnce(&[u8]) -> R>(height: u32, index: u32, func: F) -> R {
-        let mut data = [0u8; std::mem::size_of::<u32>() * 2 + 1];
+    #[inline]
+    fn node_key(height: u32, index: u32) -> [u8; 65] {
+        let mut data = [0u8; 65];
         {
             let mut bytes = &mut data[..];
             let _ = bytes.write_u8(b'n');
@@ -253,18 +248,19 @@ impl<'p, D: KeyValueDB, P: PoolParams> MerkleTree<'p, D, P> {
             let _ = bytes.write_u32::<BigEndian>(index);
         }
 
-        func(&data)
+        data
     }
 
-    fn with_retained_node_key<R, F: FnOnce(&[u8]) -> R>(index: u32, func: F) -> R {
-        let mut data = [0; std::mem::size_of::<u32>() + 1];
+    #[inline]
+    fn retained_node_key(index: u32) -> [u8; 33] {
+        let mut data = [0; 33];
         {
             let mut bytes = &mut data[..];
             let _ = bytes.write_u8(b'r');
             let _ = bytes.write_u32::<BigEndian>(index);
         }
 
-        func(&data)
+        data
     }
 
     fn gen_default_hashes(params: &P) -> Vec<Hash<P::Fr>> {
