@@ -6,9 +6,7 @@ use fawkes_crypto::{
 use js_sys::Function;
 use libzeropool::native::cypher;
 use libzeropool::native::params::{PoolBN256, PoolParams};
-use libzeropool::native::tx::{
-    derive_key_adk, derive_key_dk, derive_key_sdk, derive_key_xsk, TransferPub, TransferSec,
-};
+use libzeropool::native::tx::{derive_key_adk, derive_key_dk, derive_key_sdk, derive_key_xsk};
 use libzeropool::{native::tx, POOL_PARAMS};
 use sha2::{Digest, Sha256};
 use wasm_bindgen::prelude::*;
@@ -177,18 +175,15 @@ pub fn decrypt_pair(data: Vec<u8>, sk: &[u8]) -> Result<Option<Pair>, JsValue> {
 // }
 
 #[wasm_bindgen(js_name = testPoseidonMerkleRoot)]
-pub fn test_circuit_poseidon_merkle_root(callback: Function) {
+pub async fn test_circuit_poseidon_merkle_root(callback: Function) {
     use fawkes_crypto::backend::bellman_groth16::engines::Bn256;
     use fawkes_crypto::backend::bellman_groth16::{prover, setup, verifier};
     use fawkes_crypto::circuit::num::CNum;
     use fawkes_crypto::circuit::poseidon::{c_poseidon_merkle_proof_root, CMerkleProof};
     use fawkes_crypto::core::signal::Signal;
-    use fawkes_crypto::core::sizedvec::SizedVec;
     use fawkes_crypto::engines::bn256::Fr;
     use fawkes_crypto::ff_uint::PrimeField;
-    use fawkes_crypto::native::poseidon::{
-        poseidon_merkle_proof_root, MerkleProof, PoseidonParams,
-    };
+    use fawkes_crypto::native::poseidon::{poseidon_merkle_proof_root, PoseidonParams};
 
     macro_rules! log_js {
         ($func:expr, $text:expr, $time:expr) => {{
@@ -215,18 +210,13 @@ pub fn test_circuit_poseidon_merkle_root(callback: Function) {
     log_js!(callback, "Setup", time);
 
     let time = Timer::now();
-    const PROOF_LENGTH: usize = 32;
     let mut rng = random::CustomRng;
     let poseidon_params = PoseidonParams::<Fr>::new(3, 8, 53);
+    let mut tree = MerkleTree::new_web(&*POOL_PARAMS).await;
     let leaf = rng.gen();
-    let sibling = (0..PROOF_LENGTH)
-        .map(|_| rng.gen())
-        .collect::<SizedVec<_, PROOF_LENGTH>>();
+    tree.add_hash(0, leaf, false);
 
-    let path = (0..PROOF_LENGTH)
-        .map(|_| rng.gen())
-        .collect::<SizedVec<bool, PROOF_LENGTH>>();
-    let proof = MerkleProof { sibling, path };
+    let proof = tree.get_proof(0).unwrap();
     let root = poseidon_merkle_proof_root(leaf, &proof, &poseidon_params);
     log_js!(callback, "Merkle tree init", time);
 

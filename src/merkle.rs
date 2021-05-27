@@ -48,11 +48,10 @@ impl<'p, D: KeyValueDB, P: PoolParams> MerkleTree<'p, D, P> {
     pub fn add_hash(&mut self, index: u32, hash: Hash<P::Fr>, temporary: bool) {
         let mut batch = self.db.transaction();
         self.add_hash_batched(&mut batch, index, hash, temporary);
-        self.cleanup(&mut batch);
         self.db.write(batch).unwrap();
     }
 
-    /// Add multiple hashes from tuple (index, hash, temporary)
+    /// Add multiple hashes from an array of tuples (index, hash, temporary)
     pub fn add_hashes<'a, I>(&mut self, hashes: I)
     where
         I: IntoIterator<Item = &'a (u32, Hash<P::Fr>, bool)>,
@@ -67,9 +66,7 @@ impl<'p, D: KeyValueDB, P: PoolParams> MerkleTree<'p, D, P> {
 
         self.db.write(batch).unwrap();
 
-        let mut batch = self.db.transaction();
-        self.cleanup(&mut batch);
-        self.db.write(batch).unwrap();
+        self.cleanup();
     }
 
     pub fn get(&self, height: u32, index: u32) -> Hash<P::Fr> {
@@ -96,6 +93,7 @@ impl<'p, D: KeyValueDB, P: PoolParams> MerkleTree<'p, D, P> {
         self.db.write(batch).unwrap();
     }
 
+    /// Remove a non-temporary hash
     pub fn remove_hash(&mut self, index: u32) {
         let hash = self.get(0, index);
 
@@ -105,11 +103,11 @@ impl<'p, D: KeyValueDB, P: PoolParams> MerkleTree<'p, D, P> {
 
         let mut batch = self.db.transaction();
 
-        for h in 0..constants::H as u32 {
-            self.remove_batched(&mut batch, h, index / 2u32.pow(h + 1));
-        }
+        Self::with_retained_node_key(index, |key| {
+            batch.delete(0, key);
+        });
 
-        self.db.write(batch).unwrap();
+        let _ = self.db.write(batch);
     }
 
     pub fn get_proof(&self, index: u32) -> Option<MerkleProof<P::Fr, { constants::H }>> {
@@ -133,7 +131,7 @@ impl<'p, D: KeyValueDB, P: PoolParams> MerkleTree<'p, D, P> {
                 *is_left = x % 2 == 0;
                 *sibling = self.get(h, x ^ 1);
 
-                (x as usize / 2usize.pow(h + 1) ^ 1) as u32
+                (Self::index_at(h + 1, x) ^ 1) as u32
             },
         );
 
@@ -158,7 +156,7 @@ impl<'p, D: KeyValueDB, P: PoolParams> MerkleTree<'p, D, P> {
             .collect()
     }
 
-    fn cleanup(&mut self, batch: &mut DBTransaction) {
+    pub fn cleanup(&mut self) {
         let mut used_hashes = HashSet::new(); // TODO: Preallocate?
         let permanent_hashes = self.db.iter_with_prefix(0, b"r");
 
@@ -190,9 +188,13 @@ impl<'p, D: KeyValueDB, P: PoolParams> MerkleTree<'p, D, P> {
             }
         }
 
+        let mut batch = self.db.transaction();
+
         for (height, index) in to_remove {
-            self.remove_batched(batch, height, index);
+            self.remove_batched(&mut batch, height, index);
         }
+
+        self.db.write(batch).unwrap();
     }
 
     fn remove_batched(&mut self, batch: &mut DBTransaction, height: u32, index: u32) {
@@ -230,7 +232,7 @@ impl<'p, D: KeyValueDB, P: PoolParams> MerkleTree<'p, D, P> {
 
         // update inner nodes
         for h in 1..constants::H as u32 {
-            let current_index = index / 2u32.pow(h);
+            let current_index = Self::index_at(h, index);
 
             // get pair of children
             let child_left = current_index * 2;
@@ -275,6 +277,11 @@ impl<'p, D: KeyValueDB, P: PoolParams> MerkleTree<'p, D, P> {
         }
 
         default_hashes
+    }
+
+    #[inline]
+    fn index_at(height: u32, leaf_index: u32) -> u32 {
+        (leaf_index as usize / 2usize.pow(height)) as u32
     }
 }
 
