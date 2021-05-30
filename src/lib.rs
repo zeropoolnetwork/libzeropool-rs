@@ -4,9 +4,14 @@ use fawkes_crypto::{
     rand::Rng,
 };
 use js_sys::Function;
+use libzeropool::fawkes_crypto::native::poseidon::poseidon;
+use libzeropool::native::boundednum::BoundedNum;
 use libzeropool::native::cypher;
 use libzeropool::native::params::{PoolBN256, PoolParams};
-use libzeropool::native::tx::{derive_key_adk, derive_key_dk, derive_key_sdk, derive_key_xsk};
+use libzeropool::native::tx::{
+    derive_key_adk, derive_key_dk, derive_key_sdk, derive_key_xsk, make_delta, nullfifier, tx_hash,
+    tx_sign, TransferPub, TransferSec,
+};
 use libzeropool::{native::tx, POOL_PARAMS};
 use sha2::{Digest, Sha256};
 use wasm_bindgen::prelude::*;
@@ -20,30 +25,11 @@ mod random;
 mod types;
 mod utils;
 
-pub struct Timer {
-    start: f64,
-    perf: Performance,
-}
-
-impl Timer {
-    pub fn now() -> Timer {
-        let perf = web_sys::window().unwrap().performance().unwrap();
-        Timer {
-            start: perf.now(),
-            perf,
-        }
-    }
-
-    pub fn elapsed_s(&self) -> f64 {
-        (self.perf.now() - self.start) / 1000.0
-    }
-}
-
-const ADDR_LEN: usize = 46;
-
 #[cfg(feature = "wee_alloc")]
 #[global_allocator]
 static ALLOC: wee_alloc::WeeAlloc = wee_alloc::WeeAlloc::INIT;
+
+const ADDR_LEN: usize = 46;
 
 #[wasm_bindgen(js_name = deriveSecretKey)]
 pub fn derive_sk(seed: &[u8]) -> Vec<u8> {
@@ -51,26 +37,6 @@ pub fn derive_sk(seed: &[u8]) -> Vec<u8> {
         Uint::from_big_endian(seed),
     ));
     sk.to_uint().0.to_big_endian()
-}
-
-#[wasm_bindgen(js_name = deriveAddress)]
-pub fn derive_address(dk: &[u8]) -> Result<String, JsValue> {
-    let mut rng = random::CustomRng;
-    let d = rng.gen();
-    let dk = Num::from_uint_reduced(NumRepr(Uint::from_big_endian(dk)));
-    let pk_d = tx::derive_key_pk_d(d, dk, &*POOL_PARAMS);
-    let mut buf: Vec<u8> = Vec::with_capacity(ADDR_LEN);
-
-    buf.extend_from_slice(&d.to_uint().0.to_big_endian()[0..10]);
-    buf.extend_from_slice(&pk_d.x.to_uint().0.to_big_endian()); // 32 bytes
-
-    let mut hasher = Sha256::new();
-    hasher.update(&buf);
-    let hash = hasher.finalize();
-
-    buf.extend_from_slice(&hash[0..4]);
-
-    Ok(bs58::encode(buf).into_string())
 }
 
 pub fn parse_address<P: PoolParams>(address: String) -> Result<(Num<P::Fr>, Num<P::Fr>), JsValue> {
@@ -111,68 +77,153 @@ pub fn derive_keys<P: PoolParams>(
     Ok((xsk, sdk, adk, dk)) // TODO: Return a structure
 }
 
-#[wasm_bindgen(js_name = decryptNote)]
-pub fn decrypt_note(data: Vec<u8>, sk: &[u8]) -> Result<Option<Note>, JsValue> {
-    utils::set_panic_hook();
-
-    let (_, _, _, dk) = derive_keys(sk, &*POOL_PARAMS)?; // TODO: Only derive dk
-    let note = cypher::decrypt_in(dk, &data, &*POOL_PARAMS).map(Into::into);
-
-    Ok(note)
+#[wasm_bindgen]
+pub struct AccountContext {
+    sk: Vec<u8>,
+    xsk: Num<<PoolBN256 as PoolParams>::Fr>,
+    sdk: Num<<PoolBN256 as PoolParams>::Fs>,
+    adk: Num<<PoolBN256 as PoolParams>::Fs>,
+    dk: Num<<PoolBN256 as PoolParams>::Fs>,
 }
 
-#[wasm_bindgen(js_name = decryptPair)]
-pub fn decrypt_pair(data: Vec<u8>, sk: &[u8]) -> Result<Option<Pair>, JsValue> {
-    utils::set_panic_hook();
+#[wasm_bindgen]
+impl AccountContext {
+    #[wasm_bindgen(constructor)]
+    pub fn new(sk: Vec<u8>) -> Result<AccountContext, JsValue> {
+        let (xsk, sdk, adk, dk) = derive_keys(&sk, &*POOL_PARAMS)?;
 
-    let (xsk, sdk, adk, _) = derive_keys(sk, &*POOL_PARAMS)?;
+        Ok(AccountContext {
+            sk,
+            xsk,
+            sdk,
+            adk,
+            dk,
+        })
+    }
 
-    let pair = cypher::decrypt_out(xsk, adk, sdk, &data, &*POOL_PARAMS)
-        .map(|(account, note)| Pair::new(account.into(), note.into()));
+    #[wasm_bindgen(js_name = fromSeed)]
+    pub fn from_seed(seed: &[u8]) -> Result<AccountContext, JsValue> {
+        let sk = derive_sk(seed);
+        Self::new(sk)
+    }
 
-    Ok(pair)
+    #[wasm_bindgen(js_name = deriveNewAddress)]
+    pub fn derive_new_address(&self) -> Result<String, JsValue> {
+        let mut rng = random::CustomRng;
+        let d = rng.gen();
+        // let dk = Num::from_uint_reduced(NumRepr(Uint::from_big_endian(dk)));
+        let pk_d = tx::derive_key_pk_d(d, self.dk, &*POOL_PARAMS);
+        let mut buf: Vec<u8> = Vec::with_capacity(ADDR_LEN);
+
+        buf.extend_from_slice(&d.to_uint().0.to_big_endian()[0..10]);
+        buf.extend_from_slice(&pk_d.x.to_uint().0.to_big_endian()); // 32 bytes
+
+        let mut hasher = Sha256::new();
+        hasher.update(&buf);
+        let hash = hasher.finalize();
+
+        buf.extend_from_slice(&hash[0..4]);
+
+        Ok(bs58::encode(buf).into_string())
+    }
+
+    #[wasm_bindgen(js_name = decryptNote)]
+    pub fn decrypt_note(&self, data: Vec<u8>) -> Result<Option<Note>, JsValue> {
+        utils::set_panic_hook();
+
+        let note = cypher::decrypt_in(self.dk, &data, &*POOL_PARAMS).map(Into::into);
+
+        Ok(note)
+    }
+
+    #[wasm_bindgen(js_name = decryptPair)]
+    pub fn decrypt_pair(&self, data: Vec<u8>) -> Result<Option<Pair>, JsValue> {
+        utils::set_panic_hook();
+
+        let pair = cypher::decrypt_out(self.xsk, self.adk, self.sdk, &data, &*POOL_PARAMS)
+            .map(|(account, note)| Pair::new(account.into(), note.into()));
+
+        Ok(pair)
+    }
+    //
+    // #[wasm_bindgen(js_name = makeTransferTx)]
+    // pub fn make_transfer_tx(&self) -> (TransferPub<PoolBN256>, TransferSec<PoolBN256>) {
+    //     let root = self.root();
+    //     let index = N_ITEMS * 2;
+    //     let xsk = derive_key_xsk(self.sk, params).x;
+    //     let nullifier = nullfifier(self.hashes[0][self.account_id * 2], xsk, params);
+    //     let memo = rng.gen();
+    //
+    //     let mut input_value = self.items[self.account_id].0.v.to_num();
+    //     for &i in self.note_id.iter() {
+    //         input_value += self.items[i].1.v.to_num();
+    //     }
+    //
+    //     let mut input_energy = self.items[self.account_id].0.e.to_num();
+    //     input_energy += self.items[self.account_id].0.v.to_num()
+    //         * (Num::from(index as u32) - self.items[self.account_id].0.interval.to_num());
+    //
+    //     for &i in self.note_id.iter() {
+    //         input_energy += self.items[i].1.v.to_num() * Num::from((index - (2 * i + 1)) as u32);
+    //     }
+    //
+    //     let mut out_account: Account<P> = rng.gen();
+    //     out_account.v = BoundedNum::new(input_value);
+    //     out_account.e = BoundedNum::new(input_energy);
+    //     out_account.interval = BoundedNum::new(Num::from(index as u32));
+    //     out_account.xsk = xsk;
+    //
+    //     let mut out_note: Note<P> = rng.gen();
+    //     out_note.v = BoundedNum::new(Num::ZERO);
+    //
+    //     let mut input_hashes = vec![self.items[self.account_id].0.hash(params)];
+    //     for &i in self.note_id.iter() {
+    //         input_hashes.push(self.items[i].1.hash(params));
+    //     }
+    //
+    //     let output_hashes = vec![out_account.hash(params), out_note.hash(params)];
+    //     let tx_hash = tx_hash(&input_hashes, &output_hashes, params);
+    //     let (eddsa_s, eddsa_r) = tx_sign(self.sk, tx_hash, params);
+    //
+    //     let out_commit = poseidon(&output_hashes, params.compress());
+    //     let delta = make_delta::<P>(Num::ZERO, Num::ZERO, Num::from(index as u32));
+    //
+    //     let p = TransferPub::<P> {
+    //         root,
+    //         nullifier,
+    //         out_commit,
+    //         delta,
+    //         memo,
+    //     };
+    //
+    //     let tx = Tx {
+    //         input: (
+    //             self.items[self.account_id].0.clone(),
+    //             self.note_id
+    //                 .iter()
+    //                 .map(|&i| self.items[i].1.clone())
+    //                 .collect(),
+    //         ),
+    //         output: (out_account, out_note),
+    //     };
+    //
+    //     let s = TransferSec::<P> {
+    //         tx,
+    //         in_proof: (
+    //             self.merkle_proof(self.account_id * 2),
+    //             self.note_id
+    //                 .iter()
+    //                 .map(|&i| self.merkle_proof(i * 2 + 1))
+    //                 .collect(),
+    //         ),
+    //         eddsa_s: eddsa_s.to_other().unwrap(),
+    //         eddsa_r,
+    //         eddsa_a: xsk,
+    //     };
+    //
+    //     (p, s)
+    // }
 }
-
-// pub fn make_deposit_tx(sk: &[u8], address: String) -> (TransferPub, TransferSec) {
-//     let (_, pk_d) = parse_address(address)?;
-//     let (xsk, sdk, adk, _) = derive_keys(&sk, &*POOL_PARAMS)?;
-//
-//     let mut account: NativeAccount<PoolBN256> = rng.gen();
-//     let mut note: NativeNote<PoolBN256> = rng.gen();
-//
-//     let data = cypher::encrypt(
-//         esk,
-//         sdk,
-//         adk,
-//         (account.clone(), note.clone()),
-//         &*POOL_PARAMS,
-//     );
-// }
-
-// pub async fn test_merkle_tree() {
-//     use fawkes_crypto::backend::bellman_groth16::engines::Bn256;
-//     use fawkes_crypto::backend::bellman_groth16::{prover, setup, verifier};
-//     use fawkes_crypto::circuit::num::CNum;
-//     use fawkes_crypto::circuit::poseidon::{c_poseidon_merkle_proof_root, CMerkleProof};
-//     use fawkes_crypto::core::signal::Signal;
-//     use fawkes_crypto::core::sizedvec::SizedVec;
-//     use fawkes_crypto::engines::bn256::Fr;
-//     use fawkes_crypto::ff_uint::PrimeField;
-//     use fawkes_crypto::native::poseidon::{
-//         poseidon_merkle_proof_root, MerkleProof, PoseidonParams,
-//     };
-//
-//     utils::set_panic_hook();
-//
-//     const N_ITEMS: usize = 432;
-//
-//     let mut items: Vec<(Account<_>, Note<_>)> =
-//         (0..N_ITEMS).map(|_| (rng.gen(), rng.gen())).collect();
-//
-//     let tree = MerkleTree::new(&*POOL_PARAMS).await;
-//
-//     tree.add_note();
-// }
 
 #[wasm_bindgen(js_name = testPoseidonMerkleRoot)]
 pub async fn test_circuit_poseidon_merkle_root(callback: Function) {
@@ -184,6 +235,8 @@ pub async fn test_circuit_poseidon_merkle_root(callback: Function) {
     use fawkes_crypto::engines::bn256::Fr;
     use fawkes_crypto::ff_uint::PrimeField;
     use fawkes_crypto::native::poseidon::{poseidon_merkle_proof_root, PoseidonParams};
+
+    use self::utils::Timer;
 
     macro_rules! log_js {
         ($func:expr, $text:expr, $time:expr) => {{
