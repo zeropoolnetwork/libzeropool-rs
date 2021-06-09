@@ -130,7 +130,7 @@ impl<'p, D: KeyValueDB, P: PoolParams> MerkleTree<'p, D, P> {
                 *is_left = x % 2 == 0;
                 *sibling = self.get(h, x ^ 1);
 
-                (Self::index_at(h + 1, x) ^ 1) as u32
+                x / 2
             },
         );
 
@@ -276,8 +276,8 @@ impl<'p, D: KeyValueDB, P: PoolParams> MerkleTree<'p, D, P> {
     }
 
     #[inline]
-    fn index_at(height: u32, leaf_index: u32) -> u32 {
-        (leaf_index as usize / 2usize.pow(height)) as u32
+    fn index_at(height: u32, index: u32) -> u32 {
+        (index as usize / 2usize.pow(height)) as u32
     }
 }
 
