@@ -1,21 +1,16 @@
-use borsh::BorshDeserialize;
 use fawkes_crypto::{
     ff_uint::{Num, NumRepr, Uint},
     rand::Rng,
 };
-use js_sys::Function;
-use libzeropool::fawkes_crypto::native::poseidon::poseidon;
-use libzeropool::native::boundednum::BoundedNum;
-use libzeropool::native::cypher;
+use js_sys::Array;
+use libzeropool::fawkes_crypto::borsh::BorshDeserialize;
+use libzeropool::native::cipher;
+use libzeropool::native::key::{derive_key_a, derive_key_eta, derive_key_p_d};
 use libzeropool::native::params::{PoolBN256, PoolParams};
-use libzeropool::native::tx::{
-    derive_key_adk, derive_key_dk, derive_key_sdk, derive_key_xsk, make_delta, nullfifier, tx_hash,
-    tx_sign, TransferPub, TransferSec,
-};
-use libzeropool::{native::tx, POOL_PARAMS};
+use libzeropool::POOL_PARAMS;
 use sha2::{Digest, Sha256};
 use wasm_bindgen::prelude::*;
-use web_sys::Performance;
+use wasm_bindgen::JsCast;
 
 pub use crate::merkle::*;
 pub use crate::types::*;
@@ -66,43 +61,30 @@ pub fn parse_address<P: PoolParams>(address: String) -> Result<(Num<P::Fr>, Num<
 pub fn derive_keys<P: PoolParams>(
     sk: &[u8],
     params: &P,
-) -> Result<(Num<P::Fr>, Num<P::Fs>, Num<P::Fs>, Num<P::Fs>), JsValue> {
+) -> Result<(Num<P::Fr>, Num<P::Fr>), JsValue> {
     let num_sk = Num::try_from_slice(&sk).map_err(|err| JsValue::from(err.to_string()))?;
+    let a = derive_key_a(num_sk, params).x;
+    let eta = derive_key_eta(a, params);
 
-    let xsk = derive_key_xsk(num_sk, params).x;
-    let sdk = derive_key_sdk(xsk, params);
-    let adk = derive_key_adk(xsk, params);
-    let dk = derive_key_dk(xsk, params);
-
-    Ok((xsk, sdk, adk, dk)) // TODO: Return a structure
+    Ok((a, eta))
 }
 
 #[wasm_bindgen]
-pub struct AccountContext {
-    sk: Vec<u8>,
-    xsk: Num<<PoolBN256 as PoolParams>::Fr>,
-    sdk: Num<<PoolBN256 as PoolParams>::Fs>,
-    adk: Num<<PoolBN256 as PoolParams>::Fs>,
-    dk: Num<<PoolBN256 as PoolParams>::Fs>,
+pub struct Account {
+    eta: Num<Fr>,
 }
 
 #[wasm_bindgen]
-impl AccountContext {
+impl Account {
     #[wasm_bindgen(constructor)]
-    pub fn new(sk: Vec<u8>) -> Result<AccountContext, JsValue> {
-        let (xsk, sdk, adk, dk) = derive_keys(&sk, &*POOL_PARAMS)?;
+    pub fn new(sk: Vec<u8>) -> Result<Account, JsValue> {
+        let (_a, eta) = derive_keys(&sk, &*POOL_PARAMS)?;
 
-        Ok(AccountContext {
-            sk,
-            xsk,
-            sdk,
-            adk,
-            dk,
-        })
+        Ok(Account { eta })
     }
 
     #[wasm_bindgen(js_name = fromSeed)]
-    pub fn from_seed(seed: &[u8]) -> Result<AccountContext, JsValue> {
+    pub fn from_seed(seed: &[u8]) -> Result<Account, JsValue> {
         let sk = derive_sk(seed);
         Self::new(sk)
     }
@@ -110,9 +92,9 @@ impl AccountContext {
     #[wasm_bindgen(js_name = deriveNewAddress)]
     pub fn derive_new_address(&self) -> Result<String, JsValue> {
         let mut rng = random::CustomRng;
+
         let d = rng.gen();
-        // let dk = Num::from_uint_reduced(NumRepr(Uint::from_big_endian(dk)));
-        let pk_d = tx::derive_key_pk_d(d, self.dk, &*POOL_PARAMS);
+        let pk_d = derive_key_p_d(d, self.eta, &*POOL_PARAMS);
         let mut buf: Vec<u8> = Vec::with_capacity(ADDR_LEN);
 
         buf.extend_from_slice(&d.to_uint().0.to_big_endian()[0..10]);
@@ -127,21 +109,29 @@ impl AccountContext {
         Ok(bs58::encode(buf).into_string())
     }
 
-    #[wasm_bindgen(js_name = decryptNote)]
-    pub fn decrypt_note(&self, data: Vec<u8>) -> Result<Option<Note>, JsValue> {
+    #[wasm_bindgen(js_name = decryptNotes)]
+    pub fn decrypt_notes(&self, data: Vec<u8>) -> Result<Notes, JsValue> {
         utils::set_panic_hook();
 
-        let note = cypher::decrypt_in(self.dk, &data, &*POOL_PARAMS).map(Into::into);
+        let notes = cipher::decrypt_in(self.eta, &data, &*POOL_PARAMS)
+            .into_iter()
+            .filter_map(|opt| opt)
+            .map(Note::from)
+            .map(JsValue::from)
+            .collect::<Array>()
+            .unchecked_into::<Notes>();
 
-        Ok(note)
+        Ok(notes)
     }
 
     #[wasm_bindgen(js_name = decryptPair)]
     pub fn decrypt_pair(&self, data: Vec<u8>) -> Result<Option<Pair>, JsValue> {
         utils::set_panic_hook();
 
-        let pair = cypher::decrypt_out(self.xsk, self.adk, self.sdk, &data, &*POOL_PARAMS)
-            .map(|(account, note)| Pair::new(account.into(), note.into()));
+        let pair = cipher::decrypt_out(self.eta, &data, &*POOL_PARAMS).map(|(account, notes)| {
+            let notes = notes.into_iter().map(Note::from).collect();
+            Pair::new(account.into(), notes)
+        });
 
         Ok(pair)
     }
@@ -151,7 +141,7 @@ impl AccountContext {
     //     let root = self.root();
     //     let index = N_ITEMS * 2;
     //     let xsk = derive_key_xsk(self.sk, params).x;
-    //     let nullifier = nullfifier(self.hashes[0][self.account_id * 2], xsk, params);
+    //     let nullifier = nullifier(self.hashes[0][self.account_id * 2], xsk, params);
     //     let memo = rng.gen();
     //
     //     let mut input_value = self.items[self.account_id].0.v.to_num();
@@ -167,7 +157,7 @@ impl AccountContext {
     //         input_energy += self.items[i].1.v.to_num() * Num::from((index - (2 * i + 1)) as u32);
     //     }
     //
-    //     let mut out_account: Account<P> = rng.gen();
+    //     let mut out_account: NativeAccount<P> = rng.gen();
     //     out_account.v = BoundedNum::new(input_value);
     //     out_account.e = BoundedNum::new(input_energy);
     //     out_account.interval = BoundedNum::new(Num::from(index as u32));
@@ -224,62 +214,63 @@ impl AccountContext {
     //     (p, s)
     // }
 }
-
-#[wasm_bindgen(js_name = testPoseidonMerkleRoot)]
-pub async fn test_circuit_poseidon_merkle_root(callback: Function) {
-    use fawkes_crypto::backend::bellman_groth16::engines::Bn256;
-    use fawkes_crypto::backend::bellman_groth16::{prover, setup, verifier};
-    use fawkes_crypto::circuit::num::CNum;
-    use fawkes_crypto::circuit::poseidon::{c_poseidon_merkle_proof_root, CMerkleProof};
-    use fawkes_crypto::core::signal::Signal;
-    use fawkes_crypto::engines::bn256::Fr;
-    use fawkes_crypto::ff_uint::PrimeField;
-    use fawkes_crypto::native::poseidon::{poseidon_merkle_proof_root, PoseidonParams};
-
-    use self::utils::Timer;
-
-    macro_rules! log_js {
-        ($func:expr, $text:expr, $time:expr) => {{
-            $func
-                .call2(
-                    &JsValue::NULL,
-                    &JsValue::from($text),
-                    &JsValue::from($time.elapsed_s()),
-                )
-                .unwrap();
-        }};
-    }
-
-    fn circuit<Fr: PrimeField>(public: CNum<Fr>, secret: (CNum<Fr>, CMerkleProof<Fr, 32>)) {
-        let poseidon_params = PoseidonParams::<Fr>::new(3, 8, 53);
-        let res = c_poseidon_merkle_proof_root(&secret.0, &secret.1, &poseidon_params);
-        res.assert_eq(&public);
-    }
-
-    utils::set_panic_hook();
-
-    let time = Timer::now();
-    let params = setup::setup::<Bn256, _, _, _>(circuit);
-    log_js!(callback, "Setup", time);
-
-    let time = Timer::now();
-    let mut rng = random::CustomRng;
-    let poseidon_params = PoseidonParams::<Fr>::new(3, 8, 53);
-    let mut tree = MerkleTree::new_web(&*POOL_PARAMS).await;
-    let leaf = rng.gen();
-    tree.add_hash(0, leaf, false);
-
-    let proof = tree.get_proof(0).unwrap();
-    let root = poseidon_merkle_proof_root(leaf, &proof, &poseidon_params);
-    log_js!(callback, "Merkle tree init", time);
-
-    let time = Timer::now();
-    let (inputs, snark_proof) = prover::prove(&params, &root, &(leaf, proof), circuit);
-    log_js!(callback, "Prove", time);
-
-    let time = Timer::now();
-    let res = verifier::verify(&params.get_vk(), &snark_proof, &inputs);
-    log_js!(callback, "Verify", time);
-
-    assert!(res, "Verifier result should be true");
-}
+//
+// #[wasm_bindgen(js_name = testPoseidonMerkleRoot)]
+// pub async fn test_circuit_poseidon_merkle_root(callback: Function) {
+//     use fawkes_crypto::backend::bellman_groth16::engines::Bn256;
+//     use fawkes_crypto::backend::bellman_groth16::{prover, setup, verifier};
+//     use fawkes_crypto::circuit::num::CNum;
+//     use fawkes_crypto::circuit::poseidon::{c_poseidon_merkle_proof_root, CMerkleProof};
+//     use fawkes_crypto::core::signal::Signal;
+//     use fawkes_crypto::engines::bn256::Fr;
+//     use fawkes_crypto::ff_uint::PrimeField;
+//     use fawkes_crypto::native::poseidon::{poseidon_merkle_proof_root, PoseidonParams};
+//     use web_sys::Performance;
+//
+//     use self::utils::Timer;
+//
+//     macro_rules! log_js {
+//         ($func:expr, $text:expr, $time:expr) => {{
+//             $func
+//                 .call2(
+//                     &JsValue::NULL,
+//                     &JsValue::from($text),
+//                     &JsValue::from($time.elapsed_s()),
+//                 )
+//                 .unwrap();
+//         }};
+//     }
+//
+//     fn circuit<Fr: PrimeField>(public: CNum<Fr>, secret: (CNum<Fr>, CMerkleProof<Fr, 32>)) {
+//         let poseidon_params = PoseidonParams::<Fr>::new(3, 8, 53);
+//         let res = c_poseidon_merkle_proof_root(&secret.0, &secret.1, &poseidon_params);
+//         res.assert_eq(&public);
+//     }
+//
+//     utils::set_panic_hook();
+//
+//     let time = Timer::now();
+//     let params = setup::setup::<Bn256, _, _, _>(circuit);
+//     log_js!(callback, "Setup", time);
+//
+//     let time = Timer::now();
+//     let mut rng = random::CustomRng;
+//     let poseidon_params = PoseidonParams::<Fr>::new(3, 8, 53);
+//     let mut tree = MerkleTree::new_web(&*POOL_PARAMS).await;
+//     let leaf = rng.gen();
+//     tree.add_hash(0, leaf, false);
+//
+//     let proof = tree.get_proof(0).unwrap();
+//     let root = poseidon_merkle_proof_root(leaf, &proof, &poseidon_params);
+//     log_js!(callback, "Merkle tree init", time);
+//
+//     let time = Timer::now();
+//     let (inputs, snark_proof) = prover::prove(&params, &root, &(leaf, proof), circuit);
+//     log_js!(callback, "Prove", time);
+//
+//     let time = Timer::now();
+//     let res = verifier::verify(&params.get_vk(), &snark_proof, &inputs);
+//     log_js!(callback, "Verify", time);
+//
+//     assert!(res, "Verifier result should be true");
+// }

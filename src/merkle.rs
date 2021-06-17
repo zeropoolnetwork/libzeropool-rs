@@ -77,7 +77,7 @@ impl<'p, D: KeyValueDB, P: PoolParams> MerkleTree<'p, D, P> {
     }
 
     pub fn get_opt(&self, height: u32, index: u32) -> Option<Hash<P::Fr>> {
-        assert!(height <= constants::H as u32);
+        assert!(height <= constants::HEIGHT as u32);
 
         let key = Self::node_key(height, index);
         let res = self.db.get(0, &key);
@@ -110,7 +110,7 @@ impl<'p, D: KeyValueDB, P: PoolParams> MerkleTree<'p, D, P> {
         let _ = self.db.write(batch);
     }
 
-    pub fn get_proof(&self, index: u32) -> Option<MerkleProof<P::Fr, { constants::H }>> {
+    pub fn get_proof(&self, index: u32) -> Option<MerkleProof<P::Fr, { constants::HEIGHT }>> {
         // TODO: Add Default for SizedVec or make it's member public to replace all those iterators.
         let key = Self::retained_node_key(index);
         let leaf_present = self.db.get(0, &key).map_or(false, |value| value.is_some());
@@ -119,9 +119,10 @@ impl<'p, D: KeyValueDB, P: PoolParams> MerkleTree<'p, D, P> {
             return None;
         }
 
-        let mut sibling: SizedVec<_, { constants::H }> =
-            (0..constants::H).map(|_| Num::ZERO).collect();
-        let mut path: SizedVec<_, { constants::H }> = (0..constants::H).map(|_| false).collect();
+        let mut sibling: SizedVec<_, { constants::HEIGHT }> =
+            (0..constants::HEIGHT).map(|_| Num::ZERO).collect();
+        let mut path: SizedVec<_, { constants::HEIGHT }> =
+            (0..constants::HEIGHT).map(|_| false).collect();
 
         sibling.iter_mut().zip(path.iter_mut()).enumerate().fold(
             index,
@@ -226,7 +227,7 @@ impl<'p, D: KeyValueDB, P: PoolParams> MerkleTree<'p, D, P> {
         }
 
         // update inner nodes
-        for h in 1..constants::H as u32 {
+        for h in 1..constants::HEIGHT as u32 {
             let current_index = Self::index_at(h, index);
 
             // get pair of children
@@ -265,9 +266,9 @@ impl<'p, D: KeyValueDB, P: PoolParams> MerkleTree<'p, D, P> {
 
     fn gen_default_hashes(params: &P) -> Vec<Hash<P::Fr>> {
         let zero = poseidon(&[Num::ZERO], params.compress());
-        let mut default_hashes = vec![zero; constants::H];
+        let mut default_hashes = vec![zero; constants::HEIGHT];
 
-        for i in 1..constants::H {
+        for i in 1..constants::HEIGHT {
             let t = default_hashes[i - 1];
             default_hashes[i] = poseidon([t, t].as_ref(), params.compress());
         }
@@ -305,9 +306,9 @@ mod tests {
         tree.add_hashes(&hashes);
 
         let nodes = tree.get_all_nodes();
-        assert_eq!(nodes.len(), constants::H + 3);
+        assert_eq!(nodes.len(), constants::HEIGHT + 3);
 
-        for h in 0..constants::H as u32 {
+        for h in 0..constants::HEIGHT as u32 {
             assert!(tree.get_opt(h, 0).is_some()); // TODO: Compare with expected hash
         }
 
@@ -327,9 +328,9 @@ mod tests {
         tree.add_hashes(&hashes);
 
         let nodes = tree.get_all_nodes();
-        assert_eq!(nodes.len(), constants::H + 3);
+        assert_eq!(nodes.len(), constants::HEIGHT + 3);
 
-        for h in 0..constants::H as u32 {
+        for h in 0..constants::HEIGHT as u32 {
             let index = u32::MAX / 2u32.pow(h);
             assert!(tree.get_opt(h, index).is_some()); // TODO: Compare with expected hash
         }
@@ -358,7 +359,7 @@ mod tests {
         tree.add_hashes(&hashes);
 
         let nodes = tree.get_all_nodes();
-        assert_eq!(nodes.len(), constants::H + 6);
+        assert_eq!(nodes.len(), constants::HEIGHT + 6);
         assert_eq!(tree.get_opt(0, 4), None);
         assert_eq!(tree.get_opt(0, 5), None);
     }
@@ -374,7 +375,7 @@ mod tests {
         tree.add_hash(123, rng.gen(), false);
         let proof = tree.get_proof(123).unwrap();
 
-        assert_eq!(proof.sibling.as_slice().len(), constants::H);
-        assert_eq!(proof.path.as_slice().len(), constants::H);
+        assert_eq!(proof.sibling.as_slice().len(), constants::HEIGHT);
+        assert_eq!(proof.path.as_slice().len(), constants::HEIGHT);
     }
 }
