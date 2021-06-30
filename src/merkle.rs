@@ -47,7 +47,21 @@ impl<'p, D: KeyValueDB, P: PoolParams> MerkleTree<'p, D, P> {
     /// during cleanup.
     pub fn add_hash(&mut self, index: u32, hash: Hash<P::Fr>, temporary: bool) {
         let mut batch = self.db.transaction();
-        self.add_hash_batched(&mut batch, index, hash, temporary);
+
+        let hash_serialized = hash.try_to_vec().unwrap();
+
+        let key = Self::node_key(0, index);
+        batch.put(0, &key, &hash_serialized);
+
+        if !temporary {
+            // mark this hash as non-removable for later
+            let key = Self::retained_node_key(index);
+            batch.put(1, &key, &hash_serialized);
+        }
+
+        // update inner nodes
+        self.update_path_batched(&mut batch, 0, index, hash);
+
         self.db.write(batch).unwrap();
     }
 
@@ -59,19 +73,23 @@ impl<'p, D: KeyValueDB, P: PoolParams> MerkleTree<'p, D, P> {
         P::Fr: 'a,
     {
         for (index, hash, temporary) in hashes.into_iter().cloned() {
-            let mut batch = self.db.transaction();
-            self.add_hash_batched(&mut batch, index, hash, temporary);
-            self.db.write(batch).unwrap();
+            self.add_hash(index, hash, temporary);
         }
 
         // self.cleanup();
     }
 
-    pub fn add_subtree(&mut self, hashes: &Vec<Hash<P::Fr>>, start_index: u32, temporary: bool)
-    {
+    pub fn add_subtree(&mut self, hashes: &[Hash<P::Fr>], start_index: u32, temporary: bool) {
         let size = hashes.len();
 
-        assert!((size & (size - 1)) == 0, "subtree size should be a power of 2");
+        assert!(
+            (size & (size - 1)) == 0,
+            "subtree size should be a power of 2"
+        );
+        assert!(
+            start_index % hashes.len() as u32 == 0,
+            "subtree should be on correct position in the tree"
+        );
 
         let mut batch = self.db.transaction();
 
@@ -79,7 +97,6 @@ impl<'p, D: KeyValueDB, P: PoolParams> MerkleTree<'p, D, P> {
         for index_shift in 0..size {
             let index = start_index + index_shift as u32;
 
-            // println!("copy {} {} {}", 0, index, hashes[index_shift]);
             self.set_batched(&mut batch, 0, index, hashes[index_shift]);
 
             if !temporary {
@@ -89,22 +106,23 @@ impl<'p, D: KeyValueDB, P: PoolParams> MerkleTree<'p, D, P> {
         }
 
         // build subtree
-        let mut child_hashes = hashes.clone();
+        let mut child_hashes = hashes.to_vec();
         let mut height: u32 = 0;
         let mut current_start_index = start_index;
         while child_hashes.len() > 1 {
             height += 1;
             current_start_index /= 2;
 
-            let mut parent_hashes = Vec::new();
+            let parents_size = child_hashes.len() / 2;
+            let mut parent_hashes = Vec::with_capacity(parents_size);
 
-            for parent_index_shift in 0..child_hashes.len() / 2 {
+            for parent_index_shift in 0..parents_size {
                 let hash_left = child_hashes[2 * parent_index_shift];
                 let hash_right = child_hashes[2 * parent_index_shift + 1];
-                let hash_parent = poseidon([hash_left, hash_right].as_ref(), self.params.compress());
+                let hash_parent =
+                    poseidon([hash_left, hash_right].as_ref(), self.params.compress());
 
                 let parent_index = current_start_index + parent_index_shift as u32;
-                // println!("add {} {} {}", height, parent_index, hash_parent);
                 self.set_batched(&mut batch, height, parent_index, hash_parent);
                 parent_hashes.push(hash_parent);
             }
@@ -265,29 +283,13 @@ impl<'p, D: KeyValueDB, P: PoolParams> MerkleTree<'p, D, P> {
         batch.put(1, &key, &hash);
     }
 
-    fn add_hash_batched(
+    fn update_path_batched(
         &mut self,
         batch: &mut DBTransaction,
+        height: u32,
         index: u32,
         hash: Hash<P::Fr>,
-        temporary: bool,
     ) {
-        let hash_serialized = hash.try_to_vec().unwrap();
-
-        let key = Self::node_key(0, index);
-        batch.put(0, &key, &hash_serialized);
-
-        if !temporary {
-            // mark this hash as non-removable for later
-            let key = Self::retained_node_key(index);
-            batch.put(1, &key, &hash_serialized);
-        }
-
-        // update inner nodes
-        self.update_path_batched(batch, 0, index, hash);
-    }
-
-    fn update_path_batched(&mut self, batch: &mut DBTransaction, height: u32, index: u32, hash: Hash<P::Fr>) {
         let mut child_index = index;
         let mut child_hash = hash;
         // todo: improve
@@ -296,15 +298,12 @@ impl<'p, D: KeyValueDB, P: PoolParams> MerkleTree<'p, D, P> {
 
             // get pair of children
             let second_child_index = child_index ^ 1;
-            let pair;
-            if child_index % 2 == 0 {
-                pair = [child_hash, self.get(current_height - 1, second_child_index)];
+            let pair = if child_index % 2 == 0 {
+                [child_hash, self.get(current_height - 1, second_child_index)]
             } else {
-                pair = [self.get(current_height - 1, second_child_index), child_hash];
-            }
+                [self.get(current_height - 1, second_child_index), child_hash]
+            };
             let hash = poseidon(pair.as_ref(), self.params.compress());
-            // println!("pair {} - {}", pair[0], pair[1]);
-            // println!("update {} {} {}", current_height, parent_index, hash);
             self.set_batched(batch, current_height, parent_index, hash);
 
             child_index = parent_index;
@@ -467,7 +466,9 @@ mod tests {
         let mut tree_add_subtree = MerkleTree::new(create(2), &*POOL_PARAMS);
 
         let hash_values: Vec<_> = (0..subtree_size).map(|_| rng.gen()).collect();
-        let hashes: Vec<_> = (0..subtree_size).map(|n| ((start_index + n) as u32, hash_values[n], false)).collect();
+        let hashes: Vec<_> = (0..subtree_size)
+            .map(|n| ((start_index + n) as u32, hash_values[n], false))
+            .collect();
 
         tree_add_hashes.add_hashes(&hashes);
         tree_add_subtree.add_subtree(&hash_values, start_index as u32, false);
@@ -479,12 +480,19 @@ mod tests {
         for first_node in &nodes_add_hashes {
             let mut found = false;
             for second_note in &nodes_add_subtree {
-                if first_node.height == second_note.height && first_node.index == second_note.index && first_node.value == second_note.value {
+                if first_node.height == second_note.height
+                    && first_node.index == second_note.index
+                    && first_node.value == second_note.value
+                {
                     found = true;
                     break;
                 }
             }
-            assert!(found, "node not found height: {}, index: {}", first_node.height, first_node.index);
+            assert!(
+                found,
+                "node not found height: {}, index: {}",
+                first_node.height, first_node.index
+            );
         }
     }
 }
