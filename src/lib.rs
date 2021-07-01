@@ -14,6 +14,15 @@ use wasm_bindgen::JsCast;
 
 pub use crate::merkle::*;
 pub use crate::types::*;
+use libzeropool::fawkes_crypto::native::poseidon::poseidon;
+use libzeropool::native::account::Account as NativeAccount;
+use libzeropool::native::boundednum::BoundedNum;
+use libzeropool::native::note::Note as NativeNote;
+use libzeropool::native::tx::{
+    make_delta, nullifier, out_commitment_hash, tx_hash, tx_sign, TransferPub as NativeTransferPub,
+    TransferSec as NativeTransferSec, Tx as NativeTx,
+};
+use std::str::FromStr;
 
 mod merkle;
 mod random;
@@ -61,30 +70,33 @@ pub fn parse_address<P: PoolParams>(address: String) -> Result<(Num<P::Fr>, Num<
 pub fn derive_keys<P: PoolParams>(
     sk: &[u8],
     params: &P,
-) -> Result<(Num<P::Fr>, Num<P::Fr>), JsValue> {
+) -> Result<(Num<P::Fs>, Num<P::Fr>, Num<P::Fr>), JsValue> {
     let num_sk = Num::try_from_slice(&sk).map_err(|err| JsValue::from(err.to_string()))?;
     let a = derive_key_a(num_sk, params).x;
     let eta = derive_key_eta(a, params);
 
-    Ok((a, eta))
+    Ok((num_sk, a, eta))
 }
 
+// TODO: Find a more appropriate name for this.
 #[wasm_bindgen]
-pub struct Account {
+pub struct UserAccount {
+    sk: Num<Fs>,
+    a: Num<Fr>,
     eta: Num<Fr>,
 }
 
 #[wasm_bindgen]
-impl Account {
+impl UserAccount {
     #[wasm_bindgen(constructor)]
-    pub fn new(sk: Vec<u8>) -> Result<Account, JsValue> {
-        let (_a, eta) = derive_keys(&sk, &*POOL_PARAMS)?;
+    pub fn new(sk: Vec<u8>) -> Result<UserAccount, JsValue> {
+        let (sk, a, eta) = derive_keys(&sk, &*POOL_PARAMS)?;
 
-        Ok(Account { eta })
+        Ok(UserAccount { sk, a, eta })
     }
 
     #[wasm_bindgen(js_name = fromSeed)]
-    pub fn from_seed(seed: &[u8]) -> Result<Account, JsValue> {
+    pub fn from_seed(seed: &[u8]) -> Result<UserAccount, JsValue> {
         let sk = derive_sk(seed);
         Self::new(sk)
     }
@@ -135,142 +147,108 @@ impl Account {
 
         Ok(pair)
     }
-    //
-    // #[wasm_bindgen(js_name = makeTransferTx)]
-    // pub fn make_transfer_tx(&self) -> (TransferPub<PoolBN256>, TransferSec<PoolBN256>) {
-    //     let root = self.root();
-    //     let index = N_ITEMS * 2;
-    //     let xsk = derive_key_xsk(self.sk, params).x;
-    //     let nullifier = nullifier(self.hashes[0][self.account_id * 2], xsk, params);
-    //     let memo = rng.gen();
-    //
-    //     let mut input_value = self.items[self.account_id].0.v.to_num();
-    //     for &i in self.note_id.iter() {
-    //         input_value += self.items[i].1.v.to_num();
-    //     }
-    //
-    //     let mut input_energy = self.items[self.account_id].0.e.to_num();
-    //     input_energy += self.items[self.account_id].0.v.to_num()
-    //         * (Num::from(index as u32) - self.items[self.account_id].0.interval.to_num());
-    //
-    //     for &i in self.note_id.iter() {
-    //         input_energy += self.items[i].1.v.to_num() * Num::from((index - (2 * i + 1)) as u32);
-    //     }
-    //
-    //     let mut out_account: NativeAccount<P> = rng.gen();
-    //     out_account.v = BoundedNum::new(input_value);
-    //     out_account.e = BoundedNum::new(input_energy);
-    //     out_account.interval = BoundedNum::new(Num::from(index as u32));
-    //     out_account.xsk = xsk;
-    //
-    //     let mut out_note: Note<P> = rng.gen();
-    //     out_note.v = BoundedNum::new(Num::ZERO);
-    //
-    //     let mut input_hashes = vec![self.items[self.account_id].0.hash(params)];
-    //     for &i in self.note_id.iter() {
-    //         input_hashes.push(self.items[i].1.hash(params));
-    //     }
-    //
-    //     let output_hashes = vec![out_account.hash(params), out_note.hash(params)];
-    //     let tx_hash = tx_hash(&input_hashes, &output_hashes, params);
-    //     let (eddsa_s, eddsa_r) = tx_sign(self.sk, tx_hash, params);
-    //
-    //     let out_commit = poseidon(&output_hashes, params.compress());
-    //     let delta = make_delta::<P>(Num::ZERO, Num::ZERO, Num::from(index as u32));
-    //
-    //     let p = TransferPub::<P> {
-    //         root,
-    //         nullifier,
-    //         out_commit,
-    //         delta,
-    //         memo,
-    //     };
-    //
-    //     let tx = Tx {
-    //         input: (
-    //             self.items[self.account_id].0.clone(),
-    //             self.note_id
-    //                 .iter()
-    //                 .map(|&i| self.items[i].1.clone())
-    //                 .collect(),
-    //         ),
-    //         output: (out_account, out_note),
-    //     };
-    //
-    //     let s = TransferSec::<P> {
-    //         tx,
-    //         in_proof: (
-    //             self.merkle_proof(self.account_id * 2),
-    //             self.note_id
-    //                 .iter()
-    //                 .map(|&i| self.merkle_proof(i * 2 + 1))
-    //                 .collect(),
-    //         ),
-    //         eddsa_s: eddsa_s.to_other().unwrap(),
-    //         eddsa_r,
-    //         eddsa_a: xsk,
-    //     };
-    //
-    //     (p, s)
-    // }
+
+    #[wasm_bindgen(js_name = makeTransferTx)]
+    pub fn make_transfer_tx(
+        &self,
+        memo: &str,
+        balance: &str,
+        index: u32, // TODO: Calculate index and root?
+        prev_account: NativeAccount<Fr>,
+        in_notes: Notes,
+        out_notes: Notes,
+        proof: MerkleProof,
+    ) -> TransactionData {
+        let mut rng = random::CustomRng;
+
+        let memo = Num::from_str(memo).unwrap();
+        let root = *proof.inner().sibling.as_slice().last().unwrap();
+        let balance = Num::from_str(balance).unwrap();
+        let in_notes: Vec<Note> = in_notes.into_serde().unwrap();
+        let out_notes: Vec<Note> = in_notes.into_serde().unwrap();
+
+        // TODO: Get all previous notes
+        let mut input_value = prev_account.b.to_num();
+        for note in in_notes {
+            input_value += note.b.to_num();
+        }
+
+        let mut input_energy = prev_account.e.to_num();
+        input_energy +=
+            prev_account.b.to_num() * (Num::from(index as u32) - prev_account.i.to_num());
+
+        // TODO: Get all previous notes
+        for note in in_notes {
+            input_energy += note.b.to_num() * Num::from((index - (2 * i + 1)) as u32);
+        }
+
+        let mut out_account: NativeAccount<Fr> = rng.gen();
+        out_account.b = BoundedNum::new(input_value);
+        out_account.e = BoundedNum::new(input_energy);
+        out_account.i = BoundedNum::new(Num::from(index));
+        out_account.eta = self.eta;
+
+        let out_account_hash = out_account.hash(&*POOL_PARAMS);
+        let nullifier = nullifier(out_account_hash, self.eta, &*POOL_PARAMS);
+
+        let mut out_note: NativeNote<Fr> = NativeNote::sample(&mut rng, &POOL_PARAMS);
+        out_note.b = BoundedNum::new(Num::ZERO);
+
+        let mut input_hashes = vec![self.items[self.account_id].0.hash(&POOL_PARAMS)];
+        for &i in self.note_id.iter() {
+            input_hashes.push(self.items[i].1.hash(&POOL_PARAMS));
+        }
+
+        let output_hashes = vec![out_account.hash(&POOL_PARAMS), out_note.hash(&POOL_PARAMS)];
+        let out_ch = out_commitment_hash(&output_hashes, &POOL_PARAMS);
+        let tx_hash = tx_hash(&input_hashes, out_ch, &POOL_PARAMS);
+        let (eddsa_s, eddsa_r) = tx_sign(self.sk, tx_hash, &POOL_PARAMS);
+
+        let out_commit = poseidon(&output_hashes, &POOL_PARAMS.compress());
+        let delta = make_delta::<Fr>(Num::ZERO, Num::ZERO, Num::from(index as u32));
+
+        let p = NativeTransferPub::<Fr> {
+            root,
+            nullifier,
+            out_commit,
+            delta,
+            memo,
+        };
+
+        let tx = NativeTx {
+            input: (
+                self.items[self.account_id].0.clone(),
+                self.note_id
+                    .iter()
+                    .map(|&i| self.items[i].1.clone())
+                    .collect(),
+            ),
+            output: (out_account, vec![out_note].into_iter().collect()),
+        };
+
+        let s = NativeTransferSec::<Fr> {
+            tx,
+            in_proof: (
+                self.merkle_proof(self.account_id * 2),
+                self.note_id
+                    .iter()
+                    .map(|&i| self.merkle_proof(i * 2 + 1))
+                    .collect(),
+            ),
+            eddsa_s: eddsa_s.to_other().unwrap(),
+            eddsa_r,
+            eddsa_a: self.a,
+        };
+
+        TransactionData {
+            public: TransferPub::new(p),
+            secret: TransferSec::new(s),
+        }
+    }
 }
-//
-// #[wasm_bindgen(js_name = testPoseidonMerkleRoot)]
-// pub async fn test_circuit_poseidon_merkle_root(callback: Function) {
-//     use fawkes_crypto::backend::bellman_groth16::engines::Bn256;
-//     use fawkes_crypto::backend::bellman_groth16::{prover, setup, verifier};
-//     use fawkes_crypto::circuit::num::CNum;
-//     use fawkes_crypto::circuit::poseidon::{c_poseidon_merkle_proof_root, CMerkleProof};
-//     use fawkes_crypto::core::signal::Signal;
-//     use fawkes_crypto::engines::bn256::Fr;
-//     use fawkes_crypto::ff_uint::PrimeField;
-//     use fawkes_crypto::native::poseidon::{poseidon_merkle_proof_root, PoseidonParams};
-//     use web_sys::Performance;
-//
-//     use self::utils::Timer;
-//
-//     macro_rules! log_js {
-//         ($func:expr, $text:expr, $time:expr) => {{
-//             $func
-//                 .call2(
-//                     &JsValue::NULL,
-//                     &JsValue::from($text),
-//                     &JsValue::from($time.elapsed_s()),
-//                 )
-//                 .unwrap();
-//         }};
-//     }
-//
-//     fn circuit<Fr: PrimeField>(public: CNum<Fr>, secret: (CNum<Fr>, CMerkleProof<Fr, 32>)) {
-//         let poseidon_params = PoseidonParams::<Fr>::new(3, 8, 53);
-//         let res = c_poseidon_merkle_proof_root(&secret.0, &secret.1, &poseidon_params);
-//         res.assert_eq(&public);
-//     }
-//
-//     utils::set_panic_hook();
-//
-//     let time = Timer::now();
-//     let params = setup::setup::<Bn256, _, _, _>(circuit);
-//     log_js!(callback, "Setup", time);
-//
-//     let time = Timer::now();
-//     let mut rng = random::CustomRng;
-//     let poseidon_params = PoseidonParams::<Fr>::new(3, 8, 53);
-//     let mut tree = MerkleTree::new_web(&*POOL_PARAMS).await;
-//     let leaf = rng.gen();
-//     tree.add_hash(0, leaf, false);
-//
-//     let proof = tree.get_proof(0).unwrap();
-//     let root = poseidon_merkle_proof_root(leaf, &proof, &poseidon_params);
-//     log_js!(callback, "Merkle tree init", time);
-//
-//     let time = Timer::now();
-//     let (inputs, snark_proof) = prover::prove(&params, &root, &(leaf, proof), circuit);
-//     log_js!(callback, "Prove", time);
-//
-//     let time = Timer::now();
-//     let res = verifier::verify(&params.get_vk(), &snark_proof, &inputs);
-//     log_js!(callback, "Verify", time);
-//
-//     assert!(res, "Verifier result should be true");
-// }
+
+#[wasm_bindgen]
+pub struct TransactionData {
+    pub public: TransferPub,
+    pub secret: TransferSec,
+}
