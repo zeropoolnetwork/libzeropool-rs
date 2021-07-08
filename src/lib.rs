@@ -13,6 +13,7 @@ use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
 
 pub use crate::merkle::*;
+use crate::state::State;
 pub use crate::types::*;
 use libzeropool::fawkes_crypto::native::poseidon::poseidon;
 use libzeropool::native::account::Account as NativeAccount;
@@ -24,8 +25,10 @@ use libzeropool::native::tx::{
 };
 use std::str::FromStr;
 
+mod kv_storage;
 mod merkle;
 mod random;
+mod state;
 mod types;
 mod utils;
 
@@ -43,14 +46,14 @@ pub fn derive_sk(seed: &[u8]) -> Vec<u8> {
     sk.to_uint().0.to_big_endian()
 }
 
-pub fn parse_address<P: PoolParams>(address: String) -> Result<(Num<P::Fr>, Num<P::Fr>), JsValue> {
+pub fn parse_address<P: PoolParams>(address: &str) -> Result<(Num<P::Fr>, Num<P::Fr>), JsValue> {
     let mut bytes = [0; ADDR_LEN];
-    bs58::decode(&address)
+    bs58::decode(address)
         .into(&mut bytes)
         .map_err(|err| JsValue::from(err.to_string()))?;
 
     let d = &bytes[0..10];
-    let pk_d = &bytes[10..42];
+    let p_d = &bytes[10..42];
     let parsed_hash = &bytes[42..46];
 
     let mut hasher = Sha256::new();
@@ -62,9 +65,9 @@ pub fn parse_address<P: PoolParams>(address: String) -> Result<(Num<P::Fr>, Num<
     }
 
     let d = Num::<P::Fr>::try_from_slice(d).unwrap();
-    let pk_d = Num::<P::Fr>::try_from_slice(pk_d).unwrap();
+    let p_d = Num::<P::Fr>::try_from_slice(p_d).unwrap();
 
-    Ok((d, pk_d))
+    Ok((d, p_d))
 }
 
 pub fn derive_keys<P: PoolParams>(
@@ -84,6 +87,8 @@ pub struct UserAccount {
     sk: Num<Fs>,
     a: Num<Fr>,
     eta: Num<Fr>,
+
+    state: State,
 }
 
 #[wasm_bindgen]
@@ -92,7 +97,12 @@ impl UserAccount {
     pub fn new(sk: Vec<u8>) -> Result<UserAccount, JsValue> {
         let (sk, a, eta) = derive_keys(&sk, &*POOL_PARAMS)?;
 
-        Ok(UserAccount { sk, a, eta })
+        Ok(UserAccount {
+            sk,
+            a,
+            eta,
+            state: State::new(0),
+        })
     }
 
     #[wasm_bindgen(js_name = fromSeed)]
@@ -148,64 +158,63 @@ impl UserAccount {
         Ok(pair)
     }
 
-    #[wasm_bindgen(js_name = makeTransferTx)]
-    pub fn make_transfer_tx(
-        &self,
-        memo: &str,
-        balance: &str,
-        index: u32, // TODO: Calculate index and root?
-        prev_account: NativeAccount<Fr>,
-        in_notes: Notes,
-        out_notes: Notes,
-        proof: MerkleProof,
-    ) -> TransactionData {
+    // TODO: Error handling
+    #[wasm_bindgen(js_name = makeTx)]
+    pub fn make_tx(&self, to: &str, amount: &str) -> TransactionData {
         let mut rng = random::CustomRng;
 
-        let memo = Num::from_str(memo).unwrap();
-        let root = *proof.inner().sibling.as_slice().last().unwrap();
-        let balance = Num::from_str(balance).unwrap();
-        let in_notes: Vec<Note> = in_notes.into_serde().unwrap();
-        let out_notes: Vec<Note> = in_notes.into_serde().unwrap();
+        // TODO: get from self.state
+        let index: u32 = todo!();
+        let memo = todo!();
+        let in_notes: Vec<NativeNote<Fr>> = todo!();
+        let prev_account: NativeAccount<Fr> = todo!();
+        let root: Num<Fr> = todo!();
 
-        // TODO: Get all previous notes
+        let amount = Num::from_str(amount).unwrap();
+
+        let (_, to_p_d) = parse_address(to).unwrap();
+
         let mut input_value = prev_account.b.to_num();
         for note in in_notes {
             input_value += note.b.to_num();
         }
 
         let mut input_energy = prev_account.e.to_num();
-        input_energy +=
-            prev_account.b.to_num() * (Num::from(index as u32) - prev_account.i.to_num());
+        input_energy += prev_account.b.to_num() * (Num::from(index) - prev_account.i.to_num());
 
-        // TODO: Get all previous notes
         for note in in_notes {
-            input_energy += note.b.to_num() * Num::from((index - (2 * i + 1)) as u32);
+            let note_index = todo!();
+            input_energy += note.b.to_num() * Num::from((index - (2 * note_index + 1)) as u32);
         }
 
         let mut out_account: NativeAccount<Fr> = rng.gen();
         out_account.b = BoundedNum::new(input_value);
         out_account.e = BoundedNum::new(input_energy);
-        out_account.i = BoundedNum::new(Num::from(index));
+        out_account.i = BoundedNum::new(Num::from(index)); // index of lates note spent
         out_account.eta = self.eta;
 
         let out_account_hash = out_account.hash(&*POOL_PARAMS);
         let nullifier = nullifier(out_account_hash, self.eta, &*POOL_PARAMS);
 
-        let mut out_note: NativeNote<Fr> = NativeNote::sample(&mut rng, &POOL_PARAMS);
+        let mut out_note: NativeNote<Fr> = NativeNote::sample(&mut rng, &*POOL_PARAMS);
+        out_note.p_d = to_p_d;
         out_note.b = BoundedNum::new(Num::ZERO);
 
-        let mut input_hashes = vec![self.items[self.account_id].0.hash(&POOL_PARAMS)];
-        for &i in self.note_id.iter() {
-            input_hashes.push(self.items[i].1.hash(&POOL_PARAMS));
+        let mut input_hashes = vec![prev_account.hash(&*POOL_PARAMS)];
+        for note in &in_notes {
+            input_hashes.push(note.hash(&*POOL_PARAMS));
         }
 
-        let output_hashes = vec![out_account.hash(&POOL_PARAMS), out_note.hash(&POOL_PARAMS)];
-        let out_ch = out_commitment_hash(&output_hashes, &POOL_PARAMS);
-        let tx_hash = tx_hash(&input_hashes, out_ch, &POOL_PARAMS);
-        let (eddsa_s, eddsa_r) = tx_sign(self.sk, tx_hash, &POOL_PARAMS);
+        let output_hashes = vec![
+            out_account.hash(&*POOL_PARAMS),
+            out_note.hash(&*POOL_PARAMS),
+        ];
+        let out_ch = out_commitment_hash(&output_hashes, &*POOL_PARAMS);
+        let tx_hash = tx_hash(&input_hashes, out_ch, &*POOL_PARAMS);
+        let (eddsa_s, eddsa_r) = tx_sign(self.sk, tx_hash, &*POOL_PARAMS);
 
-        let out_commit = poseidon(&output_hashes, &POOL_PARAMS.compress());
-        let delta = make_delta::<Fr>(Num::ZERO, Num::ZERO, Num::from(index as u32));
+        let out_commit = poseidon(&output_hashes, &*POOL_PARAMS.compress());
+        let delta = make_delta::<Fr>(input_value + amount, input_energy, Num::from(index as u32)); // (delta value, delta energy)
 
         let p = NativeTransferPub::<Fr> {
             root,
@@ -216,23 +225,17 @@ impl UserAccount {
         };
 
         let tx = NativeTx {
-            input: (
-                self.items[self.account_id].0.clone(),
-                self.note_id
-                    .iter()
-                    .map(|&i| self.items[i].1.clone())
-                    .collect(),
-            ),
+            input: (prev_account.clone(), in_notes.iter().collect()),
             output: (out_account, vec![out_note].into_iter().collect()),
         };
 
         let s = NativeTransferSec::<Fr> {
             tx,
             in_proof: (
-                self.merkle_proof(self.account_id * 2),
-                self.note_id
+                self.merkle_proof(index * 2), // FIXME: Calculate proof
+                in_notes
                     .iter()
-                    .map(|&i| self.merkle_proof(i * 2 + 1))
+                    .map(|&i| self.merkle_proof(i * 2 + 1)) // FIXME: Calculate proof
                     .collect(),
             ),
             eddsa_s: eddsa_s.to_other().unwrap(),
@@ -249,6 +252,6 @@ impl UserAccount {
 
 #[wasm_bindgen]
 pub struct TransactionData {
-    pub public: TransferPub,
-    pub secret: TransferSec,
+    public: TransferPub,
+    secret: TransferSec,
 }

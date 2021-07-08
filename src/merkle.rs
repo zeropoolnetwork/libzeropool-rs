@@ -13,8 +13,6 @@ use libzeropool::native::params::PoolParams;
 
 type Hash<F> = Num<F>;
 
-const DB_NAME: &str = "zeropool.smt";
-
 pub struct MerkleTree<'p, D: KeyValueDB, P: PoolParams> {
     db: D,
     params: &'p P,
@@ -22,8 +20,8 @@ pub struct MerkleTree<'p, D: KeyValueDB, P: PoolParams> {
 }
 
 impl<'p, P: PoolParams> MerkleTree<'p, WebDatabase, P> {
-    pub async fn new_web(params: &'p P) -> MerkleTree<'p, WebDatabase, P> {
-        let db = WebDatabase::open(DB_NAME.to_owned(), 1).await.unwrap();
+    pub async fn new_web(name: &str, params: &'p P) -> MerkleTree<'p, WebDatabase, P> {
+        let db = WebDatabase::open(name.to_owned(), 1).await.unwrap();
 
         MerkleTree {
             db,

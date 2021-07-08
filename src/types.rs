@@ -1,6 +1,3 @@
-use std::convert::TryInto;
-use std::str::FromStr;
-
 use js_sys::Array;
 use libzeropool::constants;
 use libzeropool::fawkes_crypto::native::poseidon::MerkleProof as NativeMerkleProof;
