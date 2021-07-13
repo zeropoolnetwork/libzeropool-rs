@@ -1,5 +1,3 @@
-use std::collections::HashSet;
-
 use borsh::{BorshDeserialize, BorshSerialize};
 use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
 use kvdb::{DBTransaction, KeyValueDB};
@@ -46,19 +44,12 @@ impl<'p, D: KeyValueDB, P: PoolParams> MerkleTree<'p, D, P> {
     pub fn add_hash(&mut self, index: u32, hash: Hash<P::Fr>, temporary: bool) {
         let mut batch = self.db.transaction();
 
-        let hash_serialized = hash.try_to_vec().unwrap();
-
-        let key = Self::node_key(0, index);
-        batch.put(0, &key, &hash_serialized);
-
-        if !temporary {
-            // mark this hash as non-removable for later
-            let key = Self::retained_node_key(index);
-            batch.put(1, &key, &hash_serialized);
-        }
+        // add leaf
+        let temporary_leaves_count = if temporary { 1 } else { 0 };
+        self.set_batched(&mut batch, 0, index, hash, temporary_leaves_count);
 
         // update inner nodes
-        self.update_path_batched(&mut batch, 0, index, hash);
+        self.update_path_batched(&mut batch, 0, index, hash, temporary_leaves_count);
 
         self.db.write(batch).unwrap();
     }
@@ -73,19 +64,19 @@ impl<'p, D: KeyValueDB, P: PoolParams> MerkleTree<'p, D, P> {
         for (index, hash, temporary) in hashes.into_iter().cloned() {
             self.add_hash(index, hash, temporary);
         }
-
-        // self.cleanup();
     }
 
-    pub fn add_subtree(&mut self, hashes: &[Hash<P::Fr>], start_index: u32, temporary: bool) {
+    pub fn add_subtree(&mut self, hashes: &[Hash<P::Fr>], start_index: u32) {
         let size = hashes.len();
 
-        assert!(
-            (size & (size - 1)) == 0,
+        assert_eq!(
+            (size & (size - 1)),
+            0,
             "subtree size should be a power of 2"
         );
-        assert!(
-            start_index % hashes.len() as u32 == 0,
+        assert_eq!(
+            start_index % hashes.len() as u32,
+            0,
             "subtree should be on correct position in the tree"
         );
 
@@ -95,12 +86,8 @@ impl<'p, D: KeyValueDB, P: PoolParams> MerkleTree<'p, D, P> {
         for index_shift in 0..size {
             let index = start_index + index_shift as u32;
 
-            self.set_batched(&mut batch, 0, index, hashes[index_shift]);
-
-            if !temporary {
-                // mark this hash as non-removable for later
-                self.set_retained_batched(&mut batch, index, hashes[index_shift]);
-            }
+            // all leaves in subtree are permanent
+            self.set_batched(&mut batch, 0, index, hashes[index_shift], 0);
         }
 
         // build subtree
@@ -121,7 +108,7 @@ impl<'p, D: KeyValueDB, P: PoolParams> MerkleTree<'p, D, P> {
                     poseidon([hash_left, hash_right].as_ref(), self.params.compress());
 
                 let parent_index = current_start_index + parent_index_shift as u32;
-                self.set_batched(&mut batch, height, parent_index, hash_parent);
+                self.set_batched(&mut batch, height, parent_index, hash_parent, 0);
                 parent_hashes.push(hash_parent);
             }
 
@@ -129,11 +116,21 @@ impl<'p, D: KeyValueDB, P: PoolParams> MerkleTree<'p, D, P> {
         }
 
         // update path to the root
-        self.update_path_batched(&mut batch, height, current_start_index, child_hashes[0]);
+        self.update_path_batched(&mut batch, height, current_start_index, child_hashes[0], 0);
 
         self.db.write(batch).unwrap();
+    }
 
-        // self.cleanup();
+    pub fn add_subtree_root(&mut self, height: u32, index: u32, hash: Hash<P::Fr>) {
+        let mut batch = self.db.transaction();
+
+        // add root
+        self.set_batched(&mut batch, height, index, hash, 1 << height);
+
+        // update path
+        self.update_path_batched(&mut batch, height, index, hash, 1 << height);
+
+        self.db.write(batch).unwrap();
     }
 
     pub fn get(&self, height: u32, index: u32) -> Hash<P::Fr> {
@@ -155,32 +152,10 @@ impl<'p, D: KeyValueDB, P: PoolParams> MerkleTree<'p, D, P> {
         }
     }
 
-    pub fn set(&self, height: u32, index: u32, hash: Hash<P::Fr>) {
-        let mut batch = self.db.transaction();
-        self.set_batched(&mut batch, height, index, hash);
-        self.db.write(batch).unwrap();
-    }
-
-    /// Remove a non-temporary hash
-    pub fn remove_hash(&mut self, index: u32) {
-        let hash = self.get(0, index);
-
-        if hash == self.default_hashes[0] {
-            return;
-        }
-
-        let mut batch = self.db.transaction();
-
-        let key = Self::retained_node_key(index);
-        batch.delete(1, &key);
-
-        let _ = self.db.write(batch);
-    }
-
     pub fn get_proof(&self, index: u32) -> Option<MerkleProof<P::Fr, { constants::HEIGHT }>> {
         // TODO: Add Default for SizedVec or make it's member public to replace all those iterators.
-        let key = Self::retained_node_key(index);
-        let leaf_present = self.db.get(1, &key).map_or(false, |value| value.is_some());
+        let key = Self::node_key(0, index);
+        let leaf_present = self.db.get(0, &key).map_or(false, |value| value.is_some());
 
         if !leaf_present {
             return None;
@@ -223,89 +198,95 @@ impl<'p, D: KeyValueDB, P: PoolParams> MerkleTree<'p, D, P> {
             .collect()
     }
 
-    pub fn cleanup(&mut self) {
-        let mut used_hashes = HashSet::new(); // TODO: Preallocate?
-        let permanent_hashes = self.db.iter(1);
-
-        // Collect all used nodes
-        for (key, value) in permanent_hashes {
-            let value = Hash::<P::Fr>::try_from_slice(&value).unwrap();
-            used_hashes.insert(value.to_uint());
-
-            let mut key_buf = &key[..];
-            let index = key_buf.read_u32::<BigEndian>().unwrap();
-            let proof = self.get_proof(index).unwrap(); // always present
-
-            for hash in proof.sibling.iter() {
-                used_hashes.insert(hash.to_uint());
-            }
-        } // FIXME: add the proof of the last hash
-
-        // Remove unused
-        let mut to_remove = Vec::new();
-        for (key, value) in self.db.iter(0) {
-            let value = Hash::<P::Fr>::try_from_slice(&value).unwrap();
-
-            if !used_hashes.contains(&value.to_uint()) {
-                let mut key_buf = &key[..];
-                let height = key_buf.read_u32::<BigEndian>().unwrap();
-                let index = key_buf.read_u32::<BigEndian>().unwrap();
-
-                to_remove.push((height, index));
-            }
-        }
-
-        let mut batch = self.db.transaction();
-
-        for (height, index) in to_remove {
-            self.remove_batched(&mut batch, height, index);
-        }
-
-        self.db.write(batch).unwrap();
-    }
-
-    fn remove_batched(&mut self, batch: &mut DBTransaction, height: u32, index: u32) {
-        let key = Self::node_key(height, index);
-        batch.delete(0, &key);
-    }
-
-    fn set_batched(&self, batch: &mut DBTransaction, height: u32, index: u32, hash: Hash<P::Fr>) {
-        let key = Self::node_key(height, index);
-        let hash = hash.try_to_vec().unwrap();
-        batch.put(0, &key, &hash);
-    }
-
-    fn set_retained_batched(&self, batch: &mut DBTransaction, index: u32, hash: Hash<P::Fr>) {
-        let key = Self::retained_node_key(index);
-        let hash = hash.try_to_vec().unwrap();
-        batch.put(1, &key, &hash);
-    }
-
     fn update_path_batched(
         &mut self,
         batch: &mut DBTransaction,
         height: u32,
         index: u32,
         hash: Hash<P::Fr>,
+        temporary_leaves_count: u32,
     ) {
         let mut child_index = index;
         let mut child_hash = hash;
+        let mut child_temporary_leaves_count = temporary_leaves_count;
         // todo: improve
         for current_height in height + 1..constants::HEIGHT as u32 {
             let parent_index = child_index / 2;
 
             // get pair of children
             let second_child_index = child_index ^ 1;
+
+            // compute hash
             let pair = if child_index % 2 == 0 {
                 [child_hash, self.get(current_height - 1, second_child_index)]
             } else {
                 [self.get(current_height - 1, second_child_index), child_hash]
             };
             let hash = poseidon(pair.as_ref(), self.params.compress());
-            self.set_batched(batch, current_height, parent_index, hash);
+
+            // compute temporary leaves count
+            let second_child_temporary_leaves_count =
+                self.get_temporary_count(current_height - 1, second_child_index);
+            let parent_temporary_leaves_count =
+                child_temporary_leaves_count + second_child_temporary_leaves_count;
+
+            self.set_batched(
+                batch,
+                current_height,
+                parent_index,
+                hash,
+                parent_temporary_leaves_count,
+            );
+
+            if parent_temporary_leaves_count == (1 << current_height) {
+                // all leaves in subtree are temporary, we can keep only subtree root
+                self.remove_batched(batch, current_height - 1, child_index);
+                self.remove_batched(batch, current_height - 1, second_child_index);
+            }
 
             child_index = parent_index;
             child_hash = hash;
+            child_temporary_leaves_count = parent_temporary_leaves_count;
+        }
+    }
+
+    fn set_batched(
+        &mut self,
+        batch: &mut DBTransaction,
+        height: u32,
+        index: u32,
+        hash: Hash<P::Fr>,
+        temporary_leaves_count: u32,
+    ) {
+        let key = Self::node_key(height, index);
+        batch.put(0, &key, &hash.try_to_vec().unwrap());
+        if temporary_leaves_count > 0 {
+            batch.put(1, &key, &temporary_leaves_count.to_be_bytes());
+        }
+    }
+
+    fn remove_batched(&mut self, batch: &mut DBTransaction, height: u32, index: u32) {
+        let key = Self::node_key(height, index);
+        batch.delete(0, &key);
+        batch.delete(1, &key);
+    }
+
+    fn get_temporary_count(&self, height: u32, index: u32) -> u32 {
+        match self.get_temporary_count_opt(height, index) {
+            Some(val) => val,
+            _ => 0,
+        }
+    }
+
+    fn get_temporary_count_opt(&self, height: u32, index: u32) -> Option<u32> {
+        assert!(height <= constants::HEIGHT as u32);
+
+        let key = Self::node_key(height, index);
+        let res = self.db.get(1, &key);
+
+        match res {
+            Ok(Some(ref val)) => Some((&val[..]).read_u32::<BigEndian>().unwrap()),
+            _ => None,
         }
     }
 
@@ -315,17 +296,6 @@ impl<'p, D: KeyValueDB, P: PoolParams> MerkleTree<'p, D, P> {
         {
             let mut bytes = &mut data[..];
             let _ = bytes.write_u32::<BigEndian>(height);
-            let _ = bytes.write_u32::<BigEndian>(index);
-        }
-
-        data
-    }
-
-    #[inline]
-    fn retained_node_key(index: u32) -> [u8; 4] {
-        let mut data = [0; 4];
-        {
-            let mut bytes = &mut data[..];
             let _ = bytes.write_u32::<BigEndian>(index);
         }
 
@@ -343,11 +313,6 @@ impl<'p, D: KeyValueDB, P: PoolParams> MerkleTree<'p, D, P> {
 
         default_hashes
     }
-
-    #[inline]
-    fn index_at(height: u32, index: u32) -> u32 {
-        (index as usize / 2usize.pow(height)) as u32
-    }
 }
 
 #[derive(Debug)]
@@ -364,6 +329,8 @@ mod tests {
     use kvdb_memorydb::create;
     use libzeropool::fawkes_crypto::ff_uint::rand::Rng;
     use libzeropool::POOL_PARAMS;
+    use rand::seq::SliceRandom;
+    use rand::thread_rng;
     use test_case::test_case;
 
     #[test]
@@ -410,7 +377,7 @@ mod tests {
     }
 
     #[test]
-    fn test_add_hashes_cleanup() {
+    fn test_unnecessary_temporary_nodes_are_removed() {
         let mut rng = CustomRng;
         let mut tree = MerkleTree::new(create(2), &*POOL_PARAMS);
 
@@ -426,10 +393,9 @@ mod tests {
         hashes[5].2 = true;
 
         tree.add_hashes(&hashes);
-        tree.cleanup();
 
         let nodes = tree.get_all_nodes();
-        assert_eq!(nodes.len(), 7);
+        assert_eq!(nodes.len(), constants::HEIGHT + 6);
         assert_eq!(tree.get_opt(0, 4), None);
         assert_eq!(tree.get_opt(0, 5), None);
     }
@@ -469,7 +435,7 @@ mod tests {
             .collect();
 
         tree_add_hashes.add_hashes(&hashes);
-        tree_add_subtree.add_subtree(&hash_values, start_index as u32, false);
+        tree_add_subtree.add_subtree(&hash_values, start_index as u32);
 
         let nodes_add_hashes = tree_add_hashes.get_all_nodes();
         let nodes_add_subtree = tree_add_subtree.get_all_nodes();
@@ -492,5 +458,55 @@ mod tests {
                 first_node.height, first_node.index
             );
         }
+    }
+
+    #[test]
+    fn test_temporary_nodes_are_used_to_calculate_hashes_first() {
+        let mut rng = CustomRng;
+        let mut tree = MerkleTree::new(create(2), &*POOL_PARAMS);
+
+        let hash0: Hash<_> = rng.gen();
+        let hash1: Hash<_> = rng.gen();
+
+        // add hash for index 0
+        tree.add_hash(0, hash0.clone(), true);
+
+        // add hash for index 1
+        tree.add_hash(1, hash1.clone(), false);
+
+        let parent_hash = tree.get(1, 0);
+        let expected_parent_hash = poseidon([hash0, hash1].as_ref(), &*POOL_PARAMS.compress());
+
+        assert_eq!(parent_hash, expected_parent_hash);
+    }
+
+    #[test_case(0, 5)]
+    #[test_case(1, 5)]
+    #[test_case(2, 5)]
+    #[test_case(4, 5)]
+    #[test_case(5, 5)]
+    #[test_case(5, 8)]
+    #[test_case(10, 15)]
+    #[test_case(12, 15)]
+    fn test_all_temporary_nodes_in_subtree_are_removed(subtree_height: u32, full_height: usize) {
+        let mut rng = CustomRng;
+
+        let subtree_size = 1 << subtree_height;
+        let subtrees_count = (1 << full_height) / subtree_size;
+        let start_index = 1 << 12;
+        let mut subtree_indexes: Vec<_> = (0..subtrees_count).map(|i| start_index + i).collect();
+        subtree_indexes.shuffle(&mut thread_rng());
+
+        let mut tree = MerkleTree::new(create(2), &*POOL_PARAMS);
+        for subtree_index in subtree_indexes {
+            tree.add_subtree_root(subtree_height, subtree_index, rng.gen());
+        }
+
+        let tree_nodes = tree.get_all_nodes();
+        assert_eq!(
+            tree_nodes.len(),
+            constants::HEIGHT - full_height,
+            "Some temporary subtree nodes were not removed."
+        );
     }
 }
