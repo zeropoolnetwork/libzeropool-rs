@@ -7,6 +7,7 @@ use libzeropool::native::params::{PoolBN256, PoolParams};
 use libzeropool::native::tx::{
     TransferPub as NativeTransferPub, TransferSec as NativeTransferSec, Tx as NativeTx,
 };
+use serde::{Deserialize, Serialize};
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
 
@@ -26,8 +27,9 @@ extern "C" {
 }
 
 #[wasm_bindgen]
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct Note {
+    #[serde(flatten)]
     inner: NativeNote<Fr>,
 }
 
@@ -112,6 +114,12 @@ impl From<NativeAccount<Fr>> for Account {
     }
 }
 
+impl Into<NativeAccount<Fr>> for Account {
+    fn into(self) -> NativeAccount<Fr> {
+        self.inner
+    }
+}
+
 #[wasm_bindgen]
 pub struct Pair {
     account: Account,
@@ -144,14 +152,15 @@ impl Pair {
 
 impl From<(&NativeAccount<Fr>, &[NativeNote<Fr>])> for Pair {
     fn from((account, notes): (&NativeAccount<Fr>, &[NativeNote<Fr>])) -> Self {
-        let account = Account::from(account.clone());
-        let notes = notes.iter().map(|note| Note::from(note.clone())).collect();
+        let account = Account::from(*account);
+        let notes = notes.iter().map(|note| Note::from(*note)).collect();
 
         Pair { account, notes }
     }
 }
 
 #[wasm_bindgen]
+#[derive(Clone)]
 pub struct TransferPub {
     inner: NativeTransferPub<Fr>,
 }
@@ -191,6 +200,7 @@ impl TransferPub {
 }
 
 #[wasm_bindgen]
+#[derive(Clone)]
 pub struct TransferSec {
     inner: NativeTransferSec<Fr>,
 }

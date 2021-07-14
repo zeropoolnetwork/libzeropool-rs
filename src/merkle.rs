@@ -15,26 +15,36 @@ pub struct MerkleTree<'p, D: KeyValueDB, P: PoolParams> {
     db: D,
     params: &'p P,
     default_hashes: Vec<Hash<P::Fr>>,
+    last_index: u32,
 }
 
 impl<'p, P: PoolParams> MerkleTree<'p, WebDatabase, P> {
     pub async fn new_web(name: &str, params: &'p P) -> MerkleTree<'p, WebDatabase, P> {
         let db = WebDatabase::open(name.to_owned(), 1).await.unwrap();
 
-        MerkleTree {
-            db,
-            default_hashes: Self::gen_default_hashes(params),
-            params,
-        }
+        Self::new(db, params)
     }
 }
 
+// TODO: Proper error handling.
+
 impl<'p, D: KeyValueDB, P: PoolParams> MerkleTree<'p, D, P> {
     pub fn new(db: D, params: &'p P) -> MerkleTree<'p, D, P> {
+        // TODO: Optimize, this is extremely inefficient. Cache the number of leaves or ditch kvdb?
+        let mut last_index = 0;
+        for (k, _v) in db.iter(0) {
+            let (height, index) = Self::parse_node_key(&k);
+
+            if height == 0 && index > last_index {
+                last_index = index;
+            }
+        }
+
         MerkleTree {
             db,
             default_hashes: Self::gen_default_hashes(params),
             params,
+            last_index,
         }
     }
 
@@ -52,16 +62,24 @@ impl<'p, D: KeyValueDB, P: PoolParams> MerkleTree<'p, D, P> {
         self.update_path_batched(&mut batch, 0, index, hash, temporary_leaves_count);
 
         self.db.write(batch).unwrap();
+
+        if index > self.last_index {
+            self.last_index = index;
+        }
+    }
+
+    pub fn append_hash(&mut self, hash: Hash<P::Fr>, temporary: bool) -> u32 {
+        let index = self.last_index + 1;
+        self.add_hash(index, hash, temporary);
+        index
     }
 
     /// Add multiple hashes from an array of tuples (index, hash, temporary)
-    pub fn add_hashes<'a, I>(&mut self, hashes: I)
+    pub fn add_hashes<I>(&mut self, hashes: I)
     where
-        I: IntoIterator<Item = &'a (u32, Hash<P::Fr>, bool)>,
-        I::IntoIter: 'a,
-        P::Fr: 'a,
+        I: IntoIterator<Item = (u32, Hash<P::Fr>, bool)>,
     {
-        for (index, hash, temporary) in hashes.into_iter().cloned() {
+        for (index, hash, temporary) in hashes.into_iter() {
             self.add_hash(index, hash, temporary);
         }
     }
@@ -178,6 +196,24 @@ impl<'p, D: KeyValueDB, P: PoolParams> MerkleTree<'p, D, P> {
         );
 
         Some(MerkleProof { sibling, path })
+    }
+
+    /// Calculate a merkle proof for a new leaf.
+    pub fn calculate_proof_for(
+        &mut self,
+        hash: Hash<P::Fr>,
+    ) -> MerkleProof<P::Fr, { constants::HEIGHT }> {
+        // TODO: No need to modify the tree (probably)
+        let index = self.last_index + 1;
+        self.add_hash(index, hash, true);
+
+        let proof = self.get_proof(index).expect("leaf must be present");
+
+        let mut batch = self.db.transaction();
+        self.remove_batched(&mut batch, 0, index);
+        self.db.write(batch);
+
+        proof
     }
 
     pub fn get_all_nodes(&self) -> Vec<Node<P::Fr>> {
@@ -300,6 +336,14 @@ impl<'p, D: KeyValueDB, P: PoolParams> MerkleTree<'p, D, P> {
         }
 
         data
+    }
+
+    fn parse_node_key(data: &[u8]) -> (u32, u32) {
+        let mut bytes = data;
+        let height = bytes.read_u32::<BigEndian>().unwrap();
+        let index = bytes.read_u32::<BigEndian>().unwrap();
+
+        (height, index)
     }
 
     fn gen_default_hashes(params: &P) -> Vec<Hash<P::Fr>> {
