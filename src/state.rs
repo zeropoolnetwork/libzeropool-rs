@@ -8,7 +8,7 @@ use libzeropool::POOL_PARAMS;
 use wasm_bindgen::prelude::*;
 
 use crate::sparse_array::SparseArray;
-use crate::types::{Account, Fr, MerkleProofSibling, Note, Notes};
+use crate::types::{Account, Fr, Note, Notes};
 use std::convert::TryInto;
 
 pub type MerkleTree = crate::merkle::MerkleTree<'static, Database, PoolBN256>;

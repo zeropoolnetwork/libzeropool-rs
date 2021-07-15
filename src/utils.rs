@@ -11,12 +11,14 @@ pub fn set_panic_hook() {
     console_error_panic_hook::set_once();
 }
 
+#[allow(dead_code)]
 pub struct Timer {
     start: f64,
     perf: Performance,
 }
 
 impl Timer {
+    #[allow(dead_code)]
     pub fn now() -> Timer {
         let perf = web_sys::window().unwrap().performance().unwrap();
         Timer {
@@ -25,6 +27,7 @@ impl Timer {
         }
     }
 
+    #[allow(dead_code)]
     pub fn elapsed_s(&self) -> f64 {
         (self.perf.now() - self.start) / 1000.0
     }

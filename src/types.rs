@@ -12,7 +12,6 @@ use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
 
 pub type Fr = <PoolBN256 as PoolParams>::Fr;
-pub type Fs = <PoolBN256 as PoolParams>::Fs;
 
 #[wasm_bindgen]
 extern "C" {
@@ -114,9 +113,9 @@ impl From<NativeAccount<Fr>> for Account {
     }
 }
 
-impl Into<NativeAccount<Fr>> for Account {
-    fn into(self) -> NativeAccount<Fr> {
-        self.inner
+impl From<Account> for NativeAccount<Fr> {
+    fn from(account: Account) -> NativeAccount<Fr> {
+        account.inner
     }
 }
 

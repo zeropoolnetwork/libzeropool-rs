@@ -211,7 +211,7 @@ impl<'p, D: KeyValueDB, P: PoolParams> MerkleTree<'p, D, P> {
 
         let mut batch = self.db.transaction();
         self.remove_batched(&mut batch, 0, index);
-        self.db.write(batch);
+        self.db.write(batch).unwrap();
 
         proof
     }
