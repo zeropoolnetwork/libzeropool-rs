@@ -209,13 +209,16 @@ impl UserAccount {
         out_note.b = BoundedNum::new(amount);
         let out_note_hash = out_note.hash(&*POOL_PARAMS);
 
-        let ciphertext = cipher::encrypt(
-            &(0..32).map(|_| rng.gen()).collect::<Vec<u8>>(),
-            self.keys.eta,
-            out_account,
-            &[out_note],
-            &*POOL_PARAMS,
-        );
+        let ciphertext = {
+            let mut entropy: [u8; 32] = rng.gen();
+            cipher::encrypt(
+                &entropy,
+                self.keys.eta,
+                out_account,
+                &[out_note],
+                &*POOL_PARAMS,
+            )
+        };
 
         let mut input_hashes = vec![prev_account.hash(&*POOL_PARAMS)];
         for (_index, note) in &in_notes {
