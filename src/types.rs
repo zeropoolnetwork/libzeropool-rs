@@ -21,7 +21,7 @@ extern "C" {
     #[wasm_bindgen(typescript_type = "Array<string>")]
     pub type MerkleProofSibling;
 
-    #[wasm_bindgen(typescript_type = "Array<bool>")]
+    #[wasm_bindgen(typescript_type = "Array<boolean>")]
     pub type MerkleProofPath;
 }
 

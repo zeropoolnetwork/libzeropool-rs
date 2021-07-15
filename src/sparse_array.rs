@@ -54,10 +54,7 @@ where
         }
     }
 
-    pub fn iter_slice<'a>(
-        &'a self,
-        range: RangeInclusive<u32>,
-    ) -> impl Iterator<Item = (u32, T)> + 'a {
+    pub fn iter_slice(&self, range: RangeInclusive<u32>) -> impl Iterator<Item = (u32, T)> + '_ {
         self.iter()
             .take_while(move |(index, _)| range.contains(index))
     }

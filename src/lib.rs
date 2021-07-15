@@ -2,7 +2,7 @@ use std::str::FromStr;
 
 use js_sys::Array;
 use libzeropool::fawkes_crypto::borsh::BorshDeserialize;
-use libzeropool::fawkes_crypto::native::poseidon::{poseidon, MerkleProof};
+use libzeropool::fawkes_crypto::native::poseidon::poseidon;
 use libzeropool::fawkes_crypto::{
     ff_uint::{Num, NumRepr, Uint},
     rand::Rng,
@@ -26,6 +26,7 @@ use wasm_bindgen::JsCast;
 pub use crate::merkle::*;
 use crate::state::{State, Transaction};
 use crate::types::{Fr, Note, Notes, Pair};
+use crate::utils::Base64;
 
 mod merkle;
 mod random;
@@ -208,6 +209,14 @@ impl UserAccount {
         out_note.b = BoundedNum::new(amount);
         let out_note_hash = out_note.hash(&*POOL_PARAMS);
 
+        let ciphertext = cipher::encrypt(
+            &(0..32).map(|_| rng.gen()).collect::<Vec<u8>>(),
+            self.keys.eta,
+            out_account,
+            &[out_note],
+            &*POOL_PARAMS,
+        );
+
         let mut input_hashes = vec![prev_account.hash(&*POOL_PARAMS)];
         for (_index, note) in &in_notes {
             input_hashes.push(note.hash(&*POOL_PARAMS));
@@ -250,16 +259,16 @@ impl UserAccount {
                 prev_account,
                 in_notes.iter().map(|(_, note)| note).cloned().collect(),
             ),
-            output: (out_account, vec![out_note].into_iter().collect()),
+            output: (out_account, [out_note].iter().copied().collect()),
         };
 
         let secret = NativeTransferSec::<Fr> {
             tx,
             in_proof: (
-                self.merkle_proof(account_index),
+                tree.get_proof(account_index).unwrap(),
                 in_notes
                     .iter()
-                    .map(|(index, _note)| self.merkle_proof(*index)) // FIXME: Calculate proof
+                    .map(|(index, _note)| tree.get_proof(*index).unwrap())
                     .collect(),
             ),
             eddsa_s: eddsa_s.to_other().unwrap(),
@@ -267,13 +276,13 @@ impl UserAccount {
             eddsa_a: self.keys.a,
         };
 
-        let data = TransactionData { public, secret };
+        let data = TransactionData {
+            public,
+            secret,
+            ciphertext: Base64(ciphertext),
+        };
 
         JsValue::from_serde(&data).unwrap()
-    }
-
-    fn merkle_proof(&self, index: u32) -> MerkleProof<Fr, { libzeropool::constants::HEIGHT }> {
-        self.state.tree().get_proof(index).unwrap()
     }
 }
 
@@ -282,4 +291,5 @@ impl UserAccount {
 pub struct TransactionData {
     public: NativeTransferPub<Fr>,
     secret: NativeTransferSec<Fr>,
+    ciphertext: Base64,
 }

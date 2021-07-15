@@ -1,3 +1,4 @@
+use serde::{de, Deserialize, Deserializer, Serialize, Serializer};
 use web_sys::Performance;
 
 pub fn set_panic_hook() {
@@ -30,5 +31,35 @@ impl Timer {
     #[allow(dead_code)]
     pub fn elapsed_s(&self) -> f64 {
         (self.perf.now() - self.start) / 1000.0
+    }
+}
+
+#[derive(Debug)]
+pub struct Base64(pub Vec<u8>);
+
+impl Serialize for Base64 {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.collect_str(&base64::display::Base64Display::with_config(
+            &self.0,
+            base64::STANDARD,
+        ))
+    }
+}
+
+impl<'de> Deserialize<'de> for Base64 {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        struct Vis;
+        impl serde::de::Visitor<'_> for Vis {
+            type Value = Base64;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+                formatter.write_str("a base64 string")
+            }
+
+            fn visit_str<E: de::Error>(self, v: &str) -> Result<Self::Value, E> {
+                base64::decode(v).map(Base64).map_err(de::Error::custom)
+            }
+        }
+        deserializer.deserialize_str(Vis)
     }
 }
