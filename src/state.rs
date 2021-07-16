@@ -114,14 +114,18 @@ impl State {
         }
     }
 
-    /// Return an index of the latest usable note/account.
+    /// Return an index of the latest usable note.
     #[wasm_bindgen(js_name = "latestUsableIndex")]
     pub fn latest_usable_index(&self) -> u32 {
-        u32::max(self.latest_account_index, self.latest_note_index)
+        self.latest_note_index
     }
 
-    /// Return an index of a earliest usable note/account.
-    /// Usually equals to the next index afte
+    #[wasm_bindgen(js_name = "latestUsableIndex")]
+    pub fn latest_account_index(&self) -> u32 {
+        self.latest_account_index
+    }
+
+    /// Return an index of a earliest usable note.
     #[wasm_bindgen(js_name = "earliestUsableIndex")]
     pub fn earliest_usable_index(&self) -> u32 {
         let latest_account_index: u32 = self

@@ -23,6 +23,9 @@ extern "C" {
 
     #[wasm_bindgen(typescript_type = "Array<boolean>")]
     pub type MerkleProofPath;
+
+    #[wasm_bindgen(typescript_type = "Array<{ to: string; amount: string; }>")]
+    pub type TxDestinations;
 }
 
 #[wasm_bindgen]

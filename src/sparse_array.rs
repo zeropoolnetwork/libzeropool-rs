@@ -39,7 +39,7 @@ where
     }
 
     pub fn get(&self, index: u32) -> Option<T> {
-        let key = index.to_le_bytes();
+        let key = index.to_be_bytes();
 
         self.db
             .get(0, &key)
@@ -79,7 +79,7 @@ where
     }
 
     fn set_batched(&mut self, index: u32, data: &T, batch: &mut DBTransaction) {
-        let key = index.to_le_bytes();
+        let key = index.to_be_bytes();
         let data = data.try_to_vec().unwrap();
 
         batch.put(0, &key, &data);
@@ -97,7 +97,7 @@ impl<'a, T: BorshDeserialize> Iterator for SparseArrayIter<'a, T> {
     fn next(&mut self) -> Option<Self::Item> {
         self.inner.next().map(|(key, value)| {
             let key = TryFrom::try_from(key.as_ref()).unwrap();
-            let index = u32::from_le_bytes(key);
+            let index = u32::from_be_bytes(key);
             let data = T::try_from_slice(&value).unwrap();
 
             (index, data)

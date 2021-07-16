@@ -11,6 +11,7 @@ use libzeropool::native::params::PoolParams;
 
 type Hash<F> = Num<F>;
 
+// TODO: Replace indices with u64
 pub struct MerkleTree<'p, D: KeyValueDB, P: PoolParams> {
     db: D,
     params: &'p P,
@@ -27,7 +28,6 @@ impl<'p, P: PoolParams> MerkleTree<'p, WebDatabase, P> {
 }
 
 // TODO: Proper error handling.
-
 impl<'p, D: KeyValueDB, P: PoolParams> MerkleTree<'p, D, P> {
     pub fn new(db: D, params: &'p P) -> MerkleTree<'p, D, P> {
         // TODO: Optimize, this is extremely inefficient. Cache the number of leaves or ditch kvdb?
@@ -158,6 +158,10 @@ impl<'p, D: KeyValueDB, P: PoolParams> MerkleTree<'p, D, P> {
         }
     }
 
+    pub fn get_root(&self) -> Hash<P::Fr> {
+        self.get(constants::HEIGHT as u32, 0)
+    }
+
     pub fn get_opt(&self, height: u32, index: u32) -> Option<Hash<P::Fr>> {
         assert!(height <= constants::HEIGHT as u32);
 
@@ -196,24 +200,6 @@ impl<'p, D: KeyValueDB, P: PoolParams> MerkleTree<'p, D, P> {
         );
 
         Some(MerkleProof { sibling, path })
-    }
-
-    /// Calculate a merkle proof for a new leaf.
-    pub fn calculate_proof_for(
-        &mut self,
-        hash: Hash<P::Fr>,
-    ) -> MerkleProof<P::Fr, { constants::HEIGHT }> {
-        // TODO: No need to modify the tree (probably)
-        let index = self.last_index + 1;
-        self.add_hash(index, hash, true);
-
-        let proof = self.get_proof(index).expect("leaf must be present");
-
-        let mut batch = self.db.transaction();
-        self.remove_batched(&mut batch, 0, index);
-        self.db.write(batch).unwrap();
-
-        proof
     }
 
     pub fn get_all_nodes(&self) -> Vec<Node<P::Fr>> {
