@@ -215,12 +215,16 @@ impl UserAccount {
                 note.b.to_num() * Num::from((spend_interval_index - (2 * note_index + 1)) as u32);
         }
 
+        let mut new_balance = input_value;
+
         // TODO: Check number of out notes and fill in with empty or return error
         let out_notes: Vec<_> = destinations
             .into_iter()
             .map(|dest| {
                 let amount = Num::from_str(&dest.amount).unwrap();
                 let (to_d, to_p_d) = parse_address::<PoolBN256>(&dest.to).unwrap();
+
+                new_balance -= amount;
 
                 NativeNote {
                     d: BoundedNum::new(to_d),
@@ -234,7 +238,7 @@ impl UserAccount {
         let out_account = NativeAccount {
             eta: self.keys.eta,
             i: BoundedNum::new(Num::from(spend_interval_index)),
-            b: BoundedNum::new(input_value),
+            b: BoundedNum::new(new_balance),
             e: BoundedNum::new(input_energy),
             t: rng.gen(),
         };
