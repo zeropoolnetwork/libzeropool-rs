@@ -369,7 +369,7 @@ mod tests {
         let mut tree = MerkleTree::new(create(2), &*POOL_PARAMS);
 
         let hashes: Vec<_> = (0..3).map(|n| (n, rng.gen(), false)).collect();
-        tree.add_hashes(&hashes);
+        tree.add_hashes(hashes.clone());
 
         let nodes = tree.get_all_nodes();
         assert_eq!(nodes.len(), constants::HEIGHT + 3);
@@ -391,7 +391,7 @@ mod tests {
         let hashes: Vec<_> = (u32::MAX - 2..=u32::MAX)
             .map(|n| (n, rng.gen(), false))
             .collect();
-        tree.add_hashes(&hashes);
+        tree.add_hashes(hashes.clone());
 
         let nodes = tree.get_all_nodes();
         assert_eq!(nodes.len(), constants::HEIGHT + 3);
@@ -422,7 +422,7 @@ mod tests {
         hashes[4].2 = true;
         hashes[5].2 = true;
 
-        tree.add_hashes(&hashes);
+        tree.add_hashes(hashes);
 
         let nodes = tree.get_all_nodes();
         assert_eq!(nodes.len(), constants::HEIGHT + 6);
@@ -460,11 +460,9 @@ mod tests {
         let mut tree_add_subtree = MerkleTree::new(create(2), &*POOL_PARAMS);
 
         let hash_values: Vec<_> = (0..subtree_size).map(|_| rng.gen()).collect();
-        let hashes: Vec<_> = (0..subtree_size)
-            .map(|n| ((start_index + n) as u32, hash_values[n], false))
-            .collect();
+        let hashes = (0..subtree_size).map(|n| ((start_index + n) as u32, hash_values[n], false));
 
-        tree_add_hashes.add_hashes(&hashes);
+        tree_add_hashes.add_hashes(hashes);
         tree_add_subtree.add_subtree(&hash_values, start_index as u32);
 
         let nodes_add_hashes = tree_add_hashes.get_all_nodes();
