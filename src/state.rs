@@ -30,8 +30,8 @@ pub struct State {
     /// Stores only usable (own) accounts and notes
     txs: TxStorage,
     latest_account: Option<NativeAccount<Fr>>,
-    pub latest_account_index: u32,
-    pub latest_note_index: u32,
+    pub latest_account_index: u64,
+    pub latest_note_index: u64,
 }
 
 #[wasm_bindgen]
@@ -73,7 +73,7 @@ impl State {
 
     /// Cache account at specified index.
     #[wasm_bindgen(js_name = "addAccount")]
-    pub fn add_account(&mut self, at_index: u32, account: Account) {
+    pub fn add_account(&mut self, at_index: u64, account: Account) {
         let native_account: NativeAccount<Fr> = account.into();
         let account_hash: Num<Fr> = native_account.hash(&*POOL_PARAMS);
         let account = Transaction::Account(native_account);
@@ -92,12 +92,12 @@ impl State {
 
     /// Cache notes at specified index.
     #[wasm_bindgen(js_name = "addNotes")]
-    pub fn add_notes(&mut self, at_index: u32, notes: Notes) {
+    pub fn add_notes(&mut self, at_index: u64, notes: Notes) {
         let notes: Vec<Note> = notes.into_serde().unwrap();
 
         // Update tx storage
         for (index, note) in notes.iter().enumerate() {
-            let index = index as u32 + at_index;
+            let index = index as u64 + at_index;
             self.txs.set(index, &Transaction::Note(*note.inner()));
         }
 
@@ -105,10 +105,10 @@ impl State {
         self.tree
             .add_hashes(notes.iter().enumerate().map(|(index, note)| {
                 let hash = note.inner().hash(&*POOL_PARAMS);
-                (at_index + index as u32, hash, false)
+                (at_index + index as u64, hash, false)
             }));
 
-        let new_index = at_index + notes.len() as u32;
+        let new_index = at_index + notes.len() as u64;
         if new_index > self.latest_note_index {
             self.latest_note_index = new_index;
         }
@@ -116,19 +116,19 @@ impl State {
 
     /// Return an index of the latest usable note.
     #[wasm_bindgen(js_name = "latestUsableIndex")]
-    pub fn latest_usable_index(&self) -> u32 {
+    pub fn latest_usable_index(&self) -> u64 {
         self.latest_note_index
     }
 
     #[wasm_bindgen(js_name = "latestUsableIndex")]
-    pub fn latest_account_index(&self) -> u32 {
+    pub fn latest_account_index(&self) -> u64 {
         self.latest_account_index
     }
 
     /// Return an index of a earliest usable note.
     #[wasm_bindgen(js_name = "earliestUsableIndex")]
-    pub fn earliest_usable_index(&self) -> u32 {
-        let latest_account_index: u32 = self
+    pub fn earliest_usable_index(&self) -> u64 {
+        let latest_account_index = self
             .latest_account
             .map(|acc| acc.i.to_num())
             .unwrap_or(Num::ZERO)

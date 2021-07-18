@@ -190,7 +190,7 @@ impl UserAccount {
 
         let next_usable_index = self.state.earliest_usable_index();
 
-        let in_notes: Vec<(u32, NativeNote<Fr>)> = self
+        let in_notes: Vec<(u64, NativeNote<Fr>)> = self
             .state
             .txs()
             .iter_slice(next_usable_index..=self.state.latest_note_index)

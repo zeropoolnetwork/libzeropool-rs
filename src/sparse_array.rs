@@ -38,7 +38,7 @@ where
         }
     }
 
-    pub fn get(&self, index: u32) -> Option<T> {
+    pub fn get(&self, index: u64) -> Option<T> {
         let key = index.to_be_bytes();
 
         self.db
@@ -54,12 +54,12 @@ where
         }
     }
 
-    pub fn iter_slice(&self, range: RangeInclusive<u32>) -> impl Iterator<Item = (u32, T)> + '_ {
+    pub fn iter_slice(&self, range: RangeInclusive<u64>) -> impl Iterator<Item = (u64, T)> + '_ {
         self.iter()
             .take_while(move |(index, _)| range.contains(index))
     }
 
-    pub fn set(&mut self, index: u32, data: &T) {
+    pub fn set(&mut self, index: u64, data: &T) {
         let mut batch = self.db.transaction();
         self.set_batched(index, data, &mut batch);
         self.db.write(batch).unwrap();
@@ -67,7 +67,7 @@ where
 
     pub fn set_multiple<'a, I>(&mut self, items: I)
     where
-        I: IntoIterator<Item = &'a (u32, T)>,
+        I: IntoIterator<Item = &'a (u64, T)>,
     {
         let mut batch = self.db.transaction();
 
@@ -78,7 +78,7 @@ where
         self.db.write(batch).unwrap();
     }
 
-    fn set_batched(&mut self, index: u32, data: &T, batch: &mut DBTransaction) {
+    fn set_batched(&mut self, index: u64, data: &T, batch: &mut DBTransaction) {
         let key = index.to_be_bytes();
         let data = data.try_to_vec().unwrap();
 
@@ -92,12 +92,12 @@ pub struct SparseArrayIter<'a, T: BorshDeserialize> {
 }
 
 impl<'a, T: BorshDeserialize> Iterator for SparseArrayIter<'a, T> {
-    type Item = (u32, T);
+    type Item = (u64, T);
 
     fn next(&mut self) -> Option<Self::Item> {
         self.inner.next().map(|(key, value)| {
             let key = TryFrom::try_from(key.as_ref()).unwrap();
-            let index = u32::from_be_bytes(key);
+            let index = u64::from_be_bytes(key);
             let data = T::try_from_slice(&value).unwrap();
 
             (index, data)

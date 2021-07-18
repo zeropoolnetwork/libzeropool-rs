@@ -11,12 +11,11 @@ use libzeropool::native::params::PoolParams;
 
 type Hash<F> = Num<F>;
 
-// TODO: Replace indices with u64
 pub struct MerkleTree<'p, D: KeyValueDB, P: PoolParams> {
     db: D,
     params: &'p P,
     default_hashes: Vec<Hash<P::Fr>>,
-    last_index: u32,
+    last_index: u64,
 }
 
 impl<'p, P: PoolParams> MerkleTree<'p, WebDatabase, P> {
@@ -51,7 +50,7 @@ impl<'p, D: KeyValueDB, P: PoolParams> MerkleTree<'p, D, P> {
     /// Add hash for an element with a certain index
     /// Set `temporary` to true if you want this leaf and all unneeded connected nodes to be removed
     /// during cleanup.
-    pub fn add_hash(&mut self, index: u32, hash: Hash<P::Fr>, temporary: bool) {
+    pub fn add_hash(&mut self, index: u64, hash: Hash<P::Fr>, temporary: bool) {
         let mut batch = self.db.transaction();
 
         // add leaf
@@ -68,7 +67,7 @@ impl<'p, D: KeyValueDB, P: PoolParams> MerkleTree<'p, D, P> {
         }
     }
 
-    pub fn append_hash(&mut self, hash: Hash<P::Fr>, temporary: bool) -> u32 {
+    pub fn append_hash(&mut self, hash: Hash<P::Fr>, temporary: bool) -> u64 {
         let index = self.last_index + 1;
         self.add_hash(index, hash, temporary);
         index
@@ -77,14 +76,14 @@ impl<'p, D: KeyValueDB, P: PoolParams> MerkleTree<'p, D, P> {
     /// Add multiple hashes from an array of tuples (index, hash, temporary)
     pub fn add_hashes<I>(&mut self, hashes: I)
     where
-        I: IntoIterator<Item = (u32, Hash<P::Fr>, bool)>,
+        I: IntoIterator<Item = (u64, Hash<P::Fr>, bool)>,
     {
         for (index, hash, temporary) in hashes.into_iter() {
             self.add_hash(index, hash, temporary);
         }
     }
 
-    pub fn add_subtree(&mut self, hashes: &[Hash<P::Fr>], start_index: u32) {
+    pub fn add_subtree(&mut self, hashes: &[Hash<P::Fr>], start_index: u64) {
         let size = hashes.len();
 
         assert_eq!(
@@ -93,7 +92,7 @@ impl<'p, D: KeyValueDB, P: PoolParams> MerkleTree<'p, D, P> {
             "subtree size should be a power of 2"
         );
         assert_eq!(
-            start_index % hashes.len() as u32,
+            start_index % hashes.len() as u64,
             0,
             "subtree should be on correct position in the tree"
         );
@@ -102,10 +101,14 @@ impl<'p, D: KeyValueDB, P: PoolParams> MerkleTree<'p, D, P> {
 
         // set leaves
         for index_shift in 0..size {
-            let index = start_index + index_shift as u32;
-
             // all leaves in subtree are permanent
-            self.set_batched(&mut batch, 0, index, hashes[index_shift], 0);
+            self.set_batched(
+                &mut batch,
+                0,
+                start_index + index_shift as u64,
+                hashes[index_shift],
+                0,
+            );
         }
 
         // build subtree
@@ -125,7 +128,7 @@ impl<'p, D: KeyValueDB, P: PoolParams> MerkleTree<'p, D, P> {
                 let hash_parent =
                     poseidon([hash_left, hash_right].as_ref(), self.params.compress());
 
-                let parent_index = current_start_index + parent_index_shift as u32;
+                let parent_index = current_start_index + parent_index_shift as u64;
                 self.set_batched(&mut batch, height, parent_index, hash_parent, 0);
                 parent_hashes.push(hash_parent);
             }
@@ -139,7 +142,7 @@ impl<'p, D: KeyValueDB, P: PoolParams> MerkleTree<'p, D, P> {
         self.db.write(batch).unwrap();
     }
 
-    pub fn add_subtree_root(&mut self, height: u32, index: u32, hash: Hash<P::Fr>) {
+    pub fn add_subtree_root(&mut self, height: u32, index: u64, hash: Hash<P::Fr>) {
         let mut batch = self.db.transaction();
 
         // add root
@@ -151,7 +154,7 @@ impl<'p, D: KeyValueDB, P: PoolParams> MerkleTree<'p, D, P> {
         self.db.write(batch).unwrap();
     }
 
-    pub fn get(&self, height: u32, index: u32) -> Hash<P::Fr> {
+    pub fn get(&self, height: u32, index: u64) -> Hash<P::Fr> {
         match self.get_opt(height, index) {
             Some(val) => val,
             _ => self.default_hashes[height as usize],
@@ -162,7 +165,7 @@ impl<'p, D: KeyValueDB, P: PoolParams> MerkleTree<'p, D, P> {
         self.get(constants::HEIGHT as u32, 0)
     }
 
-    pub fn get_opt(&self, height: u32, index: u32) -> Option<Hash<P::Fr>> {
+    pub fn get_opt(&self, height: u32, index: u64) -> Option<Hash<P::Fr>> {
         assert!(height <= constants::HEIGHT as u32);
 
         let key = Self::node_key(height, index);
@@ -174,7 +177,7 @@ impl<'p, D: KeyValueDB, P: PoolParams> MerkleTree<'p, D, P> {
         }
     }
 
-    pub fn get_proof(&self, index: u32) -> Option<MerkleProof<P::Fr, { constants::HEIGHT }>> {
+    pub fn get_proof(&self, index: u64) -> Option<MerkleProof<P::Fr, { constants::HEIGHT }>> {
         // TODO: Add Default for SizedVec or make it's member public to replace all those iterators.
         let key = Self::node_key(0, index);
         let leaf_present = self.db.get(0, &key).map_or(false, |value| value.is_some());
@@ -207,13 +210,13 @@ impl<'p, D: KeyValueDB, P: PoolParams> MerkleTree<'p, D, P> {
             .iter(0)
             .map(|(key, value)| {
                 let mut key_buf = &key[..];
-                let y = key_buf.read_u32::<BigEndian>().unwrap(); // height
-                let x = key_buf.read_u32::<BigEndian>().unwrap(); // index
+                let height = key_buf.read_u32::<BigEndian>().unwrap();
+                let index = key_buf.read_u64::<BigEndian>().unwrap();
                 let value = Hash::try_from_slice(&value).unwrap();
 
                 Node {
-                    index: x,
-                    height: y,
+                    index,
+                    height,
                     value,
                 }
             })
@@ -224,9 +227,9 @@ impl<'p, D: KeyValueDB, P: PoolParams> MerkleTree<'p, D, P> {
         &mut self,
         batch: &mut DBTransaction,
         height: u32,
-        index: u32,
+        index: u64,
         hash: Hash<P::Fr>,
-        temporary_leaves_count: u32,
+        temporary_leaves_count: u64,
     ) {
         let mut child_index = index;
         let mut child_hash = hash;
@@ -276,9 +279,9 @@ impl<'p, D: KeyValueDB, P: PoolParams> MerkleTree<'p, D, P> {
         &mut self,
         batch: &mut DBTransaction,
         height: u32,
-        index: u32,
+        index: u64,
         hash: Hash<P::Fr>,
-        temporary_leaves_count: u32,
+        temporary_leaves_count: u64,
     ) {
         let key = Self::node_key(height, index);
         batch.put(0, &key, &hash.try_to_vec().unwrap());
@@ -287,47 +290,47 @@ impl<'p, D: KeyValueDB, P: PoolParams> MerkleTree<'p, D, P> {
         }
     }
 
-    fn remove_batched(&mut self, batch: &mut DBTransaction, height: u32, index: u32) {
+    fn remove_batched(&mut self, batch: &mut DBTransaction, height: u32, index: u64) {
         let key = Self::node_key(height, index);
         batch.delete(0, &key);
         batch.delete(1, &key);
     }
 
-    fn get_temporary_count(&self, height: u32, index: u32) -> u32 {
+    fn get_temporary_count(&self, height: u32, index: u64) -> u64 {
         match self.get_temporary_count_opt(height, index) {
             Some(val) => val,
             _ => 0,
         }
     }
 
-    fn get_temporary_count_opt(&self, height: u32, index: u32) -> Option<u32> {
+    fn get_temporary_count_opt(&self, height: u32, index: u64) -> Option<u64> {
         assert!(height <= constants::HEIGHT as u32);
 
         let key = Self::node_key(height, index);
         let res = self.db.get(1, &key);
 
         match res {
-            Ok(Some(ref val)) => Some((&val[..]).read_u32::<BigEndian>().unwrap()),
+            Ok(Some(ref val)) => Some((&val[..]).read_u64::<BigEndian>().unwrap()),
             _ => None,
         }
     }
 
     #[inline]
-    fn node_key(height: u32, index: u32) -> [u8; 8] {
-        let mut data = [0u8; 8];
+    fn node_key(height: u32, index: u64) -> [u8; 12] {
+        let mut data = [0u8; 12];
         {
             let mut bytes = &mut data[..];
             let _ = bytes.write_u32::<BigEndian>(height);
-            let _ = bytes.write_u32::<BigEndian>(index);
+            let _ = bytes.write_u64::<BigEndian>(index);
         }
 
         data
     }
 
-    fn parse_node_key(data: &[u8]) -> (u32, u32) {
+    fn parse_node_key(data: &[u8]) -> (u32, u64) {
         let mut bytes = data;
         let height = bytes.read_u32::<BigEndian>().unwrap();
-        let index = bytes.read_u32::<BigEndian>().unwrap();
+        let index = bytes.read_u64::<BigEndian>().unwrap();
 
         (height, index)
     }
@@ -347,7 +350,7 @@ impl<'p, D: KeyValueDB, P: PoolParams> MerkleTree<'p, D, P> {
 
 #[derive(Debug)]
 pub struct Node<F: PrimeField> {
-    pub index: u32,
+    pub index: u64,
     pub height: u32,
     pub value: Num<F>,
 }
@@ -388,7 +391,8 @@ mod tests {
         let mut rng = CustomRng;
         let mut tree = MerkleTree::new(create(2), &*POOL_PARAMS);
 
-        let hashes: Vec<_> = (u32::MAX - 2..=u32::MAX)
+        let max_index = (1 << constants::HEIGHT) - 1;
+        let hashes: Vec<_> = (max_index - 2..=max_index)
             .map(|n| (n, rng.gen(), false))
             .collect();
         tree.add_hashes(hashes.clone());
@@ -397,7 +401,7 @@ mod tests {
         assert_eq!(nodes.len(), constants::HEIGHT + 3);
 
         for h in 0..constants::HEIGHT as u32 {
-            let index = u32::MAX / 2u32.pow(h);
+            let index = max_index / 2u64.pow(h);
             assert!(tree.get_opt(h, index).is_some()); // TODO: Compare with expected hash
         }
 
@@ -460,10 +464,10 @@ mod tests {
         let mut tree_add_subtree = MerkleTree::new(create(2), &*POOL_PARAMS);
 
         let hash_values: Vec<_> = (0..subtree_size).map(|_| rng.gen()).collect();
-        let hashes = (0..subtree_size).map(|n| ((start_index + n) as u32, hash_values[n], false));
+        let hashes = (0..subtree_size).map(|n| ((start_index + n) as u64, hash_values[n], false));
 
         tree_add_hashes.add_hashes(hashes);
-        tree_add_subtree.add_subtree(&hash_values, start_index as u32);
+        tree_add_subtree.add_subtree(&hash_values, start_index as u64);
 
         let nodes_add_hashes = tree_add_hashes.get_all_nodes();
         let nodes_add_subtree = tree_add_subtree.get_all_nodes();
