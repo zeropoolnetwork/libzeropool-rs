@@ -1,6 +1,4 @@
-use std::convert::TryFrom;
-use std::marker::PhantomData;
-use std::ops::RangeInclusive;
+use std::{convert::TryFrom, marker::PhantomData, ops::RangeInclusive};
 
 use borsh::{BorshDeserialize, BorshSerialize};
 use kvdb::{DBTransaction, KeyValueDB};

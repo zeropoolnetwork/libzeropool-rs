@@ -1,33 +1,39 @@
 use std::str::FromStr;
 
 use js_sys::Array;
-use libzeropool::fawkes_crypto::borsh::BorshDeserialize;
-use libzeropool::fawkes_crypto::native::poseidon::poseidon;
-use libzeropool::fawkes_crypto::{
-    ff_uint::{Num, NumRepr, Uint},
-    rand::Rng,
+use libzeropool::{
+    constants,
+    fawkes_crypto::{borsh::BorshDeserialize, ff_uint::Num, native::poseidon::poseidon, rand::Rng},
+    native::{
+        account::Account as NativeAccount,
+        boundednum::BoundedNum,
+        cipher,
+        key::derive_key_p_d,
+        note::Note as NativeNote,
+        params::{PoolBN256, PoolParams},
+        tx::{
+            make_delta, nullifier, out_commitment_hash, tx_hash, tx_sign,
+            TransferPub as NativeTransferPub, TransferSec as NativeTransferSec, Tx as NativeTx,
+        },
+    },
+    POOL_PARAMS,
 };
-use libzeropool::native::account::Account as NativeAccount;
-use libzeropool::native::boundednum::BoundedNum;
-use libzeropool::native::cipher;
-use libzeropool::native::key::{derive_key_a, derive_key_eta, derive_key_p_d};
-use libzeropool::native::note::Note as NativeNote;
-use libzeropool::native::params::{PoolBN256, PoolParams};
-use libzeropool::native::tx::{
-    make_delta, nullifier, out_commitment_hash, tx_hash, tx_sign, TransferPub as NativeTransferPub,
-    TransferSec as NativeTransferSec, Tx as NativeTx,
-};
-use libzeropool::{constants, POOL_PARAMS};
 use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
-use wasm_bindgen::prelude::*;
-use wasm_bindgen::JsCast;
+use wasm_bindgen::{prelude::*, JsCast};
 
-pub use crate::merkle::*;
-use crate::state::{State, Transaction};
-use crate::types::{Fr, Note, Notes, Pair, TxDestinations};
-use crate::utils::Base64;
+pub use crate::{
+    address::{format_address, parse_address},
+    keys::{derive_sk, Keys},
+    merkle::*,
+    state::{State, Transaction},
+};
+use crate::{
+    types::{Fr, Note, Notes, Pair, TxDestinations},
+    utils::Base64,
+};
 
+mod address;
+mod keys;
 mod merkle;
 mod random;
 mod sparse_array;
@@ -38,56 +44,6 @@ mod utils;
 #[cfg(feature = "wee_alloc")]
 #[global_allocator]
 static ALLOC: wee_alloc::WeeAlloc = wee_alloc::WeeAlloc::INIT;
-
-const ADDR_LEN: usize = 46;
-
-#[wasm_bindgen(js_name = deriveSecretKey)]
-pub fn derive_sk(seed: &[u8]) -> Vec<u8> {
-    let sk = Num::<<PoolBN256 as PoolParams>::Fr>::from_uint_reduced(NumRepr(
-        Uint::from_big_endian(seed),
-    ));
-    sk.to_uint().0.to_big_endian()
-}
-
-pub fn parse_address<P: PoolParams>(address: &str) -> Result<(Num<P::Fr>, Num<P::Fr>), JsValue> {
-    let mut bytes = [0; ADDR_LEN];
-    bs58::decode(address)
-        .into(&mut bytes)
-        .map_err(|err| JsValue::from(err.to_string()))?;
-
-    let d = &bytes[0..10];
-    let p_d = &bytes[10..42];
-    let parsed_hash = &bytes[42..46];
-
-    let mut hasher = Sha256::new();
-    hasher.update(&bytes[0..42]);
-    let hash = hasher.finalize();
-
-    if &hash[0..4] != parsed_hash {
-        return Err(JsValue::from("Invalid address: incorrect hash"));
-    }
-
-    let d = Num::<P::Fr>::try_from_slice(d).unwrap();
-    let p_d = Num::<P::Fr>::try_from_slice(p_d).unwrap();
-
-    Ok((d, p_d))
-}
-
-struct Keys<P: PoolParams> {
-    sk: Num<P::Fs>,
-    a: Num<P::Fr>,
-    eta: Num<P::Fr>,
-}
-
-impl<P: PoolParams> Keys<P> {
-    pub fn derive(sk: &[u8], params: &P) -> Result<Self, JsValue> {
-        let num_sk = Num::try_from_slice(sk).map_err(|err| JsValue::from(err.to_string()))?;
-        let a = derive_key_a(num_sk, params).x;
-        let eta = derive_key_eta(a, params);
-
-        Ok(Keys { sk: num_sk, a, eta })
-    }
-}
 
 #[wasm_bindgen]
 pub struct UserAccount {
@@ -110,24 +66,13 @@ impl UserAccount {
         Self::new(sk, state)
     }
 
-    #[wasm_bindgen(js_name = deriveNewAddress)]
-    pub fn derive_new_address(&self) -> Result<String, JsValue> {
+    #[wasm_bindgen(js_name = generateAddress)]
+    pub fn generate_address(&self) -> String {
         let mut rng = random::CustomRng;
 
         let d = rng.gen();
         let pk_d = derive_key_p_d(d, self.keys.eta, &*POOL_PARAMS);
-        let mut buf: Vec<u8> = Vec::with_capacity(ADDR_LEN);
-
-        buf.extend_from_slice(&d.to_uint().0.to_big_endian()[0..10]);
-        buf.extend_from_slice(&pk_d.x.to_uint().0.to_big_endian()); // 32 bytes
-
-        let mut hasher = Sha256::new();
-        hasher.update(&buf);
-        let hash = hasher.finalize();
-
-        buf.extend_from_slice(&hash[0..4]);
-
-        Ok(bs58::encode(buf).into_string())
+        format_address::<PoolBN256>(d, pk_d.x)
     }
 
     #[wasm_bindgen(js_name = decryptNotes)]
@@ -165,7 +110,7 @@ impl UserAccount {
 
     // TODO: Error handling
     #[wasm_bindgen(js_name = makeTx)]
-    pub fn make_tx(&mut self, destinations: TxDestinations, mut data: Option<Vec<u8>>) -> JsValue {
+    pub fn make_tx(&self, destinations: TxDestinations, mut data: Option<Vec<u8>>) -> JsValue {
         let mut rng = random::CustomRng;
 
         #[derive(Deserialize)]
@@ -176,7 +121,7 @@ impl UserAccount {
 
         let destinations: Vec<Destination> = destinations.into_serde().unwrap();
 
-        let spend_interval_index = self.state.latest_usable_index() + 1;
+        let spend_interval_index = self.state.latest_note_index() + 1;
         let prev_account = self
             .state
             .latest_account()

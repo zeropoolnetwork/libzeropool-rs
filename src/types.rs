@@ -1,15 +1,16 @@
 use js_sys::Array;
-use libzeropool::constants;
-use libzeropool::fawkes_crypto::native::poseidon::MerkleProof as NativeMerkleProof;
-use libzeropool::native::account::Account as NativeAccount;
-use libzeropool::native::note::Note as NativeNote;
-use libzeropool::native::params::{PoolBN256, PoolParams};
-use libzeropool::native::tx::{
-    TransferPub as NativeTransferPub, TransferSec as NativeTransferSec, Tx as NativeTx,
+use libzeropool::{
+    constants,
+    fawkes_crypto::native::poseidon::MerkleProof as NativeMerkleProof,
+    native::{
+        account::Account as NativeAccount,
+        note::Note as NativeNote,
+        params::{PoolBN256, PoolParams},
+        tx::{TransferPub as NativeTransferPub, TransferSec as NativeTransferSec, Tx as NativeTx},
+    },
 };
 use serde::{Deserialize, Serialize};
-use wasm_bindgen::prelude::*;
-use wasm_bindgen::JsCast;
+use wasm_bindgen::{prelude::*, JsCast};
 
 pub type Fr = <PoolBN256 as PoolParams>::Fr;
 

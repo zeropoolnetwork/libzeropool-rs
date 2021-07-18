@@ -2,12 +2,13 @@ use borsh::{BorshDeserialize, BorshSerialize};
 use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
 use kvdb::{DBTransaction, KeyValueDB};
 use kvdb_web::Database as WebDatabase;
-
-use libzeropool::constants;
-use libzeropool::fawkes_crypto::core::sizedvec::SizedVec;
-use libzeropool::fawkes_crypto::ff_uint::{Num, PrimeField};
-use libzeropool::fawkes_crypto::native::poseidon::{poseidon, MerkleProof};
-use libzeropool::native::params::PoolParams;
+use libzeropool::{
+    constants,
+    fawkes_crypto::core::sizedvec::SizedVec,
+    fawkes_crypto::ff_uint::{Num, PrimeField},
+    fawkes_crypto::native::poseidon::{poseidon, MerkleProof},
+    native::params::PoolParams,
+};
 
 type Hash<F> = Num<F>;
 

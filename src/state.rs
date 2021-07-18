@@ -1,15 +1,17 @@
+use std::convert::TryInto;
+
 use kvdb_web::Database;
-use libzeropool::fawkes_crypto::ff_uint::Num;
-use libzeropool::fawkes_crypto::{BorshDeserialize, BorshSerialize};
-use libzeropool::native::account::Account as NativeAccount;
-use libzeropool::native::note::Note as NativeNote;
-use libzeropool::native::params::PoolBN256;
-use libzeropool::POOL_PARAMS;
+use libzeropool::{
+    fawkes_crypto::{ff_uint::Num, BorshDeserialize, BorshSerialize},
+    native::{account::Account as NativeAccount, note::Note as NativeNote, params::PoolBN256},
+    POOL_PARAMS,
+};
 use wasm_bindgen::prelude::*;
 
-use crate::sparse_array::SparseArray;
-use crate::types::{Account, Fr, Note, Notes};
-use std::convert::TryInto;
+use crate::{
+    sparse_array::SparseArray,
+    types::{Account, Fr, Note, Notes},
+};
 
 pub type MerkleTree = crate::merkle::MerkleTree<'static, Database, PoolBN256>;
 pub type TxStorage = SparseArray<Database, Transaction>;
@@ -115,12 +117,12 @@ impl State {
     }
 
     /// Return an index of the latest usable note.
-    #[wasm_bindgen(js_name = "latestUsableIndex")]
-    pub fn latest_usable_index(&self) -> u64 {
+    #[wasm_bindgen(js_name = "latestNoteIndex")]
+    pub fn latest_note_index(&self) -> u64 {
         self.latest_note_index
     }
 
-    #[wasm_bindgen(js_name = "latestUsableIndex")]
+    #[wasm_bindgen(js_name = "latestAccountIndex")]
     pub fn latest_account_index(&self) -> u64 {
         self.latest_account_index
     }
@@ -136,7 +138,7 @@ impl State {
             .unwrap();
 
         self.txs
-            .iter_slice(latest_account_index..=self.latest_usable_index())
+            .iter_slice(latest_account_index..=self.latest_note_index())
             .map(|(index, _)| index)
             .next()
             .unwrap_or(0)
