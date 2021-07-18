@@ -21,11 +21,14 @@ For example, in your `tsconfig.json` set this option so that the typescript comp
 
 ## Usage
 ```js
-import { deriveAddress } from 'libzeropool-wasm';
+import { UserAccount, State } from 'libzeropool-wasm';
 
-// 32 byte seed
-const input = new Uint8Array(32);
-const newPrivateAddress = deriveAddress(input); // 48 byte base58 encoded address
+const state = await State.init("any-string");
+// 
+const account = new UserAccount(secretKey, state);
+
+const address = account.deriveNewAddress();
+const mergeTx = account.makeTx([{ to: address, amount: "0"}], blockchainData);
 ```
 
 ## Development
@@ -36,7 +39,6 @@ scripts/build
 ```
 
 ### Test in Headless Browsers with `wasm-pack test`
-
 ```
 wasm-pack test --headless --firefox
 ```
