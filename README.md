@@ -27,7 +27,7 @@ const state = await State.init("any-string");
 // 
 const account = new UserAccount(secretKey, state);
 
-const address = account.deriveNewAddress();
+const address = account.generateAddress();
 const mergeTx = account.makeTx([{ to: address, amount: "0"}], blockchainData);
 ```
 

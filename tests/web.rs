@@ -5,6 +5,7 @@
 extern crate libzeropool_wasm;
 extern crate wasm_bindgen_test;
 
+use fawkes_crypto::ff_uint::Num;
 use libzeropool::native::params::PoolBN256;
 use libzeropool::POOL_PARAMS;
 use libzeropool_wasm::{derive_sk, Keys, State, UserAccount};
@@ -38,7 +39,7 @@ async fn parse_address() {
     let state = State::init("test".to_owned()).await;
     let acc = UserAccount::from_seed(SEED, state).unwrap();
     let addr = acc.generate_address();
-    libzeropool_wasm::parse_address::<PoolBN256>(&addr).unwrap();
+    let (d, p_d) = libzeropool_wasm::parse_address::<PoolBN256>(&addr).unwrap();
 }
 
 #[wasm_bindgen_test]
@@ -47,7 +48,7 @@ async fn make_tx() {
     let acc = UserAccount::from_seed(SEED, state).unwrap();
     let addr = acc.generate_address();
     let tx = acc.make_tx(
-        JsValue::from_serde(&json!({ "to": addr, "amount": 123 }))
+        JsValue::from_serde(&json!([{ "to": addr, "amount": "123" }]))
             .unwrap()
             .unchecked_into(),
         None,

@@ -1,6 +1,10 @@
-use libzeropool::fawkes_crypto::borsh::{BorshDeserialize, BorshSerialize};
-use libzeropool::fawkes_crypto::ff_uint::{Num, NumRepr, Uint};
-use libzeropool::native::params::PoolParams;
+use libzeropool::{
+    constants,
+    fawkes_crypto::borsh::{BorshDeserialize, BorshSerialize},
+    fawkes_crypto::ff_uint::Num,
+    native::boundednum::BoundedNum,
+    native::params::PoolParams,
+};
 use sha2::{Digest, Sha256};
 use thiserror::Error;
 
@@ -16,14 +20,18 @@ pub enum ParseError {
     DeserializationError(#[from] std::io::Error),
 }
 
-pub fn parse_address<P: PoolParams>(address: &str) -> Result<(Num<P::Fr>, Num<P::Fr>), ParseError> {
+pub fn parse_address<P: PoolParams>(
+    address: &str,
+) -> Result<
+    (
+        BoundedNum<P::Fr, { constants::DIVERSIFIER_SIZE }>,
+        Num<P::Fr>,
+    ),
+    ParseError,
+> {
     let mut bytes = [0; ADDR_LEN];
     bs58::decode(address).into(&mut bytes)?;
 
-    let mut d_bytes = [0; 32];
-    d_bytes[0..10].clone_from_slice(&bytes[0..10]);
-    let mut p_d_bytes = [0; 32];
-    p_d_bytes[0..32].clone_from_slice(&bytes[10..42]);
     let checksum = &bytes[42..=45];
 
     let mut hasher = Sha256::new();
@@ -34,19 +42,19 @@ pub fn parse_address<P: PoolParams>(address: &str) -> Result<(Num<P::Fr>, Num<P:
         return Err(ParseError::InvalidChecksum);
     }
 
-    let d = Num::try_from_slice(&d_bytes)?;
-    let p_d = Num::try_from_slice(&p_d_bytes)?;
+    let d = BoundedNum::try_from_slice(&bytes[0..10])?;
+    let p_d = Num::try_from_slice(&bytes[10..42])?;
 
     Ok((d, p_d))
 }
 
-pub fn format_address<P: PoolParams>(d: Num<P::Fr>, p_d: Num<P::Fr>) -> String {
+pub fn format_address<P: PoolParams>(
+    d: BoundedNum<P::Fr, { constants::DIVERSIFIER_SIZE }>,
+    p_d: Num<P::Fr>,
+) -> String {
     let mut buf: [u8; ADDR_LEN] = [0; ADDR_LEN];
 
-    let mut d_bytes = [0; 32];
-    d.serialize(&mut &mut d_bytes[..]).unwrap();
-    buf[0..10].clone_from_slice(&d_bytes[0..10]);
-
+    d.serialize(&mut &mut buf[0..10]).unwrap();
     p_d.serialize(&mut &mut buf[10..42]).unwrap();
 
     let mut hasher = Sha256::new();

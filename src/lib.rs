@@ -1,5 +1,3 @@
-use std::str::FromStr;
-
 use js_sys::Array;
 use libzeropool::{
     constants,
@@ -70,8 +68,8 @@ impl UserAccount {
     pub fn generate_address(&self) -> String {
         let mut rng = random::CustomRng;
 
-        let d = rng.gen();
-        let pk_d = derive_key_p_d(d, self.keys.eta, &*POOL_PARAMS);
+        let d: BoundedNum<_, { constants::DIVERSIFIER_SIZE }> = rng.gen();
+        let pk_d = derive_key_p_d(d.to_num(), self.keys.eta, &*POOL_PARAMS);
         format_address::<PoolBN256>(d, pk_d.x)
     }
 
@@ -116,7 +114,7 @@ impl UserAccount {
         #[derive(Deserialize)]
         struct Destination {
             to: String,
-            amount: String,
+            amount: BoundedNum<Fr, { constants::BALANCE_SIZE }>,
         }
 
         let destinations: Vec<Destination> = destinations.into_serde().unwrap();
@@ -166,15 +164,14 @@ impl UserAccount {
         let out_notes: Vec<_> = destinations
             .into_iter()
             .map(|dest| {
-                let amount = Num::from_str(&dest.amount).unwrap();
                 let (to_d, to_p_d) = parse_address::<PoolBN256>(&dest.to).unwrap();
 
-                new_balance -= amount;
+                new_balance -= dest.amount.to_num();
 
                 NativeNote {
-                    d: BoundedNum::new(to_d),
+                    d: to_d,
                     p_d: to_p_d,
-                    b: BoundedNum::new(amount),
+                    b: dest.amount,
                     t: rng.gen(),
                 }
             })
