@@ -163,7 +163,7 @@ impl<'p, D: KeyValueDB, P: PoolParams> MerkleTree<'p, D, P> {
     }
 
     pub fn get_root(&self) -> Hash<P::Fr> {
-        self.get(constants::HEIGHT as u32, 0)
+        self.get(constants::HEIGHT as u32 - 1, 0)
     }
 
     pub fn get_opt(&self, height: u32, index: u64) -> Option<Hash<P::Fr>> {
