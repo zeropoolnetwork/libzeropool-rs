@@ -116,17 +116,6 @@ impl State {
         }
     }
 
-    /// Return an index of the latest usable note.
-    #[wasm_bindgen(js_name = "latestNoteIndex")]
-    pub fn latest_note_index(&self) -> u64 {
-        self.latest_note_index
-    }
-
-    #[wasm_bindgen(js_name = "latestAccountIndex")]
-    pub fn latest_account_index(&self) -> u64 {
-        self.latest_account_index
-    }
-
     /// Return an index of a earliest usable note.
     #[wasm_bindgen(js_name = "earliestUsableIndex")]
     pub fn earliest_usable_index(&self) -> u64 {
@@ -138,7 +127,7 @@ impl State {
             .unwrap();
 
         self.txs
-            .iter_slice(latest_account_index..=self.latest_note_index())
+            .iter_slice(latest_account_index..=self.latest_note_index)
             .map(|(index, _)| index)
             .next()
             .unwrap_or(0)

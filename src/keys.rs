@@ -9,9 +9,9 @@ use wasm_bindgen::{prelude::*, JsValue};
 #[wasm_bindgen(js_name = deriveSecretKey)]
 pub fn derive_sk(seed: &[u8]) -> Vec<u8> {
     let sk = Num::<<PoolBN256 as PoolParams>::Fr>::from_uint_reduced(NumRepr(
-        Uint::from_big_endian(seed),
+        Uint::from_little_endian(seed),
     ));
-    sk.to_uint().0.to_big_endian()
+    sk.to_uint().0.to_little_endian()
 }
 
 pub struct Keys<P: PoolParams> {

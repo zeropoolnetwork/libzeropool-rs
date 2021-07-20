@@ -1,7 +1,10 @@
 use js_sys::Array;
 use libzeropool::{
     constants,
-    fawkes_crypto::{borsh::BorshDeserialize, ff_uint::Num, native::poseidon::poseidon, rand::Rng},
+    fawkes_crypto::{
+        core::sizedvec::SizedVec, ff_uint::Num, native::poseidon::poseidon,
+        native::poseidon::MerkleProof, rand::Rng,
+    },
     native::{
         account::Account as NativeAccount,
         boundednum::BoundedNum,
@@ -29,6 +32,7 @@ use crate::{
     types::{Fr, Note, Notes, Pair, TxDestinations},
     utils::Base64,
 };
+use libzeropool::fawkes_crypto::ff_uint::{NumRepr, Uint};
 
 mod address;
 mod keys;
@@ -108,18 +112,38 @@ impl UserAccount {
 
     // TODO: Error handling
     #[wasm_bindgen(js_name = makeTx)]
-    pub fn make_tx(&self, destinations: TxDestinations, mut data: Option<Vec<u8>>) -> JsValue {
+    pub fn make_tx(&self, outputs: TxDestinations, mut data: Option<Vec<u8>>) -> JsValue {
+        utils::set_panic_hook();
+
         let mut rng = random::CustomRng;
 
         #[derive(Deserialize)]
-        struct Destination {
+        struct Output {
             to: String,
             amount: BoundedNum<Fr, { constants::BALANCE_SIZE }>,
         }
 
-        let destinations: Vec<Destination> = destinations.into_serde().unwrap();
+        fn null_note() -> NativeNote<Fr> {
+            NativeNote {
+                d: BoundedNum::new(Num::ZERO),
+                p_d: Num::ZERO,
+                b: BoundedNum::new(Num::ZERO),
+                t: BoundedNum::new(Num::ZERO),
+            }
+        }
 
-        let spend_interval_index = self.state.latest_note_index() + 1;
+        fn null_proof() -> MerkleProof<Fr, { constants::HEIGHT }> {
+            MerkleProof {
+                sibling: (0..constants::HEIGHT).map(|_| Num::ZERO).collect(),
+                path: (0..constants::HEIGHT).map(|_| false).collect(),
+            }
+        }
+
+        let outputs: Vec<Output> = outputs.into_serde().unwrap();
+
+        assert!(outputs.len() <= constants::IN, "Too many outputs"); // TODO: Return an error
+
+        let spend_interval_index = self.state.latest_note_index + 1;
         let prev_account = self
             .state
             .latest_account()
@@ -154,19 +178,16 @@ impl UserAccount {
             prev_account.b.to_num() * (Num::from(spend_interval_index) - prev_account.i.to_num());
 
         for (note_index, note) in &in_notes {
-            input_energy +=
-                note.b.to_num() * Num::from((spend_interval_index - (2 * note_index + 1)) as u32);
+            input_energy += note.b.to_num() * Num::from(spend_interval_index - note_index);
         }
 
-        let mut new_balance = input_value;
-
-        // TODO: Check number of out notes and fill in with empty or return error
-        let out_notes: Vec<_> = destinations
-            .into_iter()
+        let mut output_value = Num::ZERO;
+        let out_notes: SizedVec<_, { constants::OUT }> = outputs
+            .iter()
             .map(|dest| {
                 let (to_d, to_p_d) = parse_address::<PoolBN256>(&dest.to).unwrap();
 
-                new_balance -= dest.amount.to_num();
+                output_value += dest.amount.to_num();
 
                 NativeNote {
                     d: to_d,
@@ -175,7 +196,11 @@ impl UserAccount {
                     t: rng.gen(),
                 }
             })
+            // fill out remaining output notes with zeroes
+            .chain((outputs.len()..constants::OUT).map(|_| null_note()))
             .collect();
+
+        let mut new_balance = input_value - output_value;
 
         let out_account = NativeAccount {
             eta: self.keys.eta,
@@ -194,7 +219,7 @@ impl UserAccount {
                 &entropy,
                 self.keys.eta,
                 out_account,
-                &out_notes,
+                out_notes.as_slice(),
                 &*POOL_PARAMS,
             )
         };
@@ -202,6 +227,12 @@ impl UserAccount {
         let mut input_hashes = vec![prev_account.hash(&*POOL_PARAMS)];
         for (_index, note) in &in_notes {
             input_hashes.push(note.hash(&*POOL_PARAMS));
+        }
+
+        if in_notes.len() < constants::IN {
+            for _ in in_notes.len()..=constants::IN {
+                input_hashes.push(Num::ZERO);
+            }
         }
 
         let out_note_hashes: Vec<_> = out_notes.iter().map(|n| n.hash(&*POOL_PARAMS)).collect();
@@ -229,7 +260,8 @@ impl UserAccount {
             memo_data.append(data);
         }
 
-        let memo = Num::try_from_slice(&utils::keccak256(&memo_data)).unwrap();
+        let memo_hash = utils::keccak256(&memo_data);
+        let memo = Num::from_uint_reduced(NumRepr(Uint::from_little_endian(&memo_hash)));
 
         let public = NativeTransferPub::<Fr> {
             root,
@@ -242,22 +274,34 @@ impl UserAccount {
         let tx = NativeTx {
             input: (
                 prev_account,
-                in_notes.iter().map(|(_, note)| note).cloned().collect(),
+                in_notes
+                    .iter()
+                    .map(|(_, note)| note)
+                    .cloned()
+                    .chain((in_notes.len()..constants::IN).map(|_| null_note()))
+                    .collect(),
             ),
-            output: (out_account, out_notes.iter().copied().collect()),
+            output: (out_account, out_notes),
         };
 
         // TODO: Create an abstraction for signatures
         let (eddsa_s, eddsa_r) = tx_sign(self.keys.sk, tx_hash, &*POOL_PARAMS);
 
+        let zero_note_proofs = (in_notes.len()..constants::IN).map(|_| null_proof());
+
+        let note_proofs = in_notes
+            .iter()
+            .copied()
+            .map(|(index, _note)| tree.get_proof(index).unwrap())
+            .chain(zero_note_proofs)
+            .collect();
+
         let secret = NativeTransferSec::<Fr> {
             tx,
             in_proof: (
-                tree.get_proof(spend_interval_index).unwrap(),
-                in_notes
-                    .iter()
-                    .map(|(index, _note)| tree.get_proof(*index).unwrap())
-                    .collect(),
+                tree.get_proof(self.state.latest_account_index)
+                    .unwrap_or(null_proof()), // FIXME: Which proof to use here?
+                note_proofs,
             ),
             eddsa_s: eddsa_s.to_other().unwrap(),
             eddsa_r,
