@@ -29,7 +29,7 @@ pub use crate::{
     state::{State, Transaction},
 };
 use crate::{
-    types::{Fr, Note, Notes, Pair, TxDestinations},
+    types::{Fr, Note, Notes, Pair, TxOutputs},
     utils::Base64,
 };
 use libzeropool::fawkes_crypto::ff_uint::{NumRepr, Uint};
@@ -112,7 +112,7 @@ impl UserAccount {
 
     // TODO: Error handling
     #[wasm_bindgen(js_name = makeTx)]
-    pub fn make_tx(&self, outputs: TxDestinations, mut data: Option<Vec<u8>>) -> JsValue {
+    pub fn make_tx(&self, outputs: TxOutputs, mut data: Option<Vec<u8>>) -> JsValue {
         utils::set_panic_hook();
 
         let mut rng = random::CustomRng;
@@ -200,7 +200,7 @@ impl UserAccount {
             .chain((outputs.len()..constants::OUT).map(|_| null_note()))
             .collect();
 
-        let mut new_balance = input_value - output_value;
+        let new_balance = input_value - output_value;
 
         let out_account = NativeAccount {
             eta: self.keys.eta,

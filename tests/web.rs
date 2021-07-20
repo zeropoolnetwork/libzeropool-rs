@@ -22,7 +22,7 @@ const SEED: &[u8] = &[1, 2, 3];
 #[wasm_bindgen_test]
 fn test_account_from_seed() {
     let sk = derive_sk(SEED);
-    let keys = Keys::derive(&sk, &*POOL_PARAMS).unwrap();
+    let _keys = Keys::derive(&sk, &*POOL_PARAMS).unwrap();
 
     assert!(true)
 }
@@ -31,7 +31,7 @@ fn test_account_from_seed() {
 async fn account_derive_new_address() {
     let state = State::init("test".to_owned()).await;
     let acc = UserAccount::from_seed(SEED, state).unwrap();
-    let result = acc.generate_address();
+    let _result = acc.generate_address();
 }
 
 #[wasm_bindgen_test]
@@ -39,7 +39,7 @@ async fn parse_address() {
     let state = State::init("test".to_owned()).await;
     let acc = UserAccount::from_seed(SEED, state).unwrap();
     let addr = acc.generate_address();
-    let (d, p_d) = libzeropool_wasm::parse_address::<PoolBN256>(&addr).unwrap();
+    let _ = libzeropool_wasm::parse_address::<PoolBN256>(&addr).unwrap();
 }
 
 #[wasm_bindgen_test]
@@ -47,8 +47,8 @@ async fn make_tx() {
     let state = State::init("test".to_owned()).await;
     let acc = UserAccount::from_seed(SEED, state).unwrap();
     let addr = acc.generate_address();
-    let tx = acc.make_tx(
-        JsValue::from_serde(&json!([{ "to": addr, "amount": "123" }]))
+    let _tx = acc.make_tx(
+        JsValue::from_serde(&json!([{ "to": addr, "amount": "0" }]))
             .unwrap()
             .unchecked_into(),
         None,

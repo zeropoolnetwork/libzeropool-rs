@@ -26,7 +26,7 @@ extern "C" {
     pub type MerkleProofPath;
 
     #[wasm_bindgen(typescript_type = "Array<{ to: string; amount: string; }>")]
-    pub type TxDestinations;
+    pub type TxOutputs;
 }
 
 #[wasm_bindgen]
