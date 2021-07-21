@@ -4,4 +4,4 @@ PROJECT_NAME="libzeropool_wasm"
 FILE_NAME="libzeropool_wasm.wasm"
 
 wasm-pack build
-wasm-opt -o lib/wasm-opt.wasm -O3 lib/${PROJECT_NAME}_bg.wasm && mv lib/wasm-opt.wasm lib/${PROJECT_NAME}_bg.wasm
+wasm-opt -o pkg/wasm-opt.wasm -O3 pkg/${PROJECT_NAME}_bg.wasm && mv pkg/wasm-opt.wasm pkg/${PROJECT_NAME}_bg.wasm
