@@ -1,6 +1,7 @@
 use js_sys::Array;
 use libzeropool::{
     constants,
+    fawkes_crypto::ff_uint::{NumRepr, Uint},
     fawkes_crypto::{
         core::sizedvec::SizedVec, ff_uint::Num, native::poseidon::poseidon,
         native::poseidon::MerkleProof, rand::Rng,
@@ -22,6 +23,7 @@ use libzeropool::{
 use serde::{Deserialize, Serialize};
 use wasm_bindgen::{prelude::*, JsCast};
 
+use crate::address::AddressParseError;
 pub use crate::{
     address::{format_address, parse_address},
     keys::{derive_sk, Keys},
@@ -29,11 +31,12 @@ pub use crate::{
     state::{State, Transaction},
 };
 use crate::{
-    types::{Fr, Note, Notes, Pair, TxOutputs},
+    types::{Account, Fr, Note, Notes, Pair, TxOutputs},
     utils::Base64,
 };
-use libzeropool::fawkes_crypto::ff_uint::{NumRepr, Uint};
 
+#[macro_use]
+mod utils;
 mod address;
 mod keys;
 mod merkle;
@@ -41,7 +44,6 @@ mod random;
 mod sparse_array;
 mod state;
 mod types;
-mod utils;
 
 #[cfg(feature = "wee_alloc")]
 #[global_allocator]
@@ -49,27 +51,35 @@ static ALLOC: wee_alloc::WeeAlloc = wee_alloc::WeeAlloc::INIT;
 
 #[wasm_bindgen]
 pub struct UserAccount {
-    keys: Keys<PoolBN256>,
+    keys: Keys,
     state: State,
 }
 
 #[wasm_bindgen]
 impl UserAccount {
     #[wasm_bindgen(constructor)]
+    /// Initializes UserAccount with a secret key that has to be a prime.
     pub fn new(sk: Vec<u8>, state: State) -> Result<UserAccount, JsValue> {
-        let keys = Keys::derive(&sk, &*POOL_PARAMS)?;
+        let keys = Keys::derive(&sk)?;
 
         Ok(UserAccount { keys, state })
     }
 
+    // TODO: Is this safe?
     #[wasm_bindgen(js_name = fromSeed)]
+    /// Same as constructor but accepts arbitrary secret key (non-prime).
     pub fn from_seed(seed: &[u8], state: State) -> Result<UserAccount, JsValue> {
+        utils::set_panic_hook();
+
         let sk = derive_sk(seed);
         Self::new(sk, state)
     }
 
     #[wasm_bindgen(js_name = generateAddress)]
+    /// Generates a new private address.
     pub fn generate_address(&self) -> String {
+        utils::set_panic_hook();
+
         let mut rng = random::CustomRng;
 
         let d: BoundedNum<_, { constants::DIVERSIFIER_SIZE }> = rng.gen();
@@ -78,14 +88,14 @@ impl UserAccount {
     }
 
     #[wasm_bindgen(js_name = decryptNotes)]
+    /// Attempts to decrypt notes
     pub fn decrypt_notes(&self, data: Vec<u8>) -> Result<Notes, JsValue> {
         utils::set_panic_hook();
 
         let notes = cipher::decrypt_in(self.keys.eta, &data, &*POOL_PARAMS)
             .into_iter()
             .flatten()
-            .map(Note::from)
-            .map(JsValue::from)
+            .map(|note| serde_wasm_bindgen::to_value(&note).unwrap())
             .collect::<Array>()
             .unchecked_into::<Notes>();
 
@@ -93,26 +103,35 @@ impl UserAccount {
     }
 
     #[wasm_bindgen(js_name = decryptPair)]
+    /// Attempts to decrypt account and notes
     pub fn decrypt_pair(&self, data: Vec<u8>) -> Result<Option<Pair>, JsValue> {
         utils::set_panic_hook();
 
+        #[derive(Serialize)]
+        struct SerPair {
+            account: NativeAccount<Fr>,
+            notes: Vec<NativeNote<Fr>>,
+        }
+
         let pair =
             cipher::decrypt_out(self.keys.eta, &data, &*POOL_PARAMS).map(|(account, notes)| {
-                let notes = notes.into_iter().map(Note::from).collect();
-                Pair::new(account.into(), notes)
+                let pair = SerPair { account, notes };
+
+                serde_wasm_bindgen::to_value(&pair)
+                    .unwrap()
+                    .unchecked_into::<Pair>()
             });
 
         Ok(pair)
     }
 
-    // #[wasm_bindgen(js_name = encryptTx)]
-    // pub fn encrypt_tx(&self, account: Account, notes: Notes) {
-    //     todo!("Is this needed?");
-    // }
-
-    // TODO: Error handling
     #[wasm_bindgen(js_name = makeTx)]
-    pub fn make_tx(&self, outputs: TxOutputs, mut data: Option<Vec<u8>>) -> JsValue {
+    /// Constructs a transaction
+    pub fn make_tx(
+        &self,
+        outputs: TxOutputs,
+        mut data: Option<Vec<u8>>,
+    ) -> Result<JsValue, JsValue> {
         utils::set_panic_hook();
 
         let mut rng = random::CustomRng;
@@ -139,27 +158,27 @@ impl UserAccount {
             }
         }
 
-        let outputs: Vec<Output> = outputs.into_serde().unwrap();
+        let outputs: Vec<Output> = serde_wasm_bindgen::from_value(outputs.into())?;
 
-        assert!(outputs.len() <= constants::IN, "Too many outputs"); // TODO: Return an error
+        if outputs.len() >= constants::IN {
+            return Err(js_err!("Too many outputs (max: {})", constants::IN));
+        }
 
         let spend_interval_index = self.state.latest_note_index + 1;
-        let prev_account = self
-            .state
-            .latest_account()
-            .unwrap_or_else(|| NativeAccount {
-                eta: self.keys.eta,
-                i: BoundedNum::new(Num::ZERO),
-                b: BoundedNum::new(Num::ZERO),
-                e: BoundedNum::new(Num::ZERO),
-                t: rng.gen(),
-            });
+        let prev_account = self.state.latest_account.unwrap_or_else(|| NativeAccount {
+            eta: self.keys.eta,
+            i: BoundedNum::new(Num::ZERO),
+            b: BoundedNum::new(Num::ZERO),
+            e: BoundedNum::new(Num::ZERO),
+            t: rng.gen(),
+        });
 
         let next_usable_index = self.state.earliest_usable_index();
 
+        // Fetch constants::IN usable notes from state
         let in_notes: Vec<(u64, NativeNote<Fr>)> = self
             .state
-            .txs()
+            .txs
             .iter_slice(next_usable_index..=self.state.latest_note_index)
             .take(constants::IN)
             .filter_map(|(index, tx)| match tx {
@@ -185,20 +204,20 @@ impl UserAccount {
         let out_notes: SizedVec<_, { constants::OUT }> = outputs
             .iter()
             .map(|dest| {
-                let (to_d, to_p_d) = parse_address::<PoolBN256>(&dest.to).unwrap();
+                let (to_d, to_p_d) = parse_address::<PoolBN256>(&dest.to)?;
 
                 output_value += dest.amount.to_num();
 
-                NativeNote {
+                Ok(NativeNote {
                     d: to_d,
                     p_d: to_p_d,
                     b: dest.amount,
                     t: rng.gen(),
-                }
+                })
             })
             // fill out remaining output notes with zeroes
-            .chain((outputs.len()..constants::OUT).map(|_| null_note()))
-            .collect();
+            .chain((outputs.len()..constants::OUT).map(|_| Ok(null_note())))
+            .collect::<Result<SizedVec<_, { constants::OUT }>, AddressParseError>>()?;
 
         let new_balance = input_value - output_value;
 
@@ -252,7 +271,7 @@ impl UserAccount {
             Num::from(spend_interval_index as u32),
         );
 
-        let tree = self.state.tree();
+        let tree = &self.state.tree;
         let root: Num<Fr> = tree.get_root();
 
         let mut memo_data = ciphertext.clone();
@@ -287,20 +306,23 @@ impl UserAccount {
         // TODO: Create an abstraction for signatures
         let (eddsa_s, eddsa_r) = tx_sign(self.keys.sk, tx_hash, &*POOL_PARAMS);
 
-        let zero_note_proofs = (in_notes.len()..constants::IN).map(|_| null_proof());
+        let zero_note_proofs = (in_notes.len()..constants::IN).map(|_| Ok(null_proof()));
 
         let note_proofs = in_notes
             .iter()
             .copied()
-            .map(|(index, _note)| tree.get_proof(index).unwrap())
+            .map(|(index, _note)| {
+                tree.get_proof(index)
+                    .ok_or_else(|| js_err!("Could not get proof for leaf {}", index))
+            })
             .chain(zero_note_proofs)
-            .collect();
+            .collect::<Result<_, JsValue>>()?;
 
         let secret = NativeTransferSec::<Fr> {
             tx,
             in_proof: (
                 tree.get_proof(self.state.latest_account_index)
-                    .unwrap_or(null_proof()), // FIXME: Which proof to use here?
+                    .unwrap_or_else(null_proof), // FIXME: Which proof to use here?
                 note_proofs,
             ),
             eddsa_s: eddsa_s.to_other().unwrap(),
@@ -315,7 +337,32 @@ impl UserAccount {
             memo: Base64(memo_data),
         };
 
-        JsValue::from_serde(&data).unwrap()
+        Ok(serde_wasm_bindgen::to_value(&data).unwrap())
+    }
+
+    #[wasm_bindgen(js_name = "addAccount")]
+    /// Cache account at specified index.
+    pub fn add_account(&mut self, at_index: u64, account: Account) -> Result<(), JsValue> {
+        self.state.add_account(at_index, account)
+    }
+
+    #[wasm_bindgen(js_name = "addReceivedNote")]
+    /// Caches a note at specified index.
+    /// Only cache received notes.
+    pub fn add_received_note(&mut self, at_index: u64, note: Note) -> Result<(), JsValue> {
+        self.state.add_received_note(at_index, note)
+    }
+
+    #[wasm_bindgen(js_name = "totalBalance")]
+    /// Returns user's total balance (account + available notes).
+    pub fn total_balance(&self) -> String {
+        self.state.total_balance()
+    }
+
+    #[wasm_bindgen(js_name = "takeState")]
+    /// Consumes the UserAccount and returns it's State.
+    pub fn take_state(self) -> State {
+        self.state
     }
 }
 

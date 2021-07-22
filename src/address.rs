@@ -7,17 +7,27 @@ use libzeropool::{
 };
 use sha2::{Digest, Sha256};
 use thiserror::Error;
+use wasm_bindgen::JsValue;
 
 const ADDR_LEN: usize = 46;
 
 #[derive(Error, Debug)]
-pub enum ParseError {
+pub enum AddressParseError {
     #[error("Invalid checksum")]
     InvalidChecksum,
     #[error("Decode error: {0}")]
     Base58DecodeError(#[from] bs58::decode::Error),
     #[error("Deserialization error: {0}")]
     DeserializationError(#[from] std::io::Error),
+}
+
+impl From<AddressParseError> for JsValue {
+    fn from(error: AddressParseError) -> JsValue {
+        JsValue::from(js_sys::Error::new(&format!(
+            "Address parse error: {}",
+            error
+        )))
+    }
 }
 
 pub fn parse_address<P: PoolParams>(
@@ -27,7 +37,7 @@ pub fn parse_address<P: PoolParams>(
         BoundedNum<P::Fr, { constants::DIVERSIFIER_SIZE }>,
         Num<P::Fr>,
     ),
-    ParseError,
+    AddressParseError,
 > {
     let mut bytes = [0; ADDR_LEN];
     bs58::decode(address).into(&mut bytes)?;
@@ -39,7 +49,7 @@ pub fn parse_address<P: PoolParams>(
     let hash = hasher.finalize();
 
     if &hash[0..=3] != checksum {
-        return Err(ParseError::InvalidChecksum);
+        return Err(AddressParseError::InvalidChecksum);
     }
 
     let d = BoundedNum::try_from_slice(&bytes[0..10])?;

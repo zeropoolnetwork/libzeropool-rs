@@ -1,30 +1,33 @@
 use libzeropool::{
-    fawkes_crypto::borsh::BorshDeserialize,
-    fawkes_crypto::ff_uint::{Num, NumRepr, Uint},
+    fawkes_crypto::{
+        engines::U256,
+        ff_uint::{Num, NumRepr, Uint},
+    },
     native::key::{derive_key_a, derive_key_eta},
-    native::params::{PoolBN256, PoolParams},
+    POOL_PARAMS,
 };
 use wasm_bindgen::{prelude::*, JsValue};
 
+use crate::types::{Fr, Fs};
+
 #[wasm_bindgen(js_name = deriveSecretKey)]
 pub fn derive_sk(seed: &[u8]) -> Vec<u8> {
-    let sk = Num::<<PoolBN256 as PoolParams>::Fr>::from_uint_reduced(NumRepr(
-        Uint::from_little_endian(seed),
-    ));
+    let sk = Num::<Fs>::from_uint_reduced(NumRepr(Uint::from_little_endian(seed)));
     sk.to_uint().0.to_little_endian()
 }
 
-pub struct Keys<P: PoolParams> {
-    pub sk: Num<P::Fs>,
-    pub a: Num<P::Fr>,
-    pub eta: Num<P::Fr>,
+pub struct Keys {
+    pub sk: Num<Fs>,
+    pub a: Num<Fr>,
+    pub eta: Num<Fr>,
 }
 
-impl<P: PoolParams> Keys<P> {
-    pub fn derive(sk: &[u8], params: &P) -> Result<Self, JsValue> {
-        let num_sk = Num::try_from_slice(sk).map_err(|err| JsValue::from(err.to_string()))?;
-        let a = derive_key_a(num_sk, params).x;
-        let eta = derive_key_eta(a, params);
+impl Keys {
+    pub fn derive(sk: &[u8]) -> Result<Self, JsValue> {
+        let num_sk = Num::<Fs>::from_uint(NumRepr(Uint::from_little_endian(sk)))
+            .ok_or_else(|| js_err!("Invalid secret key"))?;
+        let a = derive_key_a(num_sk, &*POOL_PARAMS).x;
+        let eta = derive_key_eta(a, &*POOL_PARAMS);
 
         Ok(Keys { sk: num_sk, a, eta })
     }

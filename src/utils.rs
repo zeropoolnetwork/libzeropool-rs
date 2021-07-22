@@ -75,3 +75,12 @@ pub fn keccak256(data: &[u8]) -> [u8; 32] {
         .for_each(|(l, r)| *l = r);
     res
 }
+
+macro_rules! js_err {
+    ($msg:expr) => {
+        JsValue::from(js_sys::Error::new($msg))
+    };
+    ($msg:tt, $($arg:expr),*) => {
+        JsValue::from(js_sys::Error::new(&format!($msg, $($arg),*)))
+    };
+}

@@ -19,33 +19,35 @@ wasm_bindgen_test_configure!(run_in_browser);
 
 const SEED: &[u8] = &[1, 2, 3];
 
+async fn init_acc() -> UserAccount {
+    let state = State::init("test".to_owned()).await;
+    UserAccount::from_seed(SEED, state).unwrap()
+}
+
 #[wasm_bindgen_test]
 fn test_account_from_seed() {
     let sk = derive_sk(SEED);
-    let _keys = Keys::derive(&sk, &*POOL_PARAMS).unwrap();
+    let _keys = Keys::derive(&sk).unwrap();
 
     assert!(true)
 }
 
 #[wasm_bindgen_test]
 async fn account_derive_new_address() {
-    let state = State::init("test".to_owned()).await;
-    let acc = UserAccount::from_seed(SEED, state).unwrap();
+    let acc = init_acc().await;
     let _result = acc.generate_address();
 }
 
 #[wasm_bindgen_test]
 async fn parse_address() {
-    let state = State::init("test".to_owned()).await;
-    let acc = UserAccount::from_seed(SEED, state).unwrap();
+    let acc = init_acc().await;
     let addr = acc.generate_address();
     let _ = libzeropool_wasm::parse_address::<PoolBN256>(&addr).unwrap();
 }
 
 #[wasm_bindgen_test]
-async fn make_tx() {
-    let state = State::init("test".to_owned()).await;
-    let acc = UserAccount::from_seed(SEED, state).unwrap();
+async fn account_make_tx() {
+    let acc = init_acc().await;
     let addr = acc.generate_address();
     let _tx = acc.make_tx(
         JsValue::from_serde(&json!([{ "to": addr, "amount": "0" }]))
@@ -53,4 +55,11 @@ async fn make_tx() {
             .unchecked_into(),
         None,
     );
+}
+
+#[wasm_bindgen_test]
+async fn account_total_balance() {
+    let acc = init_acc().await;
+
+    assert_eq!(acc.total_balance(), "0");
 }
