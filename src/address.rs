@@ -1,3 +1,4 @@
+use crate::utils::keccak256;
 use libzeropool::{
     constants,
     fawkes_crypto::borsh::{BorshDeserialize, BorshSerialize},
@@ -5,7 +6,6 @@ use libzeropool::{
     native::boundednum::BoundedNum,
     native::params::PoolParams,
 };
-use sha2::{Digest, Sha256};
 use thiserror::Error;
 use wasm_bindgen::JsValue;
 
@@ -44,9 +44,7 @@ pub fn parse_address<P: PoolParams>(
 
     let checksum = &bytes[42..=45];
 
-    let mut hasher = Sha256::new();
-    hasher.update(&bytes[0..=41]);
-    let hash = hasher.finalize();
+    let hash = keccak256(&bytes[0..=41]);
 
     if &hash[0..=3] != checksum {
         return Err(AddressParseError::InvalidChecksum);
@@ -67,9 +65,7 @@ pub fn format_address<P: PoolParams>(
     d.serialize(&mut &mut buf[0..10]).unwrap();
     p_d.serialize(&mut &mut buf[10..42]).unwrap();
 
-    let mut hasher = Sha256::new();
-    hasher.update(&buf[0..42]);
-    let hash = hasher.finalize();
+    let hash = keccak256(&buf[0..42]);
     buf[42..ADDR_LEN].clone_from_slice(&hash[0..4]);
 
     bs58::encode(buf).into_string()
