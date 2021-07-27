@@ -49,6 +49,8 @@ mod types;
 #[global_allocator]
 static ALLOC: wee_alloc::WeeAlloc = wee_alloc::WeeAlloc::INIT;
 
+// TODO: Implement a native interface first, then create wasm bindings.
+
 #[wasm_bindgen]
 pub struct UserAccount {
     keys: Keys,
@@ -58,7 +60,7 @@ pub struct UserAccount {
 #[wasm_bindgen]
 impl UserAccount {
     #[wasm_bindgen(constructor)]
-    /// Initializes UserAccount with a secret key that has to be a prime.
+    /// Initializes UserAccount with a secret key that has to be a member of the finite field Fs (p = 6554484396890773809930967563523245729705921265872317281365359162392183254199).
     pub fn new(sk: Vec<u8>, state: State) -> Result<UserAccount, JsValue> {
         let keys = Keys::derive(&sk)?;
 
@@ -67,7 +69,7 @@ impl UserAccount {
 
     // TODO: Is this safe?
     #[wasm_bindgen(js_name = fromSeed)]
-    /// Same as constructor but accepts arbitrary secret key (non-prime).
+    /// Same as constructor but accepts arbitrary data as secret key.
     pub fn from_seed(seed: &[u8], state: State) -> Result<UserAccount, JsValue> {
         utils::set_panic_hook();
 

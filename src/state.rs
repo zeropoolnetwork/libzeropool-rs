@@ -26,10 +26,6 @@ pub enum Transaction {
     Note(NativeNote<Fr>),
 }
 
-// TODO: Optimize:
-//       Implement rev() for the kvdb iterator if possible.
-//       Also consider finding a more efficient storage than kvdb since it clones the whole storage
-//       when calling iter().
 #[wasm_bindgen]
 pub struct State {
     pub(crate) tree: MerkleTree,
