@@ -64,7 +64,7 @@ pub struct UserAccount {
 #[wasm_bindgen]
 impl UserAccount {
     #[wasm_bindgen(constructor)]
-    /// Initializes UserAccount with a secret key that has to be a member of the finite field Fs (p = 6554484396890773809930967563523245729705921265872317281365359162392183254199).
+    /// Initializes UserAccount with a secret key that has to be an element of the prime field Fs (p = 6554484396890773809930967563523245729705921265872317281365359162392183254199).
     pub fn new(sk: Vec<u8>, state: State) -> Result<UserAccount, JsValue> {
         let keys = Keys::derive(&sk)?;
 
@@ -94,7 +94,7 @@ impl UserAccount {
     }
 
     #[wasm_bindgen(js_name = decryptNotes)]
-    /// Attempts to decrypt notes
+    /// Attempts to decrypt notes.
     pub fn decrypt_notes(&self, data: Vec<u8>) -> Result<Notes, JsValue> {
         utils::set_panic_hook();
 
@@ -109,7 +109,7 @@ impl UserAccount {
     }
 
     #[wasm_bindgen(js_name = decryptPair)]
-    /// Attempts to decrypt account and notes
+    /// Attempts to decrypt account and notes.
     pub fn decrypt_pair(&self, data: Vec<u8>) -> Result<Option<Pair>, JsValue> {
         utils::set_panic_hook();
 
@@ -132,7 +132,7 @@ impl UserAccount {
     }
 
     #[wasm_bindgen(js_name = makeTx)]
-    /// Constructs a transaction
+    /// Constructs a transaction.
     pub fn make_tx(
         &self,
         outputs: TxOutputs,
