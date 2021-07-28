@@ -1,8 +1,5 @@
 use libzeropool::{
-    fawkes_crypto::{
-        engines::U256,
-        ff_uint::{Num, NumRepr, Uint},
-    },
+    fawkes_crypto::ff_uint::{Num, NumRepr, Uint},
     native::key::{derive_key_a, derive_key_eta},
     POOL_PARAMS,
 };

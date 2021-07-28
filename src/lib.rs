@@ -23,16 +23,18 @@ use libzeropool::{
 use serde::{Deserialize, Serialize};
 use wasm_bindgen::{prelude::*, JsCast};
 
-use crate::address::AddressParseError;
+use crate::{
+    address::AddressParseError,
+    types::{Account, Fr, Note, Notes, Pair, TxOutputs},
+    utils::Base64,
+};
 pub use crate::{
     address::{format_address, parse_address},
     keys::{derive_sk, Keys},
     merkle::*,
+    params::*,
+    proof::*,
     state::{State, Transaction},
-};
-use crate::{
-    types::{Account, Fr, Note, Notes, Pair, TxOutputs},
-    utils::Base64,
 };
 
 #[macro_use]
@@ -40,6 +42,8 @@ mod utils;
 mod address;
 mod keys;
 mod merkle;
+mod params;
+mod proof;
 mod random;
 mod sparse_array;
 mod state;
