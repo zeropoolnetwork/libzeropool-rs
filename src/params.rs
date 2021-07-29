@@ -5,7 +5,8 @@ use crate::Engine;
 
 #[wasm_bindgen]
 pub struct Params {
-    inner: Parameters<Engine>,
+    #[wasm_bindgen(skip)]
+    pub inner: Parameters<Engine>,
 }
 
 impl From<Parameters<Engine>> for Params {
@@ -22,8 +23,11 @@ impl From<Params> for Parameters<Engine> {
 
 #[wasm_bindgen]
 impl Params {
-    #[wasm_bindgen(js_name = "loadFromBinary")]
-    pub fn load_from_binary(input: &[u8]) -> Params {
-        todo!()
+    #[wasm_bindgen(js_name = "fromBinary")]
+    pub fn from_binary(input: &[u8]) -> Result<Params, JsValue> {
+        let mut input = input;
+        let inner = Parameters::read(&mut input, true, true).map_err(|err| js_err!("{}", err))?;
+
+        Ok(Params { inner })
     }
 }

@@ -29,11 +29,11 @@ pub struct Proof {
 impl Proof {
     #[wasm_bindgen(js_name = "tx")]
     pub fn tx(
-        params: Params,
+        params: &Params,
         public_tx: TransferPub,
         secret_tx: TransferSec,
     ) -> Result<crate::ts_types::Proof, JsValue> {
-        let params: Parameters<Engine> = params.into();
+        let params = &params.inner;
 
         let public: NativeTransferPub<_> =
             serde_wasm_bindgen::from_value(public_tx.unchecked_into::<JsValue>())?;
@@ -44,7 +44,7 @@ impl Proof {
             c_transfer(&public, &secret, &*POOL_PARAMS);
         };
 
-        let (inputs, snark_proof) = prove(&params, &public, &secret, circuit);
+        let (inputs, snark_proof) = prove(params, &public, &secret, circuit);
 
         let proof = Proof {
             inputs,
