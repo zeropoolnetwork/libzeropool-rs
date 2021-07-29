@@ -1,10 +1,14 @@
 use js_sys::Array;
 use libzeropool::{
     constants,
-    fawkes_crypto::ff_uint::{NumRepr, Uint},
     fawkes_crypto::{
-        core::sizedvec::SizedVec, ff_uint::Num, native::poseidon::poseidon,
-        native::poseidon::MerkleProof, rand::Rng,
+        backend::bellman_groth16::engines::Bn256,
+        core::sizedvec::SizedVec,
+        ff_uint::Num,
+        ff_uint::{NumRepr, Uint},
+        native::poseidon::poseidon,
+        native::poseidon::MerkleProof,
+        rand::Rng,
     },
     native::{
         account::Account as NativeAccount,
@@ -12,7 +16,7 @@ use libzeropool::{
         cipher,
         key::derive_key_p_d,
         note::Note as NativeNote,
-        params::{PoolBN256, PoolParams},
+        params::{PoolBN256, PoolParams as PoolParamsTrait},
         tx::{
             make_delta, nullifier, out_commitment_hash, tx_hash, tx_sign,
             TransferPub as NativeTransferPub, TransferSec as NativeTransferSec, Tx as NativeTx,
@@ -23,16 +27,18 @@ use libzeropool::{
 use serde::{Deserialize, Serialize};
 use wasm_bindgen::{prelude::*, JsCast};
 
-use crate::address::AddressParseError;
+use crate::{
+    address::AddressParseError,
+    ts_types::{Account, Note, Notes, Pair, TxOutputs},
+    utils::Base64,
+};
 pub use crate::{
     address::{format_address, parse_address},
     keys::{derive_sk, Keys},
     merkle::*,
+    params::*,
+    proof::*,
     state::{State, Transaction},
-};
-use crate::{
-    types::{Account, Fr, Note, Notes, Pair, TxOutputs},
-    utils::Base64,
 };
 
 #[macro_use]
@@ -40,14 +46,21 @@ mod utils;
 mod address;
 mod keys;
 mod merkle;
+mod params;
+mod proof;
 mod random;
 mod sparse_array;
 mod state;
-mod types;
+mod ts_types;
 
 #[cfg(feature = "wee_alloc")]
 #[global_allocator]
 static ALLOC: wee_alloc::WeeAlloc = wee_alloc::WeeAlloc::INIT;
+
+pub type PoolParams = PoolBN256;
+pub type Fr = <PoolParams as PoolParamsTrait>::Fr;
+pub type Fs = <PoolParams as PoolParamsTrait>::Fs;
+pub type Engine = Bn256;
 
 // TODO: Implement a native interface first, then create wasm bindings.
 
@@ -60,7 +73,7 @@ pub struct UserAccount {
 #[wasm_bindgen]
 impl UserAccount {
     #[wasm_bindgen(constructor)]
-    /// Initializes UserAccount with a secret key that has to be a member of the finite field Fs (p = 6554484396890773809930967563523245729705921265872317281365359162392183254199).
+    /// Initializes UserAccount with a secret key that has to be an element of the prime field Fs (p = 6554484396890773809930967563523245729705921265872317281365359162392183254199).
     pub fn new(sk: Vec<u8>, state: State) -> Result<UserAccount, JsValue> {
         let keys = Keys::derive(&sk)?;
 
@@ -90,7 +103,7 @@ impl UserAccount {
     }
 
     #[wasm_bindgen(js_name = decryptNotes)]
-    /// Attempts to decrypt notes
+    /// Attempts to decrypt notes.
     pub fn decrypt_notes(&self, data: Vec<u8>) -> Result<Notes, JsValue> {
         utils::set_panic_hook();
 
@@ -105,7 +118,7 @@ impl UserAccount {
     }
 
     #[wasm_bindgen(js_name = decryptPair)]
-    /// Attempts to decrypt account and notes
+    /// Attempts to decrypt account and notes.
     pub fn decrypt_pair(&self, data: Vec<u8>) -> Result<Option<Pair>, JsValue> {
         utils::set_panic_hook();
 
@@ -128,7 +141,7 @@ impl UserAccount {
     }
 
     #[wasm_bindgen(js_name = makeTx)]
-    /// Constructs a transaction
+    /// Constructs a transaction.
     pub fn make_tx(
         &self,
         outputs: TxOutputs,

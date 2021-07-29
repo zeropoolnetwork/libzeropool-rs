@@ -1,14 +1,11 @@
 use libzeropool::{
-    fawkes_crypto::{
-        engines::U256,
-        ff_uint::{Num, NumRepr, Uint},
-    },
+    fawkes_crypto::ff_uint::{Num, NumRepr, Uint},
     native::key::{derive_key_a, derive_key_eta},
     POOL_PARAMS,
 };
 use wasm_bindgen::{prelude::*, JsValue};
 
-use crate::types::{Fr, Fs};
+use crate::{Fr, Fs};
 
 #[wasm_bindgen(js_name = deriveSecretKey)]
 pub fn derive_sk(seed: &[u8]) -> Vec<u8> {
