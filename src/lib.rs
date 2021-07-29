@@ -195,11 +195,11 @@ impl UserAccount {
 
             let spend_interval_index = state.latest_note_index + 1;
             let prev_account = state.latest_account.unwrap_or_else(|| NativeAccount {
-                eta: keys.eta,
+                eta: Num::ZERO,
                 i: BoundedNum::new(Num::ZERO),
                 b: BoundedNum::new(Num::ZERO),
                 e: BoundedNum::new(Num::ZERO),
-                t: rng.gen(),
+                t: BoundedNum::new(Num::ZERO),
             });
 
             let next_usable_index = state.earliest_usable_index();
@@ -215,6 +215,7 @@ impl UserAccount {
                 })
                 .collect();
 
+            // Calculate total balance (account + constants::IN notes).
             let mut input_value = prev_account.b.to_num();
             for (_index, note) in &in_notes {
                 input_value += note.b.to_num();
@@ -244,7 +245,8 @@ impl UserAccount {
                     })
                 })
                 // fill out remaining output notes with zeroes
-                .chain((outputs.len()..constants::OUT).map(|_| Ok(null_note())))
+                .chain((0..).map(|_| Ok(null_note())))
+                .take(constants::OUT)
                 .collect::<Result<SizedVec<_, { constants::OUT }>, AddressParseError>>()?;
 
             let new_balance = input_value - output_value;
@@ -271,27 +273,29 @@ impl UserAccount {
                 )
             };
 
-            let mut input_hashes = vec![prev_account.hash(&*POOL_PARAMS)];
-            for (_index, note) in &in_notes {
-                input_hashes.push(note.hash(&*POOL_PARAMS));
-            }
-
-            if in_notes.len() < constants::IN {
-                for _ in in_notes.len()..=constants::IN {
-                    input_hashes.push(Num::ZERO);
-                }
-            }
-
-            let out_note_hashes: Vec<_> = out_notes.iter().map(|n| n.hash(&*POOL_PARAMS)).collect();
-            let output_hashes: Vec<_> = [out_account_hash]
+            // Hash input account + notes filling remaining space with non-hashed zeroes
+            let in_note_hashes = in_notes.iter().map(|(_, note)| note.hash(&*POOL_PARAMS));
+            let input_hashes: SizedVec<_, { constants::IN }> = [prev_account.hash(&*POOL_PARAMS)]
                 .iter()
-                .chain(out_note_hashes.iter())
                 .copied()
+                .chain(in_note_hashes)
+                .chain((0..).map(|_| Num::ZERO))
+                .take(constants::IN)
                 .collect();
 
-            let out_ch = out_commitment_hash(&output_hashes, &*POOL_PARAMS);
-            let tx_hash = tx_hash(&input_hashes, out_ch, &*POOL_PARAMS);
-            let out_commit = poseidon(&output_hashes, &*POOL_PARAMS.compress());
+            // Same with output
+            let out_note_hashes = out_notes.iter().map(|n| n.hash(&*POOL_PARAMS));
+            let output_hashes: SizedVec<_, { constants::OUT + 1 }> = [out_account_hash]
+                .iter()
+                .copied()
+                .chain(out_note_hashes)
+                .chain((0..).map(|_| Num::ZERO))
+                .take(constants::OUT + 1)
+                .collect();
+
+            let out_ch = out_commitment_hash(output_hashes.as_slice(), &*POOL_PARAMS);
+            let tx_hash = tx_hash(input_hashes.as_slice(), out_ch, &*POOL_PARAMS);
+            let out_commit = poseidon(output_hashes.as_slice(), &*POOL_PARAMS.compress());
 
             let delta = make_delta::<Fr>(
                 input_value,
@@ -325,15 +329,14 @@ impl UserAccount {
                         .iter()
                         .map(|(_, note)| note)
                         .cloned()
-                        .chain((in_notes.len()..constants::IN).map(|_| null_note()))
+                        .chain((0..).map(|_| null_note()))
+                        .take(constants::IN - 1)
                         .collect(),
                 ),
                 output: (out_account, out_notes),
             };
             // TODO: Create an abstraction for signatures
             let (eddsa_s, eddsa_r) = tx_sign(keys.sk, tx_hash, &*POOL_PARAMS);
-
-            let zero_note_proofs = (in_notes.len()..constants::IN).map(|_| Ok(null_proof()));
 
             let note_proofs = in_notes
                 .iter()
@@ -342,7 +345,8 @@ impl UserAccount {
                     tree.get_proof(index)
                         .ok_or_else(|| js_err!("Could not get proof for leaf {}", index))
                 })
-                .chain(zero_note_proofs)
+                .chain((0..).map(|_| Ok(null_proof())))
+                .take(constants::IN - 1)
                 .collect::<Result<_, JsValue>>()?;
 
             let secret = NativeTransferSec::<Fr> {
