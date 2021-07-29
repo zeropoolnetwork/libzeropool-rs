@@ -146,7 +146,7 @@ impl UserAccount {
         &self,
         outputs: TxOutputs,
         mut data: Option<Vec<u8>>,
-    ) -> Result<JsValue, JsValue> {
+    ) -> Result<ts_types::TransactionData, JsValue> {
         utils::set_panic_hook();
 
         let mut rng = random::CustomRng;
@@ -352,7 +352,9 @@ impl UserAccount {
             memo: Base64(memo_data),
         };
 
-        Ok(serde_wasm_bindgen::to_value(&data).unwrap())
+        let value = serde_wasm_bindgen::to_value(&data).unwrap();
+
+        Ok(value.unchecked_into::<ts_types::TransactionData>())
     }
 
     #[wasm_bindgen(js_name = "addAccount")]
@@ -381,7 +383,6 @@ impl UserAccount {
     }
 }
 
-#[wasm_bindgen]
 #[derive(Serialize)]
 pub struct TransactionData {
     public: NativeTransferPub<Fr>,

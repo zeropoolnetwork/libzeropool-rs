@@ -33,6 +33,13 @@ export interface TransferSec {
     eddsa_a: string;
 }
 
+export interface TransactionData {
+    public: TransferPub;
+    secret: TransferSec;
+    ciphertext: string;
+    memo: string;
+}
+
 export interface TreePub {
     root: string;
     nullifier: string;
@@ -119,4 +126,7 @@ extern "C" {
 
     #[wasm_bindgen(typescript_type = "SnarkProof")]
     pub type SnarkProof;
+
+    #[wasm_bindgen(typescript_type = "TransactionData")]
+    pub type TransactionData;
 }
