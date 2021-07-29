@@ -25,7 +25,23 @@ export interface TransferPub {
     memo: string;
 }
 
-export interface TransferPub {
+export interface TransferSec {
+    tx: Tx;
+    in_proof: { account: MerkleProof; notes: Array<MerkleProof> };
+    eddsa_s: string;
+    eddsa_r: string;
+    eddsa_a: string;
+}
+
+export interface TreePub {
+    root: string;
+    nullifier: string;
+    out_commit: string;
+    delta: string;
+    memo: string;
+}
+
+export interface TreeSec {
     tx: Tx;
     in_proof: { account: MerkleProof; notes: Array<MerkleProof> };
     eddsa_s: string;
@@ -54,9 +70,9 @@ export interface Proof {
 }
 
 export interface SnarkProof {
-    a: [stirng, string];
-    b: [[stirng, string], [stirng, string]];
-    c: [stirng, string];
+    a: [string, string];
+    b: [[string, string], [string, string]];
+    c: [string, string];
 }
 "#;
 
@@ -91,6 +107,12 @@ extern "C" {
 
     #[wasm_bindgen(typescript_type = "TransferSec")]
     pub type TransferSec;
+
+    #[wasm_bindgen(typescript_type = "TreePub")]
+    pub type TreePub;
+
+    #[wasm_bindgen(typescript_type = "TreeSec")]
+    pub type TreeSec;
 
     #[wasm_bindgen(typescript_type = "Proof")]
     pub type Proof;
