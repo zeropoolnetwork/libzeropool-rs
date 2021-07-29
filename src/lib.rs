@@ -1,4 +1,6 @@
-use js_sys::Array;
+use std::{cell::RefCell, rc::Rc};
+
+use js_sys::{Array, Promise};
 use libzeropool::{
     constants,
     fawkes_crypto::{
@@ -40,6 +42,7 @@ pub use crate::{
     proof::*,
     state::{State, Transaction},
 };
+use wasm_bindgen_futures::future_to_promise;
 
 #[macro_use]
 mod utils;
@@ -67,22 +70,25 @@ pub type Engine = Bn256;
 #[wasm_bindgen]
 pub struct UserAccount {
     keys: Keys,
-    state: State,
+    state: Rc<RefCell<State>>,
 }
 
 #[wasm_bindgen]
 impl UserAccount {
     #[wasm_bindgen(constructor)]
-    /// Initializes UserAccount with a secret key that has to be an element of the prime field Fs (p = 6554484396890773809930967563523245729705921265872317281365359162392183254199).
+    /// Initializes UserAccount with a spending key that has to be an element of the prime field Fs (p = 6554484396890773809930967563523245729705921265872317281365359162392183254199).
     pub fn new(sk: Vec<u8>, state: State) -> Result<UserAccount, JsValue> {
         let keys = Keys::derive(&sk)?;
 
-        Ok(UserAccount { keys, state })
+        Ok(UserAccount {
+            keys,
+            state: Rc::new(RefCell::new(state)),
+        })
     }
 
     // TODO: Is this safe?
     #[wasm_bindgen(js_name = fromSeed)]
-    /// Same as constructor but accepts arbitrary data as secret key.
+    /// Same as constructor but accepts arbitrary data as spending key.
     pub fn from_seed(seed: &[u8], state: State) -> Result<UserAccount, JsValue> {
         utils::set_panic_hook();
 
@@ -140,21 +146,23 @@ impl UserAccount {
         Ok(pair)
     }
 
-    #[wasm_bindgen(js_name = makeTx)]
+    #[wasm_bindgen(js_name = createTx, typescript_type = "Promise<TransactionData>")]
     /// Constructs a transaction.
-    pub fn make_tx(
-        &self,
-        outputs: TxOutputs,
-        mut data: Option<Vec<u8>>,
-    ) -> Result<ts_types::TransactionData, JsValue> {
+    pub fn create_tx(&self, outputs: TxOutputs, mut data: Option<Vec<u8>>) -> Promise {
         utils::set_panic_hook();
-
-        let mut rng = random::CustomRng;
 
         #[derive(Deserialize)]
         struct Output {
             to: String,
             amount: BoundedNum<Fr, { constants::BALANCE_SIZE }>,
+        }
+
+        #[derive(Serialize)]
+        pub struct TransactionData {
+            public: NativeTransferPub<Fr>,
+            secret: NativeTransferSec<Fr>,
+            ciphertext: Base64,
+            memo: Base64,
         }
 
         fn null_note() -> NativeNote<Fr> {
@@ -173,220 +181,215 @@ impl UserAccount {
             }
         }
 
-        let outputs: Vec<Output> = serde_wasm_bindgen::from_value(outputs.into())?;
+        let mut rng = random::CustomRng;
+        let state = self.state.clone();
+        let keys = self.keys.clone();
 
-        if outputs.len() >= constants::IN {
-            return Err(js_err!("Too many outputs (max: {})", constants::IN));
-        }
+        future_to_promise(async move {
+            let state = state.borrow();
+            let outputs: Vec<Output> = serde_wasm_bindgen::from_value(outputs.into())?;
 
-        let spend_interval_index = self.state.latest_note_index + 1;
-        let prev_account = self.state.latest_account.unwrap_or_else(|| NativeAccount {
-            eta: self.keys.eta,
-            i: BoundedNum::new(Num::ZERO),
-            b: BoundedNum::new(Num::ZERO),
-            e: BoundedNum::new(Num::ZERO),
-            t: rng.gen(),
-        });
-
-        let next_usable_index = self.state.earliest_usable_index();
-
-        // Fetch constants::IN usable notes from state
-        let in_notes: Vec<(u64, NativeNote<Fr>)> = self
-            .state
-            .txs
-            .iter_slice(next_usable_index..=self.state.latest_note_index)
-            .take(constants::IN)
-            .filter_map(|(index, tx)| match tx {
-                Transaction::Note(note) => Some((index, note)),
-                _ => None,
-            })
-            .collect();
-
-        let mut input_value = prev_account.b.to_num();
-        for (_index, note) in &in_notes {
-            input_value += note.b.to_num();
-        }
-
-        let mut input_energy = prev_account.e.to_num();
-        input_energy +=
-            prev_account.b.to_num() * (Num::from(spend_interval_index) - prev_account.i.to_num());
-
-        for (note_index, note) in &in_notes {
-            input_energy += note.b.to_num() * Num::from(spend_interval_index - note_index);
-        }
-
-        let mut output_value = Num::ZERO;
-        let out_notes: SizedVec<_, { constants::OUT }> = outputs
-            .iter()
-            .map(|dest| {
-                let (to_d, to_p_d) = parse_address::<PoolBN256>(&dest.to)?;
-
-                output_value += dest.amount.to_num();
-
-                Ok(NativeNote {
-                    d: to_d,
-                    p_d: to_p_d,
-                    b: dest.amount,
-                    t: rng.gen(),
-                })
-            })
-            // fill out remaining output notes with zeroes
-            .chain((outputs.len()..constants::OUT).map(|_| Ok(null_note())))
-            .collect::<Result<SizedVec<_, { constants::OUT }>, AddressParseError>>()?;
-
-        let new_balance = input_value - output_value;
-
-        let out_account = NativeAccount {
-            eta: self.keys.eta,
-            i: BoundedNum::new(Num::from(spend_interval_index)),
-            b: BoundedNum::new(new_balance),
-            e: BoundedNum::new(input_energy),
-            t: rng.gen(),
-        };
-
-        let out_account_hash = out_account.hash(&*POOL_PARAMS);
-        let nullifier = nullifier(out_account_hash, self.keys.eta, &*POOL_PARAMS);
-
-        let ciphertext = {
-            let entropy: [u8; 32] = rng.gen();
-            cipher::encrypt(
-                &entropy,
-                self.keys.eta,
-                out_account,
-                out_notes.as_slice(),
-                &*POOL_PARAMS,
-            )
-        };
-
-        let mut input_hashes = vec![prev_account.hash(&*POOL_PARAMS)];
-        for (_index, note) in &in_notes {
-            input_hashes.push(note.hash(&*POOL_PARAMS));
-        }
-
-        if in_notes.len() < constants::IN {
-            for _ in in_notes.len()..=constants::IN {
-                input_hashes.push(Num::ZERO);
+            if outputs.len() >= constants::IN {
+                return Err(js_err!("Too many outputs (max: {})", constants::IN));
             }
-        }
 
-        let out_note_hashes: Vec<_> = out_notes.iter().map(|n| n.hash(&*POOL_PARAMS)).collect();
-        let output_hashes: Vec<_> = [out_account_hash]
-            .iter()
-            .chain(out_note_hashes.iter())
-            .copied()
-            .collect();
+            let spend_interval_index = state.latest_note_index + 1;
+            let prev_account = state.latest_account.unwrap_or_else(|| NativeAccount {
+                eta: keys.eta,
+                i: BoundedNum::new(Num::ZERO),
+                b: BoundedNum::new(Num::ZERO),
+                e: BoundedNum::new(Num::ZERO),
+                t: rng.gen(),
+            });
 
-        let out_ch = out_commitment_hash(&output_hashes, &*POOL_PARAMS);
-        let tx_hash = tx_hash(&input_hashes, out_ch, &*POOL_PARAMS);
-        let out_commit = poseidon(&output_hashes, &*POOL_PARAMS.compress());
+            let next_usable_index = state.earliest_usable_index();
 
-        let delta = make_delta::<Fr>(
-            input_value,
-            input_energy,
-            Num::from(spend_interval_index as u32),
-        );
+            // Fetch constants::IN usable notes from state
+            let in_notes: Vec<(u64, NativeNote<Fr>)> = state
+                .txs
+                .iter_slice(next_usable_index..=state.latest_note_index)
+                .take(constants::IN)
+                .filter_map(|(index, tx)| match tx {
+                    Transaction::Note(note) => Some((index, note)),
+                    _ => None,
+                })
+                .collect();
 
-        let tree = &self.state.tree;
-        let root: Num<Fr> = tree.get_root();
+            let mut input_value = prev_account.b.to_num();
+            for (_index, note) in &in_notes {
+                input_value += note.b.to_num();
+            }
 
-        let mut memo_data = ciphertext.clone();
-        if let Some(data) = &mut data {
-            memo_data.append(data);
-        }
+            let mut input_energy = prev_account.e.to_num();
+            input_energy += prev_account.b.to_num()
+                * (Num::from(spend_interval_index) - prev_account.i.to_num());
 
-        let memo_hash = utils::keccak256(&memo_data);
-        let memo = Num::from_uint_reduced(NumRepr(Uint::from_little_endian(&memo_hash)));
+            for (note_index, note) in &in_notes {
+                input_energy += note.b.to_num() * Num::from(spend_interval_index - note_index);
+            }
 
-        let public = NativeTransferPub::<Fr> {
-            root,
-            nullifier,
-            out_commit,
-            delta,
-            memo,
-        };
+            let mut output_value = Num::ZERO;
+            let out_notes: SizedVec<_, { constants::OUT }> = outputs
+                .iter()
+                .map(|dest| {
+                    let (to_d, to_p_d) = parse_address::<PoolBN256>(&dest.to)?;
 
-        let tx = NativeTx {
-            input: (
-                prev_account,
-                in_notes
-                    .iter()
-                    .map(|(_, note)| note)
-                    .cloned()
-                    .chain((in_notes.len()..constants::IN).map(|_| null_note()))
-                    .collect(),
-            ),
-            output: (out_account, out_notes),
-        };
+                    output_value += dest.amount.to_num();
 
-        // TODO: Create an abstraction for signatures
-        let (eddsa_s, eddsa_r) = tx_sign(self.keys.sk, tx_hash, &*POOL_PARAMS);
+                    Ok(NativeNote {
+                        d: to_d,
+                        p_d: to_p_d,
+                        b: dest.amount,
+                        t: rng.gen(),
+                    })
+                })
+                // fill out remaining output notes with zeroes
+                .chain((outputs.len()..constants::OUT).map(|_| Ok(null_note())))
+                .collect::<Result<SizedVec<_, { constants::OUT }>, AddressParseError>>()?;
 
-        let zero_note_proofs = (in_notes.len()..constants::IN).map(|_| Ok(null_proof()));
+            let new_balance = input_value - output_value;
 
-        let note_proofs = in_notes
-            .iter()
-            .copied()
-            .map(|(index, _note)| {
-                tree.get_proof(index)
-                    .ok_or_else(|| js_err!("Could not get proof for leaf {}", index))
-            })
-            .chain(zero_note_proofs)
-            .collect::<Result<_, JsValue>>()?;
+            let out_account = NativeAccount {
+                eta: keys.eta,
+                i: BoundedNum::new(Num::from(spend_interval_index)),
+                b: BoundedNum::new(new_balance),
+                e: BoundedNum::new(input_energy),
+                t: rng.gen(),
+            };
 
-        let secret = NativeTransferSec::<Fr> {
-            tx,
-            in_proof: (
-                tree.get_proof(self.state.latest_account_index)
-                    .unwrap_or_else(null_proof), // FIXME: Which proof to use here?
-                note_proofs,
-            ),
-            eddsa_s: eddsa_s.to_other().unwrap(),
-            eddsa_r,
-            eddsa_a: self.keys.a,
-        };
+            let out_account_hash = out_account.hash(&*POOL_PARAMS);
+            let nullifier = nullifier(out_account_hash, keys.eta, &*POOL_PARAMS);
 
-        let data = TransactionData {
-            public,
-            secret,
-            ciphertext: Base64(ciphertext),
-            memo: Base64(memo_data),
-        };
+            let ciphertext = {
+                let entropy: [u8; 32] = rng.gen();
+                cipher::encrypt(
+                    &entropy,
+                    keys.eta,
+                    out_account,
+                    out_notes.as_slice(),
+                    &*POOL_PARAMS,
+                )
+            };
 
-        let value = serde_wasm_bindgen::to_value(&data).unwrap();
+            let mut input_hashes = vec![prev_account.hash(&*POOL_PARAMS)];
+            for (_index, note) in &in_notes {
+                input_hashes.push(note.hash(&*POOL_PARAMS));
+            }
 
-        Ok(value.unchecked_into::<ts_types::TransactionData>())
+            if in_notes.len() < constants::IN {
+                for _ in in_notes.len()..=constants::IN {
+                    input_hashes.push(Num::ZERO);
+                }
+            }
+
+            let out_note_hashes: Vec<_> = out_notes.iter().map(|n| n.hash(&*POOL_PARAMS)).collect();
+            let output_hashes: Vec<_> = [out_account_hash]
+                .iter()
+                .chain(out_note_hashes.iter())
+                .copied()
+                .collect();
+
+            let out_ch = out_commitment_hash(&output_hashes, &*POOL_PARAMS);
+            let tx_hash = tx_hash(&input_hashes, out_ch, &*POOL_PARAMS);
+            let out_commit = poseidon(&output_hashes, &*POOL_PARAMS.compress());
+
+            let delta = make_delta::<Fr>(
+                input_value,
+                input_energy,
+                Num::from(spend_interval_index as u32),
+            );
+
+            let tree = &state.tree;
+            let root: Num<Fr> = tree.get_root();
+
+            let mut memo_data = ciphertext.clone();
+            if let Some(data) = &mut data {
+                memo_data.append(data);
+            }
+
+            let memo_hash = utils::keccak256(&memo_data);
+            let memo = Num::from_uint_reduced(NumRepr(Uint::from_little_endian(&memo_hash)));
+
+            let public = NativeTransferPub::<Fr> {
+                root,
+                nullifier,
+                out_commit,
+                delta,
+                memo,
+            };
+
+            let tx = NativeTx {
+                input: (
+                    prev_account,
+                    in_notes
+                        .iter()
+                        .map(|(_, note)| note)
+                        .cloned()
+                        .chain((in_notes.len()..constants::IN).map(|_| null_note()))
+                        .collect(),
+                ),
+                output: (out_account, out_notes),
+            };
+            // TODO: Create an abstraction for signatures
+            let (eddsa_s, eddsa_r) = tx_sign(keys.sk, tx_hash, &*POOL_PARAMS);
+
+            let zero_note_proofs = (in_notes.len()..constants::IN).map(|_| Ok(null_proof()));
+
+            let note_proofs = in_notes
+                .iter()
+                .copied()
+                .map(|(index, _note)| {
+                    tree.get_proof(index)
+                        .ok_or_else(|| js_err!("Could not get proof for leaf {}", index))
+                })
+                .chain(zero_note_proofs)
+                .collect::<Result<_, JsValue>>()?;
+
+            let secret = NativeTransferSec::<Fr> {
+                tx,
+                in_proof: (
+                    tree.get_proof(state.latest_account_index)
+                        .unwrap_or_else(null_proof), // FIXME: Which proof to use here?
+                    note_proofs,
+                ),
+                eddsa_s: eddsa_s.to_other().unwrap(),
+                eddsa_r,
+                eddsa_a: keys.a,
+            };
+
+            let data = TransactionData {
+                public,
+                secret,
+                ciphertext: Base64(ciphertext),
+                memo: Base64(memo_data),
+            };
+
+            Ok(serde_wasm_bindgen::to_value(&data).unwrap())
+        })
     }
 
     #[wasm_bindgen(js_name = "addAccount")]
     /// Cache account at specified index.
     pub fn add_account(&mut self, at_index: u64, account: Account) -> Result<(), JsValue> {
-        self.state.add_account(at_index, account)
+        self.state.borrow_mut().add_account(at_index, account)
     }
 
     #[wasm_bindgen(js_name = "addReceivedNote")]
     /// Caches a note at specified index.
     /// Only cache received notes.
     pub fn add_received_note(&mut self, at_index: u64, note: Note) -> Result<(), JsValue> {
-        self.state.add_received_note(at_index, note)
+        self.state.borrow_mut().add_received_note(at_index, note)
     }
 
     #[wasm_bindgen(js_name = "totalBalance")]
     /// Returns user's total balance (account + available notes).
     pub fn total_balance(&self) -> String {
-        self.state.total_balance()
+        self.state.borrow().total_balance()
     }
-
-    #[wasm_bindgen(js_name = "takeState")]
-    /// Consumes the UserAccount and returns it's State.
-    pub fn take_state(self) -> State {
-        self.state
-    }
-}
-
-#[derive(Serialize)]
-pub struct TransactionData {
-    public: NativeTransferPub<Fr>,
-    secret: NativeTransferSec<Fr>,
-    ciphertext: Base64,
-    memo: Base64,
+    //
+    // #[wasm_bindgen(js_name = "takeState")]
+    // /// Consumes the UserAccount and returns it's State.
+    // pub fn take_state(self) -> State {
+    //     self.state.take()
+    // }
 }

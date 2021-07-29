@@ -23,12 +23,11 @@ For example, in your `tsconfig.json` set this option so that the typescript comp
 ```js
 import { UserAccount, State } from 'libzeropool-wasm';
 
-const state = await State.init("any-string");
-// 
+const state = await State.init("any user identifier");
 const account = new UserAccount(secretKey, state);
 
 const address = account.generateAddress();
-const mergeTx = account.makeTx([{ to: address, amount: "0"}], blockchainData);
+const mergeTx = await account.createTx([{ to: address, amount: "0"}], blockchainData);
 ```
 
 ## Development

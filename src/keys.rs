@@ -13,6 +13,7 @@ pub fn derive_sk(seed: &[u8]) -> Vec<u8> {
     sk.to_uint().0.to_little_endian()
 }
 
+#[derive(Clone)]
 pub struct Keys {
     pub sk: Num<Fs>,
     pub a: Num<Fr>,
