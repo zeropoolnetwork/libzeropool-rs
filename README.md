@@ -28,6 +28,10 @@ const account = new UserAccount(secretKey, state);
 
 const address = account.generateAddress();
 const mergeTx = await account.createTx([{ to: address, amount: "0"}], blockchainData);
+
+const params = Params.fromBinary(serializedParameters);
+const proof = Proof.tx(params, mergeTx.public, mergeTx.secret);
+
 ```
 
 ## Development
