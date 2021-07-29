@@ -1,10 +1,14 @@
 use js_sys::Array;
 use libzeropool::{
     constants,
-    fawkes_crypto::ff_uint::{NumRepr, Uint},
     fawkes_crypto::{
-        core::sizedvec::SizedVec, ff_uint::Num, native::poseidon::poseidon,
-        native::poseidon::MerkleProof, rand::Rng,
+        backend::bellman_groth16::engines::Bn256,
+        core::sizedvec::SizedVec,
+        ff_uint::Num,
+        ff_uint::{NumRepr, Uint},
+        native::poseidon::poseidon,
+        native::poseidon::MerkleProof,
+        rand::Rng,
     },
     native::{
         account::Account as NativeAccount,
@@ -12,7 +16,7 @@ use libzeropool::{
         cipher,
         key::derive_key_p_d,
         note::Note as NativeNote,
-        params::{PoolBN256, PoolParams},
+        params::{PoolBN256, PoolParams as PoolParamsTrait},
         tx::{
             make_delta, nullifier, out_commitment_hash, tx_hash, tx_sign,
             TransferPub as NativeTransferPub, TransferSec as NativeTransferSec, Tx as NativeTx,
@@ -25,7 +29,7 @@ use wasm_bindgen::{prelude::*, JsCast};
 
 use crate::{
     address::AddressParseError,
-    types::{Account, Fr, Note, Notes, Pair, TxOutputs},
+    ts_types::{Account, Note, Notes, Pair, TxOutputs},
     utils::Base64,
 };
 pub use crate::{
@@ -47,11 +51,16 @@ mod proof;
 mod random;
 mod sparse_array;
 mod state;
-mod types;
+mod ts_types;
 
 #[cfg(feature = "wee_alloc")]
 #[global_allocator]
 static ALLOC: wee_alloc::WeeAlloc = wee_alloc::WeeAlloc::INIT;
+
+pub type PoolParams = PoolBN256;
+pub type Fr = <PoolParams as PoolParamsTrait>::Fr;
+pub type Fs = <PoolParams as PoolParamsTrait>::Fs;
+pub type Engine = Bn256;
 
 // TODO: Implement a native interface first, then create wasm bindings.
 

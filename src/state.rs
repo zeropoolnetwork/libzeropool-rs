@@ -13,8 +13,8 @@ use wasm_bindgen::JsCast;
 
 use crate::{
     sparse_array::SparseArray,
-    types::{Account, Fr, Note},
-    utils,
+    ts_types::{Account, Note},
+    utils, Fr,
 };
 
 pub type MerkleTree = crate::merkle::MerkleTree<'static, Database, PoolBN256>;

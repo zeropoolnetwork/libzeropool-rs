@@ -14,7 +14,8 @@ use wasm_bindgen::{prelude::*, JsCast};
 
 use crate::{
     params::Params,
-    types::{Engine, Fr, TransferPub, TransferSec},
+    ts_types::{TransferPub, TransferSec},
+    Engine, Fr,
 };
 
 #[wasm_bindgen]
@@ -31,9 +32,7 @@ impl Proof {
         params: Params,
         public_tx: TransferPub,
         secret_tx: TransferSec,
-    ) -> Result<crate::types::Proof, JsValue> {
-        use libzeropool::circuit::tx::c_transfer;
-
+    ) -> Result<crate::ts_types::Proof, JsValue> {
         let params: Parameters<Engine> = params.into();
 
         let public: NativeTransferPub<_> =
@@ -52,7 +51,7 @@ impl Proof {
             proof: snark_proof,
         };
 
-        Ok(serde_wasm_bindgen::to_value(&proof)?.unchecked_into::<crate::types::Proof>())
+        Ok(serde_wasm_bindgen::to_value(&proof)?.unchecked_into::<crate::ts_types::Proof>())
     }
 
     #[wasm_bindgen(js_name = "tree")]

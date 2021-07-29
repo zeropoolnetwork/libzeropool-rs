@@ -1,7 +1,7 @@
 use fawkes_crypto::backend::bellman_groth16::Parameters;
 use wasm_bindgen::prelude::*;
 
-use crate::types::Engine;
+use crate::Engine;
 
 #[wasm_bindgen]
 pub struct Params {

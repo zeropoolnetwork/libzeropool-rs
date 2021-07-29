@@ -5,7 +5,7 @@ use libzeropool::{
 };
 use wasm_bindgen::{prelude::*, JsValue};
 
-use crate::types::{Fr, Fs};
+use crate::{Fr, Fs};
 
 #[wasm_bindgen(js_name = deriveSecretKey)]
 pub fn derive_sk(seed: &[u8]) -> Vec<u8> {

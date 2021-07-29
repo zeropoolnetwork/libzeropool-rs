@@ -1,13 +1,4 @@
-use libzeropool::{
-    fawkes_crypto::backend::bellman_groth16::engines::Bn256,
-    native::params::{PoolBN256, PoolParams as NativePoolParams},
-};
 use wasm_bindgen::prelude::*;
-
-pub type PoolParams = PoolBN256;
-pub type Fr = <PoolParams as NativePoolParams>::Fr;
-pub type Fs = <PoolParams as NativePoolParams>::Fs;
-pub type Engine = Bn256;
 
 #[wasm_bindgen(typescript_custom_section)]
 const TS_APPEND_CONTENT: &'static str = r#"
