@@ -41,19 +41,15 @@ export interface TransactionData {
 }
 
 export interface TreePub {
-    root: string;
-    nullifier: string;
-    out_commit: string;
-    delta: string;
-    memo: string;
+    root_before: string;
+    root_after: string;
+    leaf: string;
 }
 
 export interface TreeSec {
-    tx: Tx;
-    in_proof: { account: MerkleProof; notes: Array<MerkleProof> };
-    eddsa_s: string;
-    eddsa_r: string;
-    eddsa_a: string;
+    proof_filled: MerkleProof;
+    proof_free: MerkleProof;
+    prev_leaf: string;
 }
 
 export interface Tx {
