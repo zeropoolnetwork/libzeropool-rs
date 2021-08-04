@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+
+PARENT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )/.." &> /dev/null && pwd )"
+
+rm -rf $PARENT_DIR/bundler $PARENT_DIR/nodejs

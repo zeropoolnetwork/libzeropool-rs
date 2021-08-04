@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+
+wasm-pack publish ../bundler
+wasm-pack nodejs ../nodejs
