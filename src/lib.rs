@@ -9,7 +9,7 @@ use libzeropool::{
         ff_uint::Num,
         ff_uint::{NumRepr, Uint},
         native::poseidon::poseidon,
-        native::poseidon::MerkleProof,
+        native::poseidon::MerkleProof as NativeMerkleProof,
         rand::Rng,
     },
     native::{
@@ -29,11 +29,7 @@ use libzeropool::{
 use serde::{Deserialize, Serialize};
 use wasm_bindgen::{prelude::*, JsCast};
 
-use crate::{
-    address::AddressParseError,
-    ts_types::{Account, Note, Notes, Pair, TxOutputs},
-    utils::Base64,
-};
+use crate::{address::AddressParseError, utils::Base64};
 pub use crate::{
     address::{format_address, parse_address},
     keys::{derive_sk, Keys},
@@ -41,6 +37,7 @@ pub use crate::{
     params::*,
     proof::*,
     state::{State, Transaction},
+    ts_types::*,
 };
 use wasm_bindgen_futures::future_to_promise;
 
@@ -174,8 +171,8 @@ impl UserAccount {
             }
         }
 
-        fn null_proof() -> MerkleProof<Fr, { constants::HEIGHT }> {
-            MerkleProof {
+        fn null_proof() -> NativeMerkleProof<Fr, { constants::HEIGHT }> {
+            NativeMerkleProof {
                 sibling: (0..constants::HEIGHT).map(|_| Num::ZERO).collect(),
                 path: (0..constants::HEIGHT).map(|_| false).collect(),
             }
@@ -390,10 +387,13 @@ impl UserAccount {
     pub fn total_balance(&self) -> String {
         self.state.borrow().total_balance()
     }
-    //
-    // #[wasm_bindgen(js_name = "takeState")]
-    // /// Consumes the UserAccount and returns it's State.
-    // pub fn take_state(self) -> State {
-    //     self.state.take()
-    // }
+
+    #[wasm_bindgen(js_name = "getMerkleProof")]
+    pub fn get_merkle_proof(&self, index: u64) -> Option<MerkleProof> {
+        self.state.borrow().tree.get_proof(index).map(|proof| {
+            serde_wasm_bindgen::to_value(&proof)
+                .unwrap()
+                .unchecked_into::<MerkleProof>()
+        })
+    }
 }
