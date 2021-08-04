@@ -23,7 +23,7 @@ pub struct Keys {
 impl Keys {
     pub fn derive(sk: &[u8]) -> Result<Self, JsValue> {
         let num_sk = Num::<Fs>::from_uint(NumRepr(Uint::from_little_endian(sk)))
-            .ok_or_else(|| js_err!("Invalid secret key"))?;
+            .ok_or_else(|| js_err!("Invalid spending key"))?;
         let a = derive_key_a(num_sk, &*POOL_PARAMS).x;
         let eta = derive_key_eta(a, &*POOL_PARAMS);
 
