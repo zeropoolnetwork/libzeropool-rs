@@ -1,45 +1,46 @@
-use crate::{
-    params::Params,
-    ts_types::{TransferPub, TransferSec, TreePub, TreeSec},
-    Engine, Fr, PoolParams,
-};
 use libzeropool::{
-    circuit::tree::tree_update,
-    circuit::tx::c_transfer,
+    circuit::{tree::tree_update, tx::c_transfer},
     fawkes_crypto::{
-        backend::bellman_groth16::engines::Engine,
-        backend::bellman_groth16::prover::Proof,
-        backend::bellman_groth16::prover::{prove, Proof as SnarkProof},
-        backend::bellman_groth16::Parameters,
+        backend::bellman_groth16::engines::Engine, backend::bellman_groth16::prover::prove,
+        backend::bellman_groth16::prover::Proof, backend::bellman_groth16::Parameters,
         ff_uint::Num,
     },
-    native::params::PoolParams,
-    native::tree::{TreePub, TreeSec},
-    native::tree::{TreePub as NativeTreePub, TreeSec as NativeTreeSec},
-    native::tx::{TransferPub as NativeTransferPub, TransferSec as NativeTransferSec},
-    native::tx::{TransferPub, TransferSec},
-    POOL_PARAMS,
+    native::{
+        params::PoolParams,
+        tree::{TreePub, TreeSec},
+        tx::{TransferPub, TransferSec},
+    },
 };
 
-pub fn prove_tx<E: Engine>(
+pub fn prove_tx<P, E>(
     params: &Parameters<E>,
+    pool_params: &P,
     transfer_pub: TransferPub<E::Fr>,
     transfer_sec: TransferSec<E::Fr>,
-) -> (Vec<Num<E::Fr>>, Proof<E>) {
+) -> (Vec<Num<E::Fr>>, Proof<E>)
+where
+    P: PoolParams<Fr = E::Fr>,
+    E: Engine,
+{
     let circuit = |public, secret| {
-        c_transfer(&public, &secret, params);
+        c_transfer(&public, &secret, pool_params);
     };
 
     prove(params, &transfer_pub, &transfer_sec, circuit)
 }
 
-pub fn prove_tree<E: Engine>(
+pub fn prove_tree<P, E>(
     params: &Parameters<E>,
+    pool_params: &P,
     tree_pub: TreePub<E::Fr>,
     tree_sec: TreeSec<E::Fr>,
-) -> (Vec<Num<E::Fr>>, Proof<E>) {
+) -> (Vec<Num<E::Fr>>, Proof<E>)
+where
+    P: PoolParams<Fr = E::Fr>,
+    E: Engine,
+{
     let circuit = |public, secret| {
-        tree_update(&public, &secret, params);
+        tree_update(&public, &secret, pool_params);
     };
 
     prove(params, &tree_pub, &tree_sec, circuit)

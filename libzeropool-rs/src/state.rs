@@ -1,46 +1,44 @@
-use std::convert::TryInto;
+use std::{convert::TryInto, ops::Deref, rc::Rc};
 
 use kvdb::KeyValueDB;
-use kvdb_web::Database;
 use libzeropool::{
     constants,
-    fawkes_crypto::{ff_uint::Num, BorshDeserialize, BorshSerialize},
-    native::boundednum::BoundedNum,
-    native::{account::Account as NativeAccount, note::Note as NativeNote, params::PoolBN256},
-    POOL_PARAMS,
+    fawkes_crypto::{ff_uint::Num, ff_uint::PrimeField, BorshDeserialize, BorshSerialize},
+    native::{
+        account::Account, account::Account as NativeAccount, boundednum::BoundedNum, note::Note,
+        note::Note as NativeNote, params::PoolParams,
+    },
 };
 
-use crate::{
-    sparse_array::SparseArray,
-    ts_types::{Account, Note},
-    utils, Fr, MerkleTree,
-};
-use libzeropool::native::account::Account;
-use libzeropool::native::note::Note;
-use libzeropool::native::params::PoolParams;
+use crate::{sparse_array::SparseArray, MerkleTree};
 
-pub type TxStorage<D> = SparseArray<D, Transaction>;
+pub type TxStorage<D, Fr> = SparseArray<D, Transaction<Fr>>;
 
 #[derive(BorshSerialize, BorshDeserialize, PartialEq, Debug)]
-pub enum Transaction {
+pub enum Transaction<Fr: PrimeField> {
     Account(NativeAccount<Fr>),
     Note(NativeNote<Fr>),
 }
 
 pub struct State<D: KeyValueDB, P: PoolParams> {
-    pub(crate) tree: MerkleTree<'static, D, P>,
+    params: Rc<P>,
+    pub(crate) tree: MerkleTree<D, P>,
     /// Stores only usable (own) accounts and notes
-    pub(crate) txs: TxStorage<D>,
+    pub(crate) txs: TxStorage<D, P::Fr>,
     pub(crate) latest_account: Option<NativeAccount<P::Fr>>,
     pub latest_account_index: u64,
     pub latest_note_index: u64,
-    pub(crate) total_balance: BoundedNum<Fr, { constants::BALANCE_SIZE }>,
+    pub(crate) total_balance: BoundedNum<P::Fr, { constants::BALANCE_SIZE }>,
 }
 
-impl<D: KeyValueDB, P: PoolParams> State<D, P> {
+impl<D, P> State<D, P>
+where
+    D: KeyValueDB,
+    P: PoolParams,
+    P::Fr: 'static,
+{
+    #[cfg(target_arch = "wasm32")]
     pub async fn init(db_id: String) -> Self {
-        utils::set_panic_hook();
-
         let merkle_db_name = format!("zeropool.{}.smt", &db_id);
         let tx_db_name = format!("zeropool.{}.txs", &db_id);
         let tree = MerkleTree::new_web(&merkle_db_name, &POOL_PARAMS).await;
@@ -94,7 +92,7 @@ impl<D: KeyValueDB, P: PoolParams> State<D, P> {
 
     /// Cache account at specified index.
     pub fn add_account(&mut self, at_index: u64, account: Account<P::Fr>) {
-        let account_hash = account.hash(&*POOL_PARAMS);
+        let account_hash = account.hash(self.params.deref());
 
         // Update tx storage
         self.txs.set(at_index, &Transaction::Account(account));
@@ -118,7 +116,7 @@ impl<D: KeyValueDB, P: PoolParams> State<D, P> {
         self.txs.set(at_index, &Transaction::Note(note));
 
         // Update merkle tree
-        let hash = note.hash(&*POOL_PARAMS);
+        let hash = note.hash(self.params.deref());
         self.tree.add_hash(at_index, hash, false);
 
         if at_index > self.latest_note_index {

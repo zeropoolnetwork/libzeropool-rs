@@ -1,8 +1,10 @@
 use crate::utils::keccak256;
 use libzeropool::{
     constants,
-    fawkes_crypto::borsh::{BorshDeserialize, BorshSerialize},
-    fawkes_crypto::ff_uint::Num,
+    fawkes_crypto::{
+        borsh::{BorshDeserialize, BorshSerialize},
+        ff_uint::Num,
+    },
     native::boundednum::BoundedNum,
     native::params::PoolParams,
 };

@@ -1,7 +1,8 @@
+use std::rc::Rc;
+
 use borsh::{BorshDeserialize, BorshSerialize};
 use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
 use kvdb::{DBTransaction, KeyValueDB};
-use kvdb_web::Database as WebDatabase;
 use libzeropool::{
     constants,
     fawkes_crypto::core::sizedvec::SizedVec,
@@ -12,13 +13,14 @@ use libzeropool::{
 
 type Hash<F> = Num<F>;
 
-pub struct MerkleTree<'p, D: KeyValueDB, P: PoolParams> {
+pub struct MerkleTree<D: KeyValueDB, P: PoolParams> {
     db: D,
-    params: &'p P,
+    params: Rc<P>,
     default_hashes: Vec<Hash<P::Fr>>,
     last_index: u64,
 }
 
+#[cfg(target_arch = "wasm32")]
 impl<'p, P: PoolParams> MerkleTree<'p, WebDatabase, P> {
     pub async fn new_web(name: &str, params: &'p P) -> MerkleTree<'p, WebDatabase, P> {
         let db = WebDatabase::open(name.to_owned(), 1).await.unwrap();
@@ -28,8 +30,8 @@ impl<'p, P: PoolParams> MerkleTree<'p, WebDatabase, P> {
 }
 
 // TODO: Proper error handling.
-impl<'p, D: KeyValueDB, P: PoolParams> MerkleTree<'p, D, P> {
-    pub fn new(db: D, params: &'p P) -> MerkleTree<'p, D, P> {
+impl<D: KeyValueDB, P: PoolParams> MerkleTree<D, P> {
+    pub fn new(db: D, params: Rc<P>) -> Self {
         // TODO: Optimize, this is extremely inefficient. Cache the number of leaves or ditch kvdb?
         let mut last_index = 0;
         for (k, _v) in db.iter(0) {
@@ -42,7 +44,7 @@ impl<'p, D: KeyValueDB, P: PoolParams> MerkleTree<'p, D, P> {
 
         MerkleTree {
             db,
-            default_hashes: Self::gen_default_hashes(params),
+            default_hashes: Self::gen_default_hashes(&params),
             params,
             last_index,
         }

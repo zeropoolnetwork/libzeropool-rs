@@ -2,7 +2,6 @@ use std::{convert::TryFrom, marker::PhantomData, ops::RangeInclusive};
 
 use borsh::{BorshDeserialize, BorshSerialize};
 use kvdb::{DBTransaction, KeyValueDB};
-use kvdb_web::Database as WebDatabase;
 
 /// A persistent sparse array built on top of kvdb
 pub struct SparseArray<D: KeyValueDB, T: BorshSerialize + BorshDeserialize> {
@@ -10,6 +9,7 @@ pub struct SparseArray<D: KeyValueDB, T: BorshSerialize + BorshDeserialize> {
     _phantom: PhantomData<T>,
 }
 
+#[cfg(target_arch = "wasm32")]
 impl<T> SparseArray<WebDatabase, T>
 where
     T: BorshSerialize + BorshDeserialize,

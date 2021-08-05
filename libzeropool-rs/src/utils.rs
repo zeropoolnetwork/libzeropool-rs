@@ -1,5 +1,3 @@
-use serde::{de, Deserialize, Deserializer, Serialize, Serializer};
-
 pub fn keccak256(data: &[u8]) -> [u8; 32] {
     use sha3::Digest;
 
