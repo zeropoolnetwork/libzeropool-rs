@@ -10,7 +10,7 @@ use libzeropool::{
     },
 };
 
-use crate::{sparse_array::SparseArray, MerkleTree};
+use crate::{merkle::MerkleTree, sparse_array::SparseArray};
 
 pub type TxStorage<D, Fr> = SparseArray<D, Transaction<Fr>>;
 
