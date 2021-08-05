@@ -37,12 +37,9 @@ where
     P: PoolParams,
     P::Fr: 'static,
 {
-    #[cfg(target_arch = "wasm32")]
-    pub async fn init(db_id: String) -> Self {
-        let merkle_db_name = format!("zeropool.{}.smt", &db_id);
-        let tx_db_name = format!("zeropool.{}.txs", &db_id);
-        let tree = MerkleTree::new_web(&merkle_db_name, &POOL_PARAMS).await;
-        let txs = TxStorage::new_web(&tx_db_name).await;
+    pub fn new(merkle_db: D, txs_db: D, params: Rc<P>) -> Self {
+        let tree = MerkleTree::new(merkle_db, params.clone());
+        let txs = TxStorage::new(txs_db);
 
         // TODO: Cache
         let mut latest_account_index = 0;
@@ -81,6 +78,7 @@ where
         }
 
         State {
+            params,
             tree,
             txs,
             latest_account_index,

@@ -9,21 +9,6 @@ pub struct SparseArray<D: KeyValueDB, T: BorshSerialize + BorshDeserialize> {
     _phantom: PhantomData<T>,
 }
 
-#[cfg(target_arch = "wasm32")]
-impl<T> SparseArray<WebDatabase, T>
-where
-    T: BorshSerialize + BorshDeserialize,
-{
-    pub async fn new_web(name: &str) -> SparseArray<WebDatabase, T> {
-        let db = WebDatabase::open(name.to_owned(), 1).await.unwrap();
-
-        SparseArray {
-            db,
-            _phantom: Default::default(),
-        }
-    }
-}
-
 impl<D: KeyValueDB, T> SparseArray<D, T>
 where
     D: KeyValueDB,

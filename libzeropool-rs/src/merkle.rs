@@ -20,15 +20,6 @@ pub struct MerkleTree<D: KeyValueDB, P: PoolParams> {
     last_index: u64,
 }
 
-#[cfg(target_arch = "wasm32")]
-impl<'p, P: PoolParams> MerkleTree<'p, WebDatabase, P> {
-    pub async fn new_web(name: &str, params: &'p P) -> MerkleTree<'p, WebDatabase, P> {
-        let db = WebDatabase::open(name.to_owned(), 1).await.unwrap();
-
-        Self::new(db, params)
-    }
-}
-
 // TODO: Proper error handling.
 impl<D: KeyValueDB, P: PoolParams> MerkleTree<D, P> {
     pub fn new(db: D, params: Rc<P>) -> Self {
