@@ -49,10 +49,10 @@ pub enum CreateTxError {
 
 #[derive(Serialize, Deserialize)]
 pub struct TransactionData<Fr: PrimeField> {
-    public: TransferPub<Fr>,
-    secret: TransferSec<Fr>,
-    ciphertext: Vec<u8>,
-    memo: Vec<u8>,
+    pub public: TransferPub<Fr>,
+    pub secret: TransferSec<Fr>,
+    pub ciphertext: Vec<u8>,
+    pub memo: Vec<u8>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
