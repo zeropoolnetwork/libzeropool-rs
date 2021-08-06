@@ -37,10 +37,17 @@ where
     P: PoolParams,
     P::Fr: 'static,
 {
-    pub fn new(merkle_db: D, txs_db: D, params: Rc<P>) -> Self {
-        let tree = MerkleTree::new(merkle_db, params.clone());
-        let txs = TxStorage::new(txs_db);
+    #[cfg(feature = "web")]
+    pub async fn init(db_id: String, params: Rc<P>) -> Self {
+        let merkle_db_name = format!("zeropool.{}.smt", &db_id);
+        let tx_db_name = format!("zeropool.{}.txs", &db_id);
+        let tree = MerkleTree::new_web(&merkle_db_name, params.clone()).await;
+        let txs = TxStorage::new_web(&tx_db_name).await;
 
+        Self::new(tree, txs, params)
+    }
+
+    pub fn new(tree: MerkleTree<D, P>, txs: TxStorage<D, P::Fr>, params: Rc<P>) -> Self {
         // TODO: Cache
         let mut latest_account_index = 0;
         let mut latest_note_index = 0;

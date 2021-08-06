@@ -3,6 +3,8 @@ use std::rc::Rc;
 use borsh::{BorshDeserialize, BorshSerialize};
 use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
 use kvdb::{DBTransaction, KeyValueDB};
+#[cfg(feature = "web")]
+use kvdb_web::Database as WebDatabase;
 use libzeropool::{
     constants,
     fawkes_crypto::core::sizedvec::SizedVec,
@@ -18,6 +20,15 @@ pub struct MerkleTree<D: KeyValueDB, P: PoolParams> {
     params: Rc<P>,
     default_hashes: Vec<Hash<P::Fr>>,
     last_index: u64,
+}
+
+#[cfg(feature = "web")]
+impl<P: PoolParams> MerkleTree<WebDatabase, P> {
+    pub async fn new_web(name: &str, params: Rc<P>) -> MerkleTree<WebDatabase, P> {
+        let db = WebDatabase::open(name.to_owned(), 1).await.unwrap();
+
+        Self::new(db, params)
+    }
 }
 
 // TODO: Proper error handling.

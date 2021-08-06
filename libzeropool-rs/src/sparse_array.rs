@@ -2,11 +2,28 @@ use std::{convert::TryFrom, marker::PhantomData, ops::RangeInclusive};
 
 use borsh::{BorshDeserialize, BorshSerialize};
 use kvdb::{DBTransaction, KeyValueDB};
+#[cfg(feature = "web")]
+use kvdb_web::Database as WebDatabase;
 
 /// A persistent sparse array built on top of kvdb
 pub struct SparseArray<D: KeyValueDB, T: BorshSerialize + BorshDeserialize> {
     db: D,
     _phantom: PhantomData<T>,
+}
+
+#[cfg(feature = "web")]
+impl<T> SparseArray<WebDatabase, T>
+where
+    T: BorshSerialize + BorshDeserialize,
+{
+    pub async fn new_web(name: &str) -> SparseArray<WebDatabase, T> {
+        let db = WebDatabase::open(name.to_owned(), 0).await.unwrap();
+
+        SparseArray {
+            db,
+            _phantom: Default::default(),
+        }
+    }
 }
 
 impl<D: KeyValueDB, T> SparseArray<D, T>
