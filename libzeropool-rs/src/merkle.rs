@@ -1,5 +1,3 @@
-use std::rc::Rc;
-
 use borsh::{BorshDeserialize, BorshSerialize};
 use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
 use kvdb::{DBTransaction, KeyValueDB};
@@ -17,14 +15,14 @@ type Hash<F> = Num<F>;
 
 pub struct MerkleTree<D: KeyValueDB, P: PoolParams> {
     db: D,
-    params: Rc<P>,
+    params: P,
     default_hashes: Vec<Hash<P::Fr>>,
     last_index: u64,
 }
 
 #[cfg(feature = "web")]
 impl<P: PoolParams> MerkleTree<WebDatabase, P> {
-    pub async fn new_web(name: &str, params: Rc<P>) -> MerkleTree<WebDatabase, P> {
+    pub async fn new_web(name: &str, params: P) -> MerkleTree<WebDatabase, P> {
         let db = WebDatabase::open(name.to_owned(), 1).await.unwrap();
 
         Self::new(db, params)
@@ -33,7 +31,7 @@ impl<P: PoolParams> MerkleTree<WebDatabase, P> {
 
 // TODO: Proper error handling.
 impl<D: KeyValueDB, P: PoolParams> MerkleTree<D, P> {
-    pub fn new(db: D, params: Rc<P>) -> Self {
+    pub fn new(db: D, params: P) -> Self {
         // TODO: Optimize, this is extremely inefficient. Cache the number of leaves or ditch kvdb?
         let mut last_index = 0;
         for (k, _v) in db.iter(0) {

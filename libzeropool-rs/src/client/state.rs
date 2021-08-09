@@ -1,6 +1,8 @@
-use std::{convert::TryInto, ops::Deref, rc::Rc};
+use std::convert::TryInto;
 
 use kvdb::KeyValueDB;
+#[cfg(feature = "web")]
+use kvdb_web::Database as WebDatabase;
 use libzeropool::{
     constants,
     fawkes_crypto::{ff_uint::Num, ff_uint::PrimeField, BorshDeserialize, BorshSerialize},
@@ -21,7 +23,7 @@ pub enum Transaction<Fr: PrimeField> {
 }
 
 pub struct State<D: KeyValueDB, P: PoolParams> {
-    params: Rc<P>,
+    params: P,
     pub(crate) tree: MerkleTree<D, P>,
     /// Stores only usable (own) accounts and notes
     pub(crate) txs: TxStorage<D, P::Fr>,
@@ -31,14 +33,13 @@ pub struct State<D: KeyValueDB, P: PoolParams> {
     pub(crate) total_balance: BoundedNum<P::Fr, { constants::BALANCE_SIZE }>,
 }
 
-impl<D, P> State<D, P>
+#[cfg(feature = "web")]
+impl<P> State<WebDatabase, P>
 where
-    D: KeyValueDB,
     P: PoolParams,
     P::Fr: 'static,
 {
-    #[cfg(feature = "web")]
-    pub async fn init_web(db_id: String, params: Rc<P>) -> Self {
+    pub async fn init_web(db_id: String, params: P) -> Self {
         let merkle_db_name = format!("zeropool.{}.smt", &db_id);
         let tx_db_name = format!("zeropool.{}.txs", &db_id);
         let tree = MerkleTree::new_web(&merkle_db_name, params.clone()).await;
@@ -46,8 +47,15 @@ where
 
         Self::new(tree, txs, params)
     }
+}
 
-    pub fn new(tree: MerkleTree<D, P>, txs: TxStorage<D, P::Fr>, params: Rc<P>) -> Self {
+impl<D, P> State<D, P>
+where
+    D: KeyValueDB,
+    P: PoolParams,
+    P::Fr: 'static,
+{
+    pub fn new(tree: MerkleTree<D, P>, txs: TxStorage<D, P::Fr>, params: P) -> Self {
         // TODO: Cache
         let mut latest_account_index = 0;
         let mut latest_note_index = 0;
@@ -97,7 +105,7 @@ where
 
     /// Cache account at specified index.
     pub fn add_account(&mut self, at_index: u64, account: Account<P::Fr>) {
-        let account_hash = account.hash(self.params.deref());
+        let account_hash = account.hash(&self.params);
 
         // Update tx storage
         self.txs.set(at_index, &Transaction::Account(account));
@@ -121,7 +129,7 @@ where
         self.txs.set(at_index, &Transaction::Note(note));
 
         // Update merkle tree
-        let hash = note.hash(self.params.deref());
+        let hash = note.hash(&self.params);
         self.tree.add_hash(at_index, hash, false);
 
         if at_index > self.latest_note_index {

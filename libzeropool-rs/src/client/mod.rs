@@ -1,4 +1,3 @@
-use std::ops::Deref;
 use std::{cell::RefCell, rc::Rc};
 
 use kvdb::KeyValueDB;
@@ -29,13 +28,15 @@ use libzeropool::{
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
+use self::state::{State, Transaction};
 use crate::{
     address::{format_address, parse_address, AddressParseError},
     keys::{reduce_sk, Keys},
     random::CustomRng,
-    state::{State, Transaction},
     utils::keccak256,
 };
+
+pub mod state;
 
 #[derive(Debug, Error)]
 pub enum CreateTxError {
@@ -57,14 +58,15 @@ pub struct TransactionData<Fr: PrimeField> {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct TxOutput<Fr: PrimeField> {
-    to: String,
-    amount: BoundedNum<Fr, { constants::BALANCE_SIZE }>,
+    pub to: String,
+    pub amount: BoundedNum<Fr, { constants::BALANCE_SIZE }>,
 }
 
 pub struct UserAccount<D: KeyValueDB, P: PoolParams> {
-    keys: Keys<P>,
-    params: Rc<P>,
-    state: Rc<RefCell<State<D, P>>>,
+    pub keys: Keys<P>,
+    pub params: P,
+    pub state: Rc<RefCell<State<D, P>>>,
+    pub sign_callback: Option<Box<dyn Fn(&[u8]) -> Vec<u8>>>, // TODO: Find a way to make it async
 }
 
 impl<'p, D, P> UserAccount<D, P>
@@ -74,18 +76,19 @@ where
     P::Fr: 'static,
 {
     /// Initializes UserAccount with a spending key that has to be an element of the prime field Fs (p = 6554484396890773809930967563523245729705921265872317281365359162392183254199).
-    pub fn new(sk: Num<P::Fs>, state: State<D, P>, params: Rc<P>) -> Self {
-        let keys = Keys::derive(sk, params.deref());
+    pub fn new(sk: Num<P::Fs>, state: State<D, P>, params: P) -> Self {
+        let keys = Keys::derive(sk, &params);
 
         UserAccount {
             keys,
             state: Rc::new(RefCell::new(state)),
             params,
+            sign_callback: None,
         }
     }
 
     /// Same as constructor but accepts arbitrary data as spending key.
-    pub fn from_seed(seed: &[u8], state: State<D, P>, params: Rc<P>) -> Self {
+    pub fn from_seed(seed: &[u8], state: State<D, P>, params: P) -> Self {
         let sk = reduce_sk(seed);
         Self::new(sk, state, params)
     }
@@ -96,18 +99,18 @@ where
         let mut rng = CustomRng;
 
         let d: BoundedNum<_, { constants::DIVERSIFIER_SIZE }> = rng.gen();
-        let pk_d = derive_key_p_d(d.to_num(), self.keys.eta, self.params.deref());
+        let pk_d = derive_key_p_d(d.to_num(), self.keys.eta, &self.params);
         format_address::<P>(d, pk_d.x)
     }
 
     /// Attempts to decrypt notes.
     pub fn decrypt_notes(&self, data: Vec<u8>) -> Vec<Option<Note<P::Fr>>> {
-        cipher::decrypt_in(self.keys.eta, &data, self.params.deref())
+        cipher::decrypt_in(self.keys.eta, &data, &self.params)
     }
 
     /// Attempts to decrypt account and notes.
     pub fn decrypt_pair(&self, data: Vec<u8>) -> Option<(Account<P::Fr>, Vec<Note<P::Fr>>)> {
-        cipher::decrypt_out(self.keys.eta, &data, self.params.deref())
+        cipher::decrypt_out(self.keys.eta, &data, &self.params)
     }
 
     /// Constructs a transaction.
@@ -210,8 +213,8 @@ where
             t: rng.gen(),
         };
 
-        let out_account_hash = out_account.hash(self.params.deref());
-        let nullifier = nullifier(out_account_hash, keys.eta, self.params.deref());
+        let out_account_hash = out_account.hash(&self.params);
+        let nullifier = nullifier(out_account_hash, keys.eta, &self.params);
 
         let ciphertext = {
             let entropy: [u8; 32] = rng.gen();
@@ -220,15 +223,13 @@ where
                 keys.eta,
                 out_account,
                 out_notes.as_slice(),
-                self.params.deref(),
+                &self.params,
             )
         };
 
         // Hash input account + notes filling remaining space with non-hashed zeroes
-        let in_note_hashes = in_notes
-            .iter()
-            .map(|(_, note)| note.hash(self.params.deref()));
-        let input_hashes: SizedVec<_, { constants::IN }> = [prev_account.hash(self.params.deref())]
+        let in_note_hashes = in_notes.iter().map(|(_, note)| note.hash(&self.params));
+        let input_hashes: SizedVec<_, { constants::IN }> = [prev_account.hash(&self.params)]
             .iter()
             .copied()
             .chain(in_note_hashes)
@@ -237,7 +238,7 @@ where
             .collect();
 
         // Same with output
-        let out_note_hashes = out_notes.iter().map(|n| n.hash(self.params.deref()));
+        let out_note_hashes = out_notes.iter().map(|n| n.hash(&self.params));
         let output_hashes: SizedVec<_, { constants::OUT + 1 }> = [out_account_hash]
             .iter()
             .copied()
@@ -246,9 +247,9 @@ where
             .take(constants::OUT + 1)
             .collect();
 
-        let out_ch = out_commitment_hash(output_hashes.as_slice(), self.params.deref());
-        let tx_hash = tx_hash(input_hashes.as_slice(), out_ch, self.params.deref());
-        let out_commit = poseidon(output_hashes.as_slice(), self.params.deref().compress());
+        let out_ch = out_commitment_hash(output_hashes.as_slice(), &self.params);
+        let tx_hash = tx_hash(input_hashes.as_slice(), out_ch, &self.params);
+        let out_commit = poseidon(output_hashes.as_slice(), &self.params.compress());
 
         let delta = make_delta::<P::Fr>(
             input_value,
@@ -288,8 +289,15 @@ where
             ),
             output: (out_account, out_notes),
         };
+
         // TODO: Create an abstraction for signatures
-        let (eddsa_s, eddsa_r) = tx_sign(keys.sk, tx_hash, self.params.deref());
+        // let sk = if let Some(f) = &self.sign_callback {
+        //     f()
+        // } else {
+        //     keys.sk
+        // };
+
+        let (eddsa_s, eddsa_r) = tx_sign(keys.sk, tx_hash, &self.params);
 
         let note_proofs = in_notes
             .iter()
@@ -336,5 +344,12 @@ where
     /// Returns user's total balance (account + available notes).
     pub fn total_balance(&self) -> Num<P::Fr> {
         self.state.borrow().total_balance()
+    }
+
+    pub fn get_merkle_proof(
+        &self,
+        index: u64,
+    ) -> Option<MerkleProof<P::Fr, { constants::HEIGHT }>> {
+        self.state.borrow().tree.get_proof(index)
     }
 }

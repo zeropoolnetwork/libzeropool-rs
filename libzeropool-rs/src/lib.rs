@@ -5,5 +5,4 @@ pub mod merkle;
 pub mod proof;
 pub mod random;
 mod sparse_array;
-pub mod state;
 mod utils;
