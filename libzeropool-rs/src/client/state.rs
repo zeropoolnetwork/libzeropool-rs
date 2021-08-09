@@ -38,7 +38,7 @@ where
     P::Fr: 'static,
 {
     #[cfg(feature = "web")]
-    pub async fn init(db_id: String, params: Rc<P>) -> Self {
+    pub async fn init_web(db_id: String, params: Rc<P>) -> Self {
         let merkle_db_name = format!("zeropool.{}.smt", &db_id);
         let tx_db_name = format!("zeropool.{}.txs", &db_id);
         let tree = MerkleTree::new_web(&merkle_db_name, params.clone()).await;
