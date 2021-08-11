@@ -12,8 +12,8 @@ crate-type = ["cdylib"]
 
 [dependencies]
 libzeropool-rs = { path = "../libzeropool-rs" }
+neon = { version = "0.9", default-features = false, features = ["napi-6"] }
+# FIXME: Using a random fork for now
+neon-serde = { git = "https://github.com/brokad/neon-serde.git", rev = "0a168baf9e52b1ebe6bd4661d95efc1318d788d8" }
+serde = "1.0.127"
 
-[dependencies.neon]
-git = "https://github.com/neon-bindings/neon.git"
-default-features = false
-features = ["napi-6"]

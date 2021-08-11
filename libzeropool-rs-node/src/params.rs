@@ -1,7 +1,11 @@
+use std::cell::RefCell;
+
 use libzeropool_rs::libzeropool::fawkes_crypto::backend::bellman_groth16::Parameters;
 use neon::prelude::*;
 
 use crate::Engine;
+
+pub type BoxedParams = JsBox<RefCell<Params>>;
 
 pub struct Params {
     pub inner: Parameters<Engine>,

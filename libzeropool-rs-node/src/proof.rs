@@ -1,35 +1,57 @@
 use libzeropool_rs::libzeropool::fawkes_crypto::backend::bellman_groth16::prover::Proof as NativeProof;
 use libzeropool_rs::libzeropool::fawkes_crypto::ff_uint::Num;
+use libzeropool_rs::libzeropool::POOL_PARAMS;
 use libzeropool_rs::proof::{prove_tree, prove_tx};
 use neon::prelude::*;
+use serde::{Deserialize, Serialize};
 
+use crate::params::BoxedParams;
 use crate::{Engine, Fr};
 
+#[derive(Serialize, Deserialize)]
 pub struct SnarkProof {
     inputs: Vec<Num<Fr>>,
     proof: NativeProof<Engine>,
 }
 
-declare_types! {
-    pub class JsSnarkProof for SnarkProof {}
+impl Finalize for SnarkProof {}
+
+pub fn js_prove_tx(mut cx: FunctionContext) -> JsResult<JsValue> {
+    let params = cx.argument::<BoxedParams>(0)?;
+
+    let tr_pub_js = cx.argument::<JsValue>(0)?;
+    let tr_sec_js = cx.argument::<JsValue>(0)?;
+    let tr_pub = neon_serde::from_value(&mut cx, tr_pub_js).unwrap();
+    let tr_sec = neon_serde::from_value(&mut cx, tr_sec_js).unwrap();
+
+    let pair = prove_tx(&params.borrow().inner, &*POOL_PARAMS, tr_pub, tr_sec);
+
+    let proof = SnarkProof {
+        inputs: pair.0,
+        proof: pair.1,
+    };
+
+    let result = neon_serde::to_value(&mut cx, &proof).unwrap();
+
+    Ok(result)
 }
 
-fn prove_tx_js(mut cx: FunctionContext) -> JsResult<JsUndefined> {
-    //
-    let arg0 = cx.argument::<JsObject>(0)?;
+pub fn js_prove_tree(mut cx: FunctionContext) -> JsResult<JsValue> {
+    let params = cx.argument::<BoxedParams>(0)?;
 
-    let js_value = neon_serde::to_value(&mut cx, &value)?;
-    let pair = prove_tx(parameters, &*POOL_PARAMS);
+    let tr_pub_js = cx.argument::<JsValue>(0)?;
+    let tr_sec_js = cx.argument::<JsValue>(0)?;
+    let tr_pub = neon_serde::from_value(&mut cx, tr_pub_js).unwrap();
+    let tr_sec = neon_serde::from_value(&mut cx, tr_sec_js).unwrap();
 
-    Ok(js_value)
+    let pair = prove_tree(&params.borrow().inner, &*POOL_PARAMS, tr_pub, tr_sec);
+
+    let proof = SnarkProof {
+        inputs: pair.0,
+        proof: pair.1,
+    };
+
+    let result = neon_serde::to_value(&mut cx, &proof).unwrap();
+
+    Ok(result)
 }
-
-fn prove_tree_js(mut cx: FunctionContext) -> JsResult<JsUndefined> {
-    Ok(cx.undefined())
-}
-
-register_module!(mut m, {
-    m.export_function("proveTx", prove_tx_js)?;
-    m.export_function("proveTree", prove_tree_js)?;
-    Ok(())
-});

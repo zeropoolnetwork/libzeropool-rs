@@ -4,16 +4,20 @@ use neon::prelude::*;
 
 mod client;
 mod params;
-// mod proof;
+mod proof;
 
 pub type PoolParams = PoolBN256;
 pub type Fr = <PoolParams as PoolParamsTrait>::Fr;
 pub type Fs = <PoolParams as PoolParamsTrait>::Fs;
 pub type Engine = Bn256;
 
+// TODO: Nested modules
 #[neon::main]
 fn main(mut cx: ModuleContext) -> NeonResult<()> {
-    cx.export_function("fromBinary", params::from_binary)?;
+    cx.export_function("readParamsFromBinary", params::from_binary)?;
+
+    cx.export_function("proveTx", proof::js_prove_tx)?;
+    cx.export_function("proveTree", proof::js_prove_tree)?;
 
     Ok(())
 }
