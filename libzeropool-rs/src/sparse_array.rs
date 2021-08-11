@@ -2,6 +2,8 @@ use std::{convert::TryFrom, marker::PhantomData, ops::RangeInclusive};
 
 use borsh::{BorshDeserialize, BorshSerialize};
 use kvdb::{DBTransaction, KeyValueDB};
+#[cfg(feature = "native")]
+use kvdb_rocksdb::{Database as NativeDatabase, DatabaseConfig};
 #[cfg(feature = "web")]
 use kvdb_web::Database as WebDatabase;
 
@@ -10,6 +12,8 @@ pub struct SparseArray<D: KeyValueDB, T: BorshSerialize + BorshDeserialize> {
     db: D,
     _phantom: PhantomData<T>,
 }
+
+pub type NativeSparseArray<T> = SparseArray<NativeDatabase, T>;
 
 #[cfg(feature = "web")]
 impl<T> SparseArray<WebDatabase, T>
@@ -23,6 +27,24 @@ where
             db,
             _phantom: Default::default(),
         }
+    }
+}
+
+#[cfg(feature = "native")]
+impl<T> SparseArray<NativeDatabase, T>
+where
+    T: BorshSerialize + BorshDeserialize,
+{
+    pub fn new_native(
+        config: &DatabaseConfig,
+        path: &str,
+    ) -> std::io::Result<SparseArray<NativeDatabase, T>> {
+        let db = NativeDatabase::open(config, path)?;
+
+        Ok(SparseArray {
+            db,
+            _phantom: Default::default(),
+        })
     }
 }
 
@@ -62,6 +84,13 @@ where
     pub fn set(&mut self, index: u64, data: &T) {
         let mut batch = self.db.transaction();
         self.set_batched(index, data, &mut batch);
+        self.db.write(batch).unwrap();
+    }
+
+    pub fn remove(&mut self, index: u64) {
+        let mut batch = self.db.transaction();
+        let key = index.to_be_bytes();
+        batch.delete(0, &key);
         self.db.write(batch).unwrap();
     }
 

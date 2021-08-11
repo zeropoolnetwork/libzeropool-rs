@@ -6,5 +6,5 @@ pub mod keys;
 pub mod merkle;
 pub mod proof;
 pub mod random;
-mod sparse_array;
+pub mod sparse_array;
 mod utils;
