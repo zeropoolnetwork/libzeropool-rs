@@ -3,6 +3,7 @@ use libzeropool_rs::libzeropool::native::params::{PoolBN256, PoolParams as PoolP
 use neon::prelude::*;
 
 mod client;
+mod merkle;
 mod params;
 mod proof;
 
@@ -18,6 +19,10 @@ fn main(mut cx: ModuleContext) -> NeonResult<()> {
 
     cx.export_function("proveTx", proof::js_prove_tx)?;
     cx.export_function("proveTree", proof::js_prove_tree)?;
+
+    cx.export_function("merkleNew", merkle::merkle_new)?;
+    cx.export_function("merkleAddHash", merkle::merkle_add_hash)?;
+    cx.export_function("merkleGetProof", merkle::merkle_get_proof)?;
 
     Ok(())
 }

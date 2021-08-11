@@ -1,6 +1,8 @@
 use borsh::{BorshDeserialize, BorshSerialize};
 use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
 use kvdb::{DBTransaction, KeyValueDB};
+#[cfg(feature = "native")]
+use kvdb_rocksdb::{Database as NativeDatabase, DatabaseConfig};
 #[cfg(feature = "web")]
 use kvdb_web::Database as WebDatabase;
 use libzeropool::{
@@ -20,12 +22,31 @@ pub struct MerkleTree<D: KeyValueDB, P: PoolParams> {
     last_index: u64,
 }
 
+#[cfg(feature = "native")]
+pub type NativeMerkleTree<P> = MerkleTree<NativeDatabase, P>;
+
+#[cfg(feature = "web")]
+pub type WebMerkleTree<P> = MerkleTree<WebDatabase, P>;
+
 #[cfg(feature = "web")]
 impl<P: PoolParams> MerkleTree<WebDatabase, P> {
     pub async fn new_web(name: &str, params: P) -> MerkleTree<WebDatabase, P> {
         let db = WebDatabase::open(name.to_owned(), 1).await.unwrap();
 
         Self::new(db, params)
+    }
+}
+
+#[cfg(feature = "native")]
+impl<P: PoolParams> MerkleTree<NativeDatabase, P> {
+    pub fn new_native(
+        config: &DatabaseConfig,
+        path: &str,
+        params: P,
+    ) -> std::io::Result<MerkleTree<NativeDatabase, P>> {
+        let db = NativeDatabase::open(config, path)?;
+
+        Ok(Self::new(db, params))
     }
 }
 

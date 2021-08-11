@@ -19,8 +19,8 @@ impl Finalize for SnarkProof {}
 pub fn js_prove_tx(mut cx: FunctionContext) -> JsResult<JsValue> {
     let params = cx.argument::<BoxedParams>(0)?;
 
-    let tr_pub_js = cx.argument::<JsValue>(0)?;
-    let tr_sec_js = cx.argument::<JsValue>(0)?;
+    let tr_pub_js = cx.argument::<JsValue>(1)?;
+    let tr_sec_js = cx.argument::<JsValue>(2)?;
     let tr_pub = neon_serde::from_value(&mut cx, tr_pub_js).unwrap();
     let tr_sec = neon_serde::from_value(&mut cx, tr_sec_js).unwrap();
 
@@ -39,8 +39,8 @@ pub fn js_prove_tx(mut cx: FunctionContext) -> JsResult<JsValue> {
 pub fn js_prove_tree(mut cx: FunctionContext) -> JsResult<JsValue> {
     let params = cx.argument::<BoxedParams>(0)?;
 
-    let tr_pub_js = cx.argument::<JsValue>(0)?;
-    let tr_sec_js = cx.argument::<JsValue>(0)?;
+    let tr_pub_js = cx.argument::<JsValue>(1)?;
+    let tr_sec_js = cx.argument::<JsValue>(2)?;
     let tr_pub = neon_serde::from_value(&mut cx, tr_pub_js).unwrap();
     let tr_sec = neon_serde::from_value(&mut cx, tr_sec_js).unwrap();
 

@@ -11,13 +11,15 @@ pub struct Params {
     pub inner: Parameters<Engine>,
 }
 
-pub fn from_binary(mut cx: FunctionContext) -> JsResult<JsBox<Params>> {
+pub fn from_binary(mut cx: FunctionContext) -> JsResult<BoxedParams> {
     let input = cx.argument::<JsBuffer>(0)?;
-    let guard = cx.lock();
-    let mut input = input.borrow(&guard).as_slice::<u8>();
-    let inner = Parameters::read(&mut input, true, true).unwrap();
 
-    Ok(cx.boxed(Params { inner }))
+    let inner = cx.borrow(&input, |data| {
+        let mut data = data.as_slice();
+        Parameters::read(&mut data, true, true).unwrap()
+    });
+
+    Ok(cx.boxed(RefCell::new(Params { inner })))
 }
 
 impl Finalize for Params {}
