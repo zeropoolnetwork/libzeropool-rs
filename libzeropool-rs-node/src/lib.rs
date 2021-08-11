@@ -17,8 +17,8 @@ pub type Engine = Bn256;
 fn main(mut cx: ModuleContext) -> NeonResult<()> {
     cx.export_function("readParamsFromBinary", params::from_binary)?;
 
-    cx.export_function("proveTx", proof::js_prove_tx)?;
-    cx.export_function("proveTree", proof::js_prove_tree)?;
+    cx.export_function("proveTx", proof::prove_tx)?;
+    cx.export_function("proveTree", proof::prove_tree)?;
 
     cx.export_function("merkleNew", merkle::merkle_new)?;
     cx.export_function("merkleAddHash", merkle::merkle_add_hash)?;

@@ -1,7 +1,7 @@
 use libzeropool_rs::libzeropool::fawkes_crypto::backend::bellman_groth16::prover::Proof as NativeProof;
 use libzeropool_rs::libzeropool::fawkes_crypto::ff_uint::Num;
 use libzeropool_rs::libzeropool::POOL_PARAMS;
-use libzeropool_rs::proof::{prove_tree, prove_tx};
+use libzeropool_rs::proof::{prove_tree as prove_tree_native, prove_tx as prove_tx_native};
 use neon::prelude::*;
 use serde::{Deserialize, Serialize};
 
@@ -16,7 +16,7 @@ pub struct SnarkProof {
 
 impl Finalize for SnarkProof {}
 
-pub fn js_prove_tx(mut cx: FunctionContext) -> JsResult<JsValue> {
+pub fn prove_tx(mut cx: FunctionContext) -> JsResult<JsValue> {
     let params = cx.argument::<BoxedParams>(0)?;
 
     let tr_pub_js = cx.argument::<JsValue>(1)?;
@@ -24,7 +24,7 @@ pub fn js_prove_tx(mut cx: FunctionContext) -> JsResult<JsValue> {
     let tr_pub = neon_serde::from_value(&mut cx, tr_pub_js).unwrap();
     let tr_sec = neon_serde::from_value(&mut cx, tr_sec_js).unwrap();
 
-    let pair = prove_tx(&params.borrow().inner, &*POOL_PARAMS, tr_pub, tr_sec);
+    let pair = prove_tx_native(&params.borrow().inner, &*POOL_PARAMS, tr_pub, tr_sec);
 
     let proof = SnarkProof {
         inputs: pair.0,
@@ -36,7 +36,7 @@ pub fn js_prove_tx(mut cx: FunctionContext) -> JsResult<JsValue> {
     Ok(result)
 }
 
-pub fn js_prove_tree(mut cx: FunctionContext) -> JsResult<JsValue> {
+pub fn prove_tree(mut cx: FunctionContext) -> JsResult<JsValue> {
     let params = cx.argument::<BoxedParams>(0)?;
 
     let tr_pub_js = cx.argument::<JsValue>(1)?;
@@ -44,7 +44,7 @@ pub fn js_prove_tree(mut cx: FunctionContext) -> JsResult<JsValue> {
     let tr_pub = neon_serde::from_value(&mut cx, tr_pub_js).unwrap();
     let tr_sec = neon_serde::from_value(&mut cx, tr_sec_js).unwrap();
 
-    let pair = prove_tree(&params.borrow().inner, &*POOL_PARAMS, tr_pub, tr_sec);
+    let pair = prove_tree_native(&params.borrow().inner, &*POOL_PARAMS, tr_pub, tr_sec);
 
     let proof = SnarkProof {
         inputs: pair.0,
