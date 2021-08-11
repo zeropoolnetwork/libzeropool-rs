@@ -2,13 +2,16 @@
 Wasm/JavaScript version of [libzeropool](https://github.com/zeropoolnetwork/libzeropool).
 
 ## Install
-`yarn add libzeropool-wasm` or `npm i -S libzeropool-wasm`
+Bundler version:
+`npm i -S libzeropool-rs-wasm-bundler`
+or nodejs version:
+`npm i -S libzeropool-rs-wasm-nodejs`
 
 ## Configuration
 
 ### Webpack 5
-Make sure that the `experiments.asyncWebAssembly` is set to `true` and there is no `import` to `require` transformation
-happening before webpack has a chance to process you code. 
+When using the bundler version, make sure that the `experiments.asyncWebAssembly` is set to `true` and there is no `import` to `require` transformation
+happening before webpack has a chance to process your code. 
 
 For example, in your `tsconfig.json` set this option so that the typescript compiler does not transform your imports
 `compilerOptions.module = "es2020"`
