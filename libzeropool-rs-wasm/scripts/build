@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+
+PARENT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )/.." &> /dev/null && pwd )"
+
+function build () {
+  wasm-pack build --target $1 -d $1
+  # Optimize the binary, since wasm-pack refuses to see wasm-opt
+  wasm-opt -o $PARENT_DIR/$1/wasm-opt.wasm -O3 $PARENT_DIR/$1/libzeropool_js_wasm_bg.wasm && mv $PARENT_DIR/$1/wasm-opt.wasm $PARENT_DIR/$1/libzeropool_js_wasm_bg.wasm
+  # Patch typings for async methods
+  sed -i '' -E 's/(createTx\(.*\)):.*$/\1: Promise<TransactionData>;/g' $PARENT_DIR/$1/libzeropool_js_wasm.d.ts
+  # Patch package.json, since wasm-pack doesn't allow renaming packages
+  sed -i '' -E "s/\"name\": \"libzeropool-rs-wasm\"/\"name\": \"libzeropool-rs-wasm-$1\"/g" $PARENT_DIR/$1/package.json
+}
+
+build bundler
+build nodejs

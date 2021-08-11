@@ -1,6 +1,6 @@
 [workspace]
 members = [
-    "libzeropool-wasm",
+    "libzeropool-rs-wasm",
     "libzeropool-rs",
     "libzeropool-rs-node",
 ]

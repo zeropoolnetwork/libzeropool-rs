@@ -1,5 +1,5 @@
 [package]
-name = "libzeropool-wasm"
+name = "libzeropool-rs-wasm"
 description = "A higher level zeropool API for Wasm"
 version = "0.3.0-alpha.5"
 authors = ["Dmitry Vdovin <voidxnull@gmail.com>"]
