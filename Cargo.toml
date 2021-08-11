@@ -2,4 +2,5 @@
 members = [
     "libzeropool-wasm",
     "libzeropool-rs",
+    "libzeropool-rs-node",
 ]
