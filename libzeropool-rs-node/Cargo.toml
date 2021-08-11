@@ -2,7 +2,7 @@
 name = "libzeropool-rs-node"
 version = "0.1.0"
 authors = ["Dmitry Vdovin <voidxnull@gmail.com>"]
-repository = "https://github.com/zeropoolnetwork/libzeropool-wasm/"
+repository = "https://github.com/zeropoolnetwork/libzeropool-rs/"
 license = "MIT OR Apache-2.0"
 edition = "2018"
 exclude = ["index.node"]

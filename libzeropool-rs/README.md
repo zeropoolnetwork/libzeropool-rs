@@ -1,1 +1,1 @@
-# libzeropool-wasm
+# libzeropool-rs

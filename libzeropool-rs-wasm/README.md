@@ -1,4 +1,4 @@
-# libzeropool-wasm
+# libzeropool-rs-wasm
 Wasm/JavaScript version of [libzeropool](https://github.com/zeropoolnetwork/libzeropool).
 
 ## Install
@@ -24,7 +24,7 @@ For example, in your `tsconfig.json` set this option so that the typescript comp
 
 ## Usage
 ```js
-import { UserAccount, State } from 'libzeropool-wasm';
+import { UserAccount, State } from 'libzeropool-rs-wasm-bundler';
 
 const state = await State.init("any user identifier");
 const account = new UserAccount(spendingKey, state);

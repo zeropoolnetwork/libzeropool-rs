@@ -1,9 +1,9 @@
 [package]
 name = "libzeropool-rs-wasm"
 description = "A higher level zeropool API for Wasm"
-version = "0.3.0-alpha.5"
+version = "0.3.0-alpha.6"
 authors = ["Dmitry Vdovin <voidxnull@gmail.com>"]
-repository = "https://github.com/zeropoolnetwork/libzeropool-wasm/"
+repository = "https://github.com/zeropoolnetwork/libzeropool-rs/"
 license = "MIT OR Apache-2.0"
 edition = "2018"
 
