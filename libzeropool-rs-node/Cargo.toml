@@ -12,10 +12,8 @@ crate-type = ["cdylib"]
 
 [dependencies]
 libzeropool-rs = { path = "../libzeropool-rs" }
-neon-serde = "0.4.0"
-serde = "1.0.127"
 
 [dependencies.neon]
-version = "0.9"
+git = "https://github.com/neon-bindings/neon.git"
 default-features = false
 features = ["napi-6"]
