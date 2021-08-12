@@ -229,6 +229,43 @@ impl<D: KeyValueDB, P: PoolParams> MerkleTree<D, P> {
         Some(MerkleProof { sibling, path })
     }
 
+    pub fn clean(&mut self) {
+        self.clean_before_index(u64::MAX);
+    }
+
+    pub fn clean_before_index(&mut self, clean_before_index: u64) {
+        let mut batch = self.db.transaction();
+
+        // get all nodes
+        // todo: improve performance?
+        let mut keys: Vec<(u32, u64)> = self
+            .db
+            .iter(0)
+            .map(|(key, _value)| Self::parse_node_key(&key))
+            .collect();
+        // remove unnecessary nodes
+        for (height, index) in keys {
+            // leaves have no children
+            if height == 0 {
+                continue;
+            }
+
+            // remove only nodes before specified index
+            if index * (1 << height) >= clean_before_index {
+                continue;
+            }
+
+            let parent_temporary_leaves_count = self.get_temporary_count(height, index);
+            if parent_temporary_leaves_count == (1 << height) {
+                // all leaves in subtree are temporary, we can keep only subtree root
+                self.remove_batched(&mut batch, height - 1, 2 * index);
+                self.remove_batched(&mut batch, height - 1, 2 * index + 1);
+            }
+        }
+
+        self.db.write(batch).unwrap();
+    }
+
     pub fn get_all_nodes(&self) -> Vec<Node<P::Fr>> {
         self.db
             .iter(0)
@@ -287,11 +324,11 @@ impl<D: KeyValueDB, P: PoolParams> MerkleTree<D, P> {
                 parent_temporary_leaves_count,
             );
 
-            if parent_temporary_leaves_count == (1 << current_height) {
+            /*if parent_temporary_leaves_count == (1 << current_height) {
                 // all leaves in subtree are temporary, we can keep only subtree root
                 self.remove_batched(batch, current_height - 1, child_index);
                 self.remove_batched(batch, current_height - 1, second_child_index);
-            }
+            }*/
 
             child_index = parent_index;
             child_hash = hash;
@@ -452,6 +489,8 @@ mod tests {
 
         tree.add_hashes(hashes);
 
+        tree.clean();
+
         let nodes = tree.get_all_nodes();
         assert_eq!(nodes.len(), constants::HEIGHT + 6);
         assert_eq!(tree.get_opt(0, 4), None);
@@ -557,6 +596,8 @@ mod tests {
         for subtree_index in subtree_indexes {
             tree.add_subtree_root(subtree_height, subtree_index, rng.gen());
         }
+
+        tree.clean();
 
         let tree_nodes = tree.get_all_nodes();
         assert_eq!(
