@@ -32,6 +32,13 @@ class TxStorage {
     }
 }
 
+const Params = {
+    fromBinary(data) {
+        zp.readParamsFromBinary(data);
+    }
+};
+
 zp.MerkleTree = MerkleTree;
 zp.TxStorage = TxStorage;
+zp.Params = Params;
 module.exports = zp;
