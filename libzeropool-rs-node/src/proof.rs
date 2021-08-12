@@ -24,7 +24,7 @@ pub fn prove_tx(mut cx: FunctionContext) -> JsResult<JsValue> {
     let tr_pub = neon_serde::from_value(&mut cx, tr_pub_js).unwrap();
     let tr_sec = neon_serde::from_value(&mut cx, tr_sec_js).unwrap();
 
-    let pair = prove_tx_native(&params.borrow().inner, &*POOL_PARAMS, tr_pub, tr_sec);
+    let pair = prove_tx_native(&params.inner, &*POOL_PARAMS, tr_pub, tr_sec);
 
     let proof = SnarkProof {
         inputs: pair.0,
@@ -44,7 +44,7 @@ pub fn prove_tree(mut cx: FunctionContext) -> JsResult<JsValue> {
     let tr_pub = neon_serde::from_value(&mut cx, tr_pub_js).unwrap();
     let tr_sec = neon_serde::from_value(&mut cx, tr_sec_js).unwrap();
 
-    let pair = prove_tree_native(&params.borrow().inner, &*POOL_PARAMS, tr_pub, tr_sec);
+    let pair = prove_tree_native(&params.inner, &*POOL_PARAMS, tr_pub, tr_sec);
 
     let proof = SnarkProof {
         inputs: pair.0,

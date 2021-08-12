@@ -52,6 +52,7 @@ export interface SnarkProof {
 
 declare class Params {
     static fromBinary(data: Buffer): Params;
+    static fromFile(path: string): Params;
 }
 
 declare function proveTx(params: Params, tr_pub: TransferPub, tr_sec: TransferSec): SnarkProof;

@@ -17,6 +17,7 @@ pub type Engine = Bn256;
 #[neon::main]
 fn main(mut cx: ModuleContext) -> NeonResult<()> {
     cx.export_function("readParamsFromBinary", params::from_binary)?;
+    cx.export_function("readParamsFromFile", params::from_file)?;
 
     cx.export_function("proveTx", proof::prove_tx)?;
     cx.export_function("proveTree", proof::prove_tree)?;

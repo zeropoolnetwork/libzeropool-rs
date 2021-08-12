@@ -34,8 +34,11 @@ class TxStorage {
 
 const Params = {
     fromBinary(data) {
-        zp.readParamsFromBinary(data);
-    }
+       return zp.readParamsFromBinary(data);
+    },
+    fromFile(path) {
+        return zp.readParamsFromFile(path);
+    },
 };
 
 zp.MerkleTree = MerkleTree;
