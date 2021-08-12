@@ -393,7 +393,7 @@ mod tests {
     #[test]
     fn test_add_hashes_first_3() {
         let mut rng = CustomRng;
-        let mut tree = MerkleTree::new(create(2), &*POOL_PARAMS);
+        let mut tree = MerkleTree::new(create(2), POOL_PARAMS.clone());
 
         let hashes: Vec<_> = (0..3).map(|n| (n, rng.gen(), false)).collect();
         tree.add_hashes(hashes.clone());
@@ -413,7 +413,7 @@ mod tests {
     #[test]
     fn test_add_hashes_last_3() {
         let mut rng = CustomRng;
-        let mut tree = MerkleTree::new(create(2), &*POOL_PARAMS);
+        let mut tree = MerkleTree::new(create(2), POOL_PARAMS.clone());
 
         let max_index = (1 << constants::HEIGHT) - 1;
         let hashes: Vec<_> = (max_index - 2..=max_index)
@@ -437,7 +437,7 @@ mod tests {
     #[test]
     fn test_unnecessary_temporary_nodes_are_removed() {
         let mut rng = CustomRng;
-        let mut tree = MerkleTree::new(create(2), &*POOL_PARAMS);
+        let mut tree = MerkleTree::new(create(2), POOL_PARAMS.clone());
 
         let mut hashes: Vec<_> = (0..6).map(|n| (n, rng.gen(), false)).collect();
 
@@ -461,7 +461,7 @@ mod tests {
     #[test]
     fn test_get_proof() {
         let mut rng = CustomRng;
-        let mut tree = MerkleTree::new(create(2), &*POOL_PARAMS);
+        let mut tree = MerkleTree::new(create(2), POOL_PARAMS.clone());
         let proof = tree.get_proof(123);
 
         assert!(proof.is_none());
@@ -484,8 +484,8 @@ mod tests {
     #[test_case(16, constants::HEIGHT - 16)]
     fn test_add_subtree(subtree_size: usize, start_index: usize) {
         let mut rng = CustomRng;
-        let mut tree_add_hashes = MerkleTree::new(create(2), &*POOL_PARAMS);
-        let mut tree_add_subtree = MerkleTree::new(create(2), &*POOL_PARAMS);
+        let mut tree_add_hashes = MerkleTree::new(create(2), POOL_PARAMS.clone());
+        let mut tree_add_subtree = MerkleTree::new(create(2), POOL_PARAMS.clone());
 
         let hash_values: Vec<_> = (0..subtree_size).map(|_| rng.gen()).collect();
         let hashes = (0..subtree_size).map(|n| ((start_index + n) as u64, hash_values[n], false));
@@ -519,7 +519,7 @@ mod tests {
     #[test]
     fn test_temporary_nodes_are_used_to_calculate_hashes_first() {
         let mut rng = CustomRng;
-        let mut tree = MerkleTree::new(create(2), &*POOL_PARAMS);
+        let mut tree = MerkleTree::new(create(2), POOL_PARAMS.clone());
 
         let hash0: Hash<_> = rng.gen();
         let hash1: Hash<_> = rng.gen();
@@ -531,7 +531,7 @@ mod tests {
         tree.add_hash(1, hash1.clone(), false);
 
         let parent_hash = tree.get(1, 0);
-        let expected_parent_hash = poseidon([hash0, hash1].as_ref(), &*POOL_PARAMS.compress());
+        let expected_parent_hash = poseidon([hash0, hash1].as_ref(), POOL_PARAMS.compress());
 
         assert_eq!(parent_hash, expected_parent_hash);
     }
@@ -553,7 +553,7 @@ mod tests {
         let mut subtree_indexes: Vec<_> = (0..subtrees_count).map(|i| start_index + i).collect();
         subtree_indexes.shuffle(&mut thread_rng());
 
-        let mut tree = MerkleTree::new(create(2), &*POOL_PARAMS);
+        let mut tree = MerkleTree::new(create(2), POOL_PARAMS.clone());
         for subtree_index in subtree_indexes {
             tree.add_subtree_root(subtree_height, subtree_index, rng.gen());
         }
