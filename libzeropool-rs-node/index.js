@@ -33,15 +33,17 @@ class TxStorage {
 }
 
 const Params = {
-    fromBinary(data) {
-       return zp.readParamsFromBinary(data);
-    },
-    fromFile(path) {
-        return zp.readParamsFromFile(path);
-    },
+    fromBinary: zp.readParamsFromBinary,
+    fromFile: zp.readParamsFromFile,
+};
+ 
+const Proof = {
+    tx: zp.proveTx,
+    tree: zp.proveTree,
 };
 
 zp.MerkleTree = MerkleTree;
 zp.TxStorage = TxStorage;
 zp.Params = Params;
+zp.Proof = Proof
 module.exports = zp;

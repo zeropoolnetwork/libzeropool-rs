@@ -46,8 +46,9 @@ export interface MerkleProof {
 }
 
 export interface SnarkProof {
-    inputs: Array<string>;
-    proof: SnarkProof;
+    a: [string, string];
+    b: [[string, string], [string, string]];
+    c: [string, string];
 }
 
 declare class Params {
@@ -55,7 +56,10 @@ declare class Params {
     static fromFile(path: string): Params;
 }
 
-declare function proveTx(params: Params, tr_pub: TransferPub, tr_sec: TransferSec): SnarkProof;
-declare function proveTree(params: Params, tr_pub: TreePub, tr_sec: TreeSec): SnarkProof;
+declare class Proof {
+    inputs: Array<string>;
+    proof: SnarkProof;
 
-
+    static tx(params: Params, tr_pub: TransferPub, tr_sec: TransferSec): Proof;
+    static tree(params: Params, tr_pub: TreePub, tr_sec: TreeSec): Proof;
+}
