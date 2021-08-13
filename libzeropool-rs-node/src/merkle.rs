@@ -60,3 +60,16 @@ pub fn merkle_get_proof(mut cx: FunctionContext) -> JsResult<JsValue> {
 
     Ok(proof)
 }
+
+pub fn merkle_get_root(mut cx: FunctionContext) -> JsResult<JsValue> {
+    let tree = cx.argument::<BoxedMerkleTree>(0)?;
+
+    let root = tree
+        .borrow()
+        .inner
+        .get_root();
+
+    let result = neon_serde::to_value(&mut cx, &root).unwrap();
+
+    Ok(result)
+}

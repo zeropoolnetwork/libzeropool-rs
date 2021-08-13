@@ -5,6 +5,10 @@ class MerkleTree {
         this.inner = zp.merkleNew(path);
     }
 
+    getRoot() {
+        return zp.merkleGetRoot(this.inner)
+    }
+
     addHash(index, hash) {
         zp.merkleAddHash(this.inner, index, hash);
     }
