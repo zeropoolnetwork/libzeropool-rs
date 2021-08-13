@@ -1,6 +1,7 @@
 declare class MerkleTree {
     constructor(path: string);
 
+    getRoot(): string
     addHash(index: BigInt, hash: Buffer): void;
     getProof(index: BigInt): MerkleProof;
 }
@@ -8,8 +9,8 @@ declare class MerkleTree {
 declare class TxStorage {
     constructor(path: string);
     add(index: BigInt, data: Buffer): void;
-    get(index: BigInt): ?Buffer;
-    delete(index: BigInt);
+    get(index: BigInt): Buffer | null;
+    delete(index: BigInt): void;
 }
 
 export interface TransferPub {
@@ -42,7 +43,7 @@ export interface TreeSec {
 
 export interface MerkleProof {
     sibling: string[];
-    path: boolena[];
+    path: boolean[];
 }
 
 export interface SnarkProof {
