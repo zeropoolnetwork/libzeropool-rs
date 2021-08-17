@@ -229,6 +229,38 @@ impl<D: KeyValueDB, P: PoolParams> MerkleTree<D, P> {
         Some(MerkleProof { sibling, path })
     }
 
+    /// Returns proof
+    pub fn get_proof_for_new<I>(
+        &mut self,
+        new_hashes: I,
+    ) -> Vec<MerkleProof<P::Fr, { constants::HEIGHT }>>
+    where
+        I: IntoIterator<Item = Hash<P::Fr>>,
+    {
+        // TODO: Optimize, no need to mutate the database.
+        let index_offset = self.last_index + 1;
+        self.add_hashes(new_hashes.into_iter().enumerate().map(|(index, hash)| {
+            let new_index = index_offset + index as u64;
+            (new_index, hash, true)
+        }));
+
+        let proofs = (index_offset..=self.last_index)
+            .map(|index| {
+                self.get_proof(index)
+                    .expect("Leaf was expected to be present (bug)")
+            })
+            .collect();
+
+        // FIXME: Not all nodes are deleted here
+        let mut batch = self.db.transaction();
+        for index in index_offset..=self.last_index {
+            self.remove_batched(&mut batch, 0, index);
+        }
+        self.db.write(batch).unwrap();
+
+        proofs
+    }
+
     pub fn clean(&mut self) {
         self.clean_before_index(u64::MAX);
     }

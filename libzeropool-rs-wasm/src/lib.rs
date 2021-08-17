@@ -214,4 +214,13 @@ impl UserAccount {
                 .unchecked_into::<MerkleProof>()
         })
     }
+
+    #[wasm_bindgen(js_name = "getMerkleProofForNew")]
+    pub fn get_merkle_proof_for_new(&self, hashes: &[String]) -> Vec<MerkleProof> {
+        self.inner.borrow().get_merkle(index).map(|proof| {
+            serde_wasm_bindgen::to_value(&proof)
+                .unwrap()
+                .unchecked_into::<MerkleProof>()
+        })
+    }
 }
