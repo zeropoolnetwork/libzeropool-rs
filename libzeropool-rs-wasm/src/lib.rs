@@ -19,7 +19,10 @@ use libzeropool::{
     },
     POOL_PARAMS as NATIVE_POOL_PARAMS,
 };
-use libzeropool_rs::client::{TxOutput, UserAccount as NativeUserAccount};
+use libzeropool_rs::{
+    client::{TxOutput, UserAccount as NativeUserAccount},
+    merkle::Hash,
+};
 use serde::{Deserialize, Serialize};
 use wasm_bindgen::{prelude::*, JsCast};
 use wasm_bindgen_futures::future_to_promise;
@@ -207,6 +210,7 @@ impl UserAccount {
     }
 
     #[wasm_bindgen(js_name = "getMerkleProof")]
+    /// Returns merkle proof for the specified index in the tree.
     pub fn get_merkle_proof(&self, index: u64) -> Option<MerkleProof> {
         self.inner.borrow().get_merkle_proof(index).map(|proof| {
             serde_wasm_bindgen::to_value(&proof)
@@ -216,11 +220,22 @@ impl UserAccount {
     }
 
     #[wasm_bindgen(js_name = "getMerkleProofForNew")]
-    pub fn get_merkle_proof_for_new(&self, hashes: &[String]) -> Vec<MerkleProof> {
-        self.inner.borrow().get_merkle(index).map(|proof| {
-            serde_wasm_bindgen::to_value(&proof)
-                .unwrap()
-                .unchecked_into::<MerkleProof>()
-        })
+    /// Returns merkle proofs for the specified leafs (hashes) as if they were appended to the tree.
+    pub fn get_merkle_proof_for_new(&self, hashes: JsValue) -> Result<Vec<MerkleProof>, JsValue> {
+        let hashes: Vec<Hash<Fr>> = serde_wasm_bindgen::from_value(hashes)?;
+
+        let proofs = self
+            .inner
+            .borrow()
+            .get_merkle_proof_for_new(hashes)
+            .into_iter()
+            .map(|proof| {
+                serde_wasm_bindgen::to_value(&proof)
+                    .unwrap()
+                    .unchecked_into::<MerkleProof>()
+            })
+            .collect();
+
+        Ok(proofs)
     }
 }

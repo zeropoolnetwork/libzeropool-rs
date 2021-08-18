@@ -13,7 +13,7 @@ use libzeropool::{
     native::params::PoolParams,
 };
 
-type Hash<F> = Num<F>;
+pub type Hash<F> = Num<F>;
 
 pub struct MerkleTree<D: KeyValueDB, P: PoolParams> {
     db: D,

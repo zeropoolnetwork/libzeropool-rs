@@ -13,6 +13,10 @@ pub struct SparseArray<D: KeyValueDB, T: BorshSerialize + BorshDeserialize> {
     _phantom: PhantomData<T>,
 }
 
+#[cfg(feature = "web")]
+pub type WebSparseArray<T> = SparseArray<WebDatabase, T>;
+
+#[cfg(feature = "native")]
 pub type NativeSparseArray<T> = SparseArray<NativeDatabase, T>;
 
 #[cfg(feature = "web")]

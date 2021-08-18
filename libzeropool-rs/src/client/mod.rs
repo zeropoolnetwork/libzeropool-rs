@@ -32,6 +32,7 @@ use self::state::{State, Transaction};
 use crate::{
     address::{format_address, parse_address, AddressParseError},
     keys::{reduce_sk, Keys},
+    merkle::Hash,
     random::CustomRng,
     utils::keccak256,
 };
@@ -346,10 +347,22 @@ where
         self.state.borrow().total_balance()
     }
 
+    // TODO: Expose the tree?
+
     pub fn get_merkle_proof(
         &self,
         index: u64,
-    ) -> Option<MerkleProof<P::Fr, { constants::HEIGHT }>> {
+    ) -> Option<MerkleProof<P::Fr, { constants::HEIGHT }>>{
         self.state.borrow().tree.get_proof(index)
+    }
+
+    pub fn get_merkle_proof_for_new<I>(
+        &self,
+        new_hashes: I,
+    ) -> Vec<MerkleProof<P::Fr, { constants::HEIGHT }>>
+    where
+        I: IntoIterator<Item = Hash<P::Fr>>,
+    {
+        self.state.borrow_mut().tree.get_proof_for_new(new_hashes)
     }
 }
