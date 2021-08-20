@@ -283,7 +283,7 @@ where
                     .map(|(_, note)| note)
                     .cloned()
                     .chain((0..).map(|_| null_note()))
-                    .take(constants::IN - 1)
+                    .take(constants::IN)
                     .collect(),
             ),
             output: (out_account, out_notes),
@@ -306,7 +306,7 @@ where
                     .ok_or_else(|| CreateTxError::ProofNotFound(index))
             })
             .chain((0..).map(|_| Ok(null_proof())))
-            .take(constants::IN - 1)
+            .take(constants::IN)
             .collect::<Result<_, _>>()?;
 
         let secret = TransferSec::<P::Fr> {
