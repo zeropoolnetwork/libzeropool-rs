@@ -8,7 +8,6 @@ use libzeropool::{
         core::sizedvec::SizedVec,
         ff_uint::Num,
         ff_uint::{NumRepr, Uint},
-        native::poseidon::poseidon,
         native::poseidon::MerkleProof,
         rand::Rng,
     },
@@ -248,9 +247,8 @@ where
             .take(constants::OUT + 1)
             .collect();
 
-        let out_ch = out_commitment_hash(output_hashes.as_slice(), &self.params);
-        let tx_hash = tx_hash(input_hashes.as_slice(), out_ch, &self.params);
-        let out_commit = poseidon(output_hashes.as_slice(), &self.params.compress());
+        let out_commit = out_commitment_hash(output_hashes.as_slice(), &self.params);
+        let tx_hash = tx_hash(input_hashes.as_slice(), out_commit, &self.params);
 
         let delta = make_delta::<P::Fr>(
             input_value,
