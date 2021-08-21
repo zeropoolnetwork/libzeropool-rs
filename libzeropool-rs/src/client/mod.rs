@@ -121,7 +121,7 @@ where
         outputs: &[TxOutput<P::Fr>],
         mut data: Option<Vec<u8>>,
     ) -> Result<TransactionData<P::Fr>, CreateTxError> {
-        fn null_note<Fr: PrimeField>() -> Note<Fr> {
+        fn zero_note<Fr: PrimeField>() -> Note<Fr> {
             Note {
                 d: BoundedNum::new(Num::ZERO),
                 p_d: Num::ZERO,
@@ -130,7 +130,7 @@ where
             }
         }
 
-        fn null_proof<Fr: PrimeField>() -> MerkleProof<Fr, { constants::HEIGHT }> {
+        fn zero_proof<Fr: PrimeField>() -> MerkleProof<Fr, { constants::HEIGHT }> {
             MerkleProof {
                 sibling: (0..constants::HEIGHT).map(|_| Num::ZERO).collect(),
                 path: (0..constants::HEIGHT).map(|_| false).collect(),
@@ -201,7 +201,7 @@ where
                 })
             })
             // fill out remaining output notes with zeroes
-            .chain((0..).map(|_| Ok(null_note())))
+            .chain((0..).map(|_| Ok(zero_note())))
             .take(constants::OUT)
             .collect::<Result<SizedVec<_, { constants::OUT }>, AddressParseError>>()?;
 
@@ -265,13 +265,15 @@ where
         let tree = &state.tree;
         let root: Num<P::Fr> = tree.get_root();
 
-        let mut memo_data = ciphertext.clone();
+        let mut memo_data =
+            Vec::with_capacity(data.as_ref().map(|d| d.len()).unwrap_or(0) + ciphertext.len());
         if let Some(data) = &mut data {
             memo_data.append(data);
         }
+        memo_data.extend(&ciphertext);
 
         let memo_hash = keccak256(&memo_data);
-        let memo = Num::from_uint_reduced(NumRepr(Uint::from_little_endian(&memo_hash)));
+        let memo = Num::from_uint_reduced(NumRepr(Uint::from_big_endian(&memo_hash)));
 
         let public = TransferPub::<P::Fr> {
             root,
@@ -288,7 +290,7 @@ where
                     .iter()
                     .map(|(_, note)| note)
                     .cloned()
-                    .chain((0..).map(|_| null_note()))
+                    .chain((0..).map(|_| zero_note()))
                     .take(constants::IN)
                     .collect(),
             ),
@@ -311,7 +313,7 @@ where
                 tree.get_proof(index)
                     .ok_or_else(|| CreateTxError::ProofNotFound(index))
             })
-            .chain((0..).map(|_| Ok(null_proof())))
+            .chain((0..).map(|_| Ok(zero_proof())))
             .take(constants::IN)
             .collect::<Result<_, _>>()?;
 
@@ -319,7 +321,7 @@ where
             tx,
             in_proof: (
                 tree.get_proof(state.latest_account_index)
-                    .unwrap_or_else(null_proof),
+                    .unwrap_or_else(zero_proof),
                 note_proofs,
             ),
             eddsa_s: eddsa_s.to_other().unwrap(),
