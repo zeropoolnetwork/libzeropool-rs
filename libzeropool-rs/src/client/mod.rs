@@ -46,6 +46,8 @@ pub enum CreateTxError {
     ProofNotFound(u64),
     #[error("Failed to parse address: {0}")]
     AddressParseError(#[from] AddressParseError),
+    #[error("Insufficient balance: sum of outputs is greater than sum of inputs")]
+    InsufficientBalance,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -203,7 +205,11 @@ where
             .take(constants::OUT)
             .collect::<Result<SizedVec<_, { constants::OUT }>, AddressParseError>>()?;
 
-        let new_balance = input_value - output_value;
+        let new_balance = if input_value.to_uint() >= output_value.to_uint() {
+            input_value - output_value
+        } else {
+            return Err(CreateTxError::InsufficientBalance);
+        };
 
         let out_account = Account {
             eta: keys.eta,
