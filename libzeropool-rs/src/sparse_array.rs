@@ -85,20 +85,20 @@ where
             .take_while(move |(index, _)| range.contains(index))
     }
 
-    pub fn set(&mut self, index: u64, data: &T) {
+    pub fn set(&self, index: u64, data: &T) {
         let mut batch = self.db.transaction();
         self.set_batched(index, data, &mut batch);
         self.db.write(batch).unwrap();
     }
 
-    pub fn remove(&mut self, index: u64) {
+    pub fn remove(&self, index: u64) {
         let mut batch = self.db.transaction();
         let key = index.to_be_bytes();
         batch.delete(0, &key);
         self.db.write(batch).unwrap();
     }
 
-    pub fn set_multiple<'a, I>(&mut self, items: I)
+    pub fn set_multiple<'a, I>(&self, items: I)
     where
         I: IntoIterator<Item = &'a (u64, T)>,
     {
@@ -111,7 +111,7 @@ where
         self.db.write(batch).unwrap();
     }
 
-    fn set_batched(&mut self, index: u64, data: &T, batch: &mut DBTransaction) {
+    fn set_batched(&self, index: u64, data: &T, batch: &mut DBTransaction) {
         let key = index.to_be_bytes();
         let data = data.try_to_vec().unwrap();
 
