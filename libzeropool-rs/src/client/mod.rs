@@ -358,7 +358,7 @@ where
     pub fn get_merkle_proof(
         &self,
         index: u64,
-    ) -> Option<MerkleProof<P::Fr, { constants::HEIGHT }>>{
+    ) -> Option<MerkleProof<P::Fr, { constants::HEIGHT }>> {
         self.state.borrow().tree.get_proof(index)
     }
 
