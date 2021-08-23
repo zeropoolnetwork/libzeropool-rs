@@ -64,3 +64,7 @@ declare class Proof {
     static tx(params: Params, tr_pub: TransferPub, tr_sec: TransferSec): Proof;
     static tree(params: Params, tr_pub: TreePub, tr_sec: TreeSec): Proof;
 }
+
+declare class Helpers {
+    static outCommitmentHash(hashes: Array<Buffer>): string
+}

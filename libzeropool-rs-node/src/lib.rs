@@ -3,6 +3,7 @@ use libzeropool_rs::libzeropool::native::params::{PoolBN256, PoolParams as PoolP
 use neon::prelude::*;
 
 mod client;
+mod helpers;
 mod merkle;
 mod params;
 mod proof;
@@ -31,6 +32,8 @@ fn main(mut cx: ModuleContext) -> NeonResult<()> {
     cx.export_function("txStorageAdd", storage::tx_storage_add)?;
     cx.export_function("txStorageDelete", storage::tx_storage_delete)?;
     cx.export_function("txStorageGet", storage::tx_storage_get)?;
+
+    cx.export_function("helpersOutCommitment", helpers::out_commitment)?;
 
     Ok(())
 }

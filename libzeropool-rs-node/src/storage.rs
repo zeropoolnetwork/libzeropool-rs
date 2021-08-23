@@ -31,8 +31,7 @@ pub fn tx_storage_add(mut cx: FunctionContext) -> JsResult<JsUndefined> {
 
     let buffer = cx.argument::<JsBuffer>(2)?;
     cx.borrow(&buffer, |data| {
-        this.inner
-            .set(index, &data.as_slice().to_vec());
+        this.inner.set(index, &data.as_slice().to_vec());
     });
 
     Ok(cx.undefined())

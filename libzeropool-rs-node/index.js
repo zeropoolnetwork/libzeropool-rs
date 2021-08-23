@@ -46,8 +46,15 @@ const Proof = {
     tree: zp.proveTree,
 };
 
+class Helpers {
+    static outCommitmentHash(outHashes) {
+        return zp.helpersOutCommitment(outHashes)
+    }
+}
+
 zp.MerkleTree = MerkleTree;
 zp.TxStorage = TxStorage;
 zp.Params = Params;
 zp.Proof = Proof
+zp.Helpers = Helpers;
 module.exports = zp;
