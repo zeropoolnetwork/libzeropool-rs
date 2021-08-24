@@ -201,32 +201,34 @@ impl<D: KeyValueDB, P: PoolParams> MerkleTree<D, P> {
         }
     }
 
-    pub fn get_proof(&self, index: u64) -> Option<MerkleProof<P::Fr, { constants::HEIGHT }>> {
+    pub fn get_proof_unchecked<const H: usize>(&self, index: u64) -> MerkleProof<P::Fr, { H }> {
         // TODO: Add Default for SizedVec or make it's member public to replace all those iterators.
-        let key = Self::node_key(0, index);
-        let leaf_present = self.db.get(0, &key).map_or(false, |value| value.is_some());
+        let mut sibling: SizedVec<_, { H }> = (0..H).map(|_| Num::ZERO).collect();
+        let mut path: SizedVec<_, { H }> = (0..H).map(|_| false).collect();
 
-        if !leaf_present {
-            return None;
-        }
-
-        let mut sibling: SizedVec<_, { constants::HEIGHT }> =
-            (0..constants::HEIGHT).map(|_| Num::ZERO).collect();
-        let mut path: SizedVec<_, { constants::HEIGHT }> =
-            (0..constants::HEIGHT).map(|_| false).collect();
+        let start_height = constants::HEIGHT - H;
 
         sibling.iter_mut().zip(path.iter_mut()).enumerate().fold(
             index,
             |x, (h, (sibling, is_left))| {
-                let h = h as u32;
+                let cur_height = (start_height + h) as u32;
                 *is_left = x % 2 == 0;
-                *sibling = self.get(h, x ^ 1);
+                *sibling = self.get(cur_height, x ^ 1);
 
                 x / 2
             },
         );
 
-        Some(MerkleProof { sibling, path })
+        MerkleProof { sibling, path }
+    }
+
+    pub fn get_leaf_proof(&self, index: u64) -> Option<MerkleProof<P::Fr, { constants::HEIGHT }>> {
+        let key = Self::node_key(0, index);
+        let node_present = self.db.get(0, &key).map_or(false, |value| value.is_some());
+        if !node_present {
+            return None;
+        }
+        Some(self.get_proof_unchecked(index))
     }
 
     /// Returns proof
@@ -246,7 +248,7 @@ impl<D: KeyValueDB, P: PoolParams> MerkleTree<D, P> {
 
         let proofs = (index_offset..=self.last_index)
             .map(|index| {
-                self.get_proof(index)
+                self.get_leaf_proof(index)
                     .expect("Leaf was expected to be present (bug)")
             })
             .collect();
@@ -270,7 +272,7 @@ impl<D: KeyValueDB, P: PoolParams> MerkleTree<D, P> {
 
         // get all nodes
         // todo: improve performance?
-        let mut keys: Vec<(u32, u64)> = self
+        let keys: Vec<(u32, u64)> = self
             .db
             .iter(0)
             .map(|(key, _value)| Self::parse_node_key(&key))
@@ -463,7 +465,6 @@ mod tests {
     fn test_add_hashes_first_3() {
         let mut rng = CustomRng;
         let mut tree = MerkleTree::new(create(2), POOL_PARAMS.clone());
-
         let hashes: Vec<_> = (0..3).map(|n| (n, rng.gen(), false)).collect();
         tree.add_hashes(hashes.clone());
 
@@ -530,18 +531,51 @@ mod tests {
     }
 
     #[test]
-    fn test_get_proof() {
+    fn test_get_leaf_proof() {
         let mut rng = CustomRng;
         let mut tree = MerkleTree::new(create(2), POOL_PARAMS.clone());
-        let proof = tree.get_proof(123);
+        let proof = tree.get_leaf_proof(123);
 
         assert!(proof.is_none());
 
         tree.add_hash(123, rng.gen(), false);
-        let proof = tree.get_proof(123).unwrap();
+        let proof = tree.get_leaf_proof(123).unwrap();
 
         assert_eq!(proof.sibling.as_slice().len(), constants::HEIGHT);
         assert_eq!(proof.path.as_slice().len(), constants::HEIGHT);
+    }
+
+    #[test]
+    fn test_get_proof_unchecked() {
+        let mut rng = CustomRng;
+        let mut tree = MerkleTree::new(create(2), POOL_PARAMS.clone());
+
+        // Get proof for the right child of the root of the tree
+        const SUBROOT_HEIGHT: usize = 1;
+        let proof = tree.get_proof_unchecked::<SUBROOT_HEIGHT>(1);
+        assert_eq!(
+            proof.sibling[SUBROOT_HEIGHT - 1],
+            tree.default_hashes[constants::HEIGHT - SUBROOT_HEIGHT]
+        );
+
+        assert_eq!(proof.sibling.as_slice().len(), SUBROOT_HEIGHT);
+        assert_eq!(proof.path.as_slice().len(), SUBROOT_HEIGHT);
+
+        // If we add leaf to the right branch, then left child of the root should not change
+        tree.add_hash(1 << 47, rng.gen(), false);
+        let proof = tree.get_proof_unchecked::<SUBROOT_HEIGHT>(1);
+        assert_eq!(
+            proof.sibling[SUBROOT_HEIGHT - 1],
+            tree.default_hashes[constants::HEIGHT - SUBROOT_HEIGHT]
+        );
+
+        // But if we add leaf to the left branch, then left child of the root should change
+        tree.add_hash(1 << 47 - 1, rng.gen(), false);
+        let proof = tree.get_proof_unchecked::<SUBROOT_HEIGHT>(1);
+        assert_ne!(
+            proof.sibling[SUBROOT_HEIGHT - 1],
+            tree.default_hashes[constants::HEIGHT - SUBROOT_HEIGHT]
+        );
     }
 
     #[test_case(1, 0)]

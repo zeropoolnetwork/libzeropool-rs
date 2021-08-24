@@ -26,7 +26,9 @@ fn main(mut cx: ModuleContext) -> NeonResult<()> {
     cx.export_function("merkleNew", merkle::merkle_new)?;
     cx.export_function("merkleGetRoot", merkle::merkle_get_root)?;
     cx.export_function("merkleAddHash", merkle::merkle_add_hash)?;
-    cx.export_function("merkleGetProof", merkle::merkle_get_proof)?;
+    cx.export_function("merkleAppendHash", merkle::merkle_append_hash)?;
+    cx.export_function("merkleGetProof", merkle::merkle_get_leaf_proof)?;
+    cx.export_function("merkleGetCommitmentProof", merkle::merkle_get_commitment_proof)?;
 
     cx.export_function("txStorageNew", storage::tx_storage_new)?;
     cx.export_function("txStorageAdd", storage::tx_storage_add)?;

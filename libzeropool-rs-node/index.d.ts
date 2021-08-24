@@ -2,8 +2,10 @@ declare class MerkleTree {
     constructor(path: string);
 
     getRoot(): string
-    addHash(index: BigInt, hash: Buffer): void;
-    getProof(index: BigInt): MerkleProof;
+    addHash(index: number, hash: Buffer): void;
+    appendHash(hash: Buffer): number;
+    getProof(index: number): MerkleProof;
+    getCommitmentProof(index: number): MerkleProof;
 }
 
 declare class TxStorage {

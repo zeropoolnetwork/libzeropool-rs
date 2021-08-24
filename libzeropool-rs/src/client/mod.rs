@@ -310,7 +310,7 @@ where
             .iter()
             .copied()
             .map(|(index, _note)| {
-                tree.get_proof(index)
+                tree.get_leaf_proof(index)
                     .ok_or_else(|| CreateTxError::ProofNotFound(index))
             })
             .chain((0..).map(|_| Ok(zero_proof())))
@@ -320,7 +320,7 @@ where
         let secret = TransferSec::<P::Fr> {
             tx,
             in_proof: (
-                tree.get_proof(state.latest_account_index)
+                tree.get_leaf_proof(state.latest_account_index)
                     .unwrap_or_else(zero_proof),
                 note_proofs,
             ),
@@ -359,7 +359,7 @@ where
         &self,
         index: u64,
     ) -> Option<MerkleProof<P::Fr, { constants::HEIGHT }>> {
-        self.state.borrow().tree.get_proof(index)
+        self.state.borrow().tree.get_leaf_proof(index)
     }
 
     pub fn get_merkle_proof_for_new<I>(
