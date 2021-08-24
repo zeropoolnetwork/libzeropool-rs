@@ -2,7 +2,7 @@ use std::cell::RefCell;
 
 use libzeropool_rs::libzeropool::fawkes_crypto::borsh::BorshDeserialize;
 use libzeropool_rs::libzeropool::fawkes_crypto::ff_uint::Num;
-use libzeropool_rs::libzeropool::POOL_PARAMS;
+use libzeropool_rs::libzeropool::{POOL_PARAMS, constants::{HEIGHT, OUTLOG}};
 use libzeropool_rs::merkle::NativeMerkleTree;
 use neon::prelude::*;
 
@@ -44,9 +44,43 @@ pub fn merkle_add_hash(mut cx: FunctionContext) -> JsResult<JsUndefined> {
     Ok(cx.undefined())
 }
 
-pub fn merkle_get_proof(mut cx: FunctionContext) -> JsResult<JsValue> {
+pub fn merkle_append_hash(mut cx: FunctionContext) -> JsResult<JsNumber> {
+    let tree = cx.argument::<BoxedMerkleTree>(0)?;
+
+    let hash = {
+        let buffer = cx.argument::<JsBuffer>(1)?;
+        cx.borrow(&buffer, |data| {
+            Num::try_from_slice(data.as_slice()).unwrap()
+        })
+    };
+
+    let index = tree.borrow_mut().inner.append_hash(hash, false) as f64;
+
+    Ok(cx.number(index))
+}
+
+pub fn merkle_get_leaf_proof(mut cx: FunctionContext) -> JsResult<JsValue> {
     let tree = cx.argument::<BoxedMerkleTree>(0)?;
     let index = {
+        let num = cx.argument::<JsNumber>(1)?;
+        num.value(&mut cx) as u64
+    };
+
+    println!("INDX {:?}", index);
+
+    let proof = tree
+        .borrow()
+        .inner
+        .get_leaf_proof(index)
+        .map(|proof| neon_serde::to_value(&mut cx, &proof).unwrap())
+        .unwrap();
+
+    Ok(proof)
+}
+
+pub fn merkle_get_commitment_proof(mut cx: FunctionContext) -> JsResult<JsValue> {
+    let tree = cx.argument::<BoxedMerkleTree>(0)?;
+    let index: u64 = {
         let num = cx.argument::<JsNumber>(1)?;
         num.value(&mut cx) as u64
     };
@@ -54,11 +88,11 @@ pub fn merkle_get_proof(mut cx: FunctionContext) -> JsResult<JsValue> {
     let proof = tree
         .borrow()
         .inner
-        .get_proof(index)
-        .map(|proof| neon_serde::to_value(&mut cx, &proof).unwrap())
-        .unwrap();
+        .get_proof_unchecked::<{ HEIGHT - OUTLOG }>(index);
 
-    Ok(proof)
+    let result = neon_serde::to_value(&mut cx, &proof).unwrap();
+
+    Ok(result)
 }
 
 pub fn merkle_get_root(mut cx: FunctionContext) -> JsResult<JsValue> {

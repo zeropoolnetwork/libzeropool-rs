@@ -13,8 +13,16 @@ class MerkleTree {
         zp.merkleAddHash(this.inner, index, hash);
     }
 
+    appendHash(hash) {
+        return zp.merkleAppendHash(this.inner, hash);
+    }
+
     getProof(index) {
         return zp.merkleGetProof(this.inner, index);
+    }
+
+    getCommitmentProof(index) {
+        return zp.merkleGetCommitmentProof(this.inner, index)
     }
 }
 
