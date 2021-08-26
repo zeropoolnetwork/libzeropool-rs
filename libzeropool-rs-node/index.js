@@ -9,6 +9,10 @@ class MerkleTree {
         return zp.merkleGetRoot(this.inner)
     }
 
+    getNode(height, index) {
+        return zp.merkleGetNode(this.inner, height, index)
+    }
+
     addHash(index, hash) {
         zp.merkleAddHash(this.inner, index, hash);
     }
