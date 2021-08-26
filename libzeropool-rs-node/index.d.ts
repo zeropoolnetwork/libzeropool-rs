@@ -2,6 +2,7 @@ declare class MerkleTree {
     constructor(path: string);
 
     getRoot(): string
+    getNode(height: number, index: number): string;
     addHash(index: number, hash: Buffer): void;
     appendHash(hash: Buffer): number;
     getProof(index: number): MerkleProof;

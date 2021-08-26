@@ -66,8 +66,6 @@ pub fn merkle_get_leaf_proof(mut cx: FunctionContext) -> JsResult<JsValue> {
         num.value(&mut cx) as u64
     };
 
-    println!("INDX {:?}", index);
-
     let proof = tree
         .borrow()
         .inner
@@ -101,6 +99,24 @@ pub fn merkle_get_root(mut cx: FunctionContext) -> JsResult<JsValue> {
     let root = tree.borrow().inner.get_root();
 
     let result = neon_serde::to_value(&mut cx, &root).unwrap();
+
+    Ok(result)
+}
+
+pub fn merkle_get_node(mut cx: FunctionContext) -> JsResult<JsValue> {
+    let tree = cx.argument::<BoxedMerkleTree>(0)?;
+    let height: u32 = {
+        let num = cx.argument::<JsNumber>(1)?;
+        num.value(&mut cx) as u32
+    };
+    let index: u64 = {
+        let num = cx.argument::<JsNumber>(2)?;
+        num.value(&mut cx) as u64
+    };
+
+    let hash = tree.borrow().inner.get(height, index);
+
+    let result = neon_serde::to_value(&mut cx, &hash).unwrap();
 
     Ok(result)
 }

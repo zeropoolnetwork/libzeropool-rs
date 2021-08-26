@@ -19,7 +19,7 @@ pub struct MerkleTree<D: KeyValueDB, P: PoolParams> {
     db: D,
     params: P,
     default_hashes: Vec<Hash<P::Fr>>,
-    last_index: u64,
+    next_index: u64,
 }
 
 #[cfg(feature = "native")]
@@ -54,12 +54,12 @@ impl<P: PoolParams> MerkleTree<NativeDatabase, P> {
 impl<D: KeyValueDB, P: PoolParams> MerkleTree<D, P> {
     pub fn new(db: D, params: P) -> Self {
         // TODO: Optimize, this is extremely inefficient. Cache the number of leaves or ditch kvdb?
-        let mut last_index = 0;
+        let mut next_index = 0;
         for (k, _v) in db.iter(0) {
             let (height, index) = Self::parse_node_key(&k);
 
-            if height == 0 && index > last_index {
-                last_index = index;
+            if height == 0 && index > next_index {
+                next_index = index + 1;
             }
         }
 
@@ -67,7 +67,7 @@ impl<D: KeyValueDB, P: PoolParams> MerkleTree<D, P> {
             db,
             default_hashes: Self::gen_default_hashes(&params),
             params,
-            last_index,
+            next_index,
         }
     }
 
@@ -86,13 +86,13 @@ impl<D: KeyValueDB, P: PoolParams> MerkleTree<D, P> {
 
         self.db.write(batch).unwrap();
 
-        if index > self.last_index {
-            self.last_index = index;
+        if index >= self.next_index {
+            self.next_index = index + 1;
         }
     }
 
     pub fn append_hash(&mut self, hash: Hash<P::Fr>, temporary: bool) -> u64 {
-        let index = self.last_index + 1;
+        let index = self.next_index;
         self.add_hash(index, hash, temporary);
         index
     }
@@ -186,7 +186,7 @@ impl<D: KeyValueDB, P: PoolParams> MerkleTree<D, P> {
     }
 
     pub fn get_root(&self) -> Hash<P::Fr> {
-        self.get(constants::HEIGHT as u32 - 1, 0)
+        self.get(constants::HEIGHT as u32, 0)
     }
 
     pub fn get_opt(&self, height: u32, index: u64) -> Option<Hash<P::Fr>> {
@@ -201,6 +201,26 @@ impl<D: KeyValueDB, P: PoolParams> MerkleTree<D, P> {
         }
     }
 
+    pub fn merkle_proof_root<const H: usize>(
+        &self,
+        leaf: Num<P::Fr>,
+        proof: MerkleProof<P::Fr, { H }>,
+    ) -> Num<P::Fr> {
+        let root = proof
+            .sibling
+            .iter()
+            .zip(proof.path.iter())
+            .fold(leaf, |leaf, (s, p)| {
+                let pair = if *p {
+                    [s.clone(), leaf.clone()]
+                } else {
+                    [leaf.clone(), s.clone()]
+                };
+                poseidon(pair.as_ref(), self.params.compress())
+            });
+        root
+    }
+
     pub fn get_proof_unchecked<const H: usize>(&self, index: u64) -> MerkleProof<P::Fr, { H }> {
         // TODO: Add Default for SizedVec or make it's member public to replace all those iterators.
         let mut sibling: SizedVec<_, { H }> = (0..H).map(|_| Num::ZERO).collect();
@@ -210,9 +230,9 @@ impl<D: KeyValueDB, P: PoolParams> MerkleTree<D, P> {
 
         sibling.iter_mut().zip(path.iter_mut()).enumerate().fold(
             index,
-            |x, (h, (sibling, is_left))| {
+            |x, (h, (sibling, is_right))| {
                 let cur_height = (start_height + h) as u32;
-                *is_left = x % 2 == 0;
+                *is_right = x % 2 == 1;
                 *sibling = self.get(cur_height, x ^ 1);
 
                 x / 2
@@ -240,13 +260,13 @@ impl<D: KeyValueDB, P: PoolParams> MerkleTree<D, P> {
         I: IntoIterator<Item = Hash<P::Fr>>,
     {
         // TODO: Optimize, no need to mutate the database.
-        let index_offset = self.last_index + 1;
+        let index_offset = self.next_index;
         self.add_hashes(new_hashes.into_iter().enumerate().map(|(index, hash)| {
             let new_index = index_offset + index as u64;
             (new_index, hash, true)
         }));
 
-        let proofs = (index_offset..=self.last_index)
+        let proofs = (index_offset..self.next_index)
             .map(|index| {
                 self.get_leaf_proof(index)
                     .expect("Leaf was expected to be present (bug)")
@@ -255,7 +275,7 @@ impl<D: KeyValueDB, P: PoolParams> MerkleTree<D, P> {
 
         // FIXME: Not all nodes are deleted here
         let mut batch = self.db.transaction();
-        for index in index_offset..=self.last_index {
+        for index in index_offset..self.next_index {
             self.remove_batched(&mut batch, 0, index);
         }
         self.db.write(batch).unwrap();
@@ -330,7 +350,7 @@ impl<D: KeyValueDB, P: PoolParams> MerkleTree<D, P> {
         let mut child_hash = hash;
         let mut child_temporary_leaves_count = temporary_leaves_count;
         // todo: improve
-        for current_height in height + 1..constants::HEIGHT as u32 {
+        for current_height in height + 1..=constants::HEIGHT as u32 {
             let parent_index = child_index / 2;
 
             // get pair of children
@@ -431,10 +451,9 @@ impl<D: KeyValueDB, P: PoolParams> MerkleTree<D, P> {
     }
 
     fn gen_default_hashes(params: &P) -> Vec<Hash<P::Fr>> {
-        let zero = poseidon(&[Num::ZERO], params.compress());
-        let mut default_hashes = vec![zero; constants::HEIGHT];
+        let mut default_hashes = vec![Num::ZERO; constants::HEIGHT + 1];
 
-        for i in 1..constants::HEIGHT {
+        for i in 1..=constants::HEIGHT {
             let t = default_hashes[i - 1];
             default_hashes[i] = poseidon([t, t].as_ref(), params.compress());
         }
@@ -455,6 +474,7 @@ mod tests {
     use super::*;
     use crate::random::CustomRng;
     use kvdb_memorydb::create;
+    use libzeropool::constants::{HEIGHT, OUTLOG};
     use libzeropool::fawkes_crypto::ff_uint::rand::Rng;
     use libzeropool::POOL_PARAMS;
     use rand::seq::SliceRandom;
@@ -469,7 +489,7 @@ mod tests {
         tree.add_hashes(hashes.clone());
 
         let nodes = tree.get_all_nodes();
-        assert_eq!(nodes.len(), constants::HEIGHT + 3);
+        assert_eq!(nodes.len(), constants::HEIGHT + 4);
 
         for h in 0..constants::HEIGHT as u32 {
             assert!(tree.get_opt(h, 0).is_some()); // TODO: Compare with expected hash
@@ -492,7 +512,7 @@ mod tests {
         tree.add_hashes(hashes.clone());
 
         let nodes = tree.get_all_nodes();
-        assert_eq!(nodes.len(), constants::HEIGHT + 3);
+        assert_eq!(nodes.len(), constants::HEIGHT + 4);
 
         for h in 0..constants::HEIGHT as u32 {
             let index = max_index / 2u64.pow(h);
@@ -525,7 +545,7 @@ mod tests {
         tree.clean();
 
         let nodes = tree.get_all_nodes();
-        assert_eq!(nodes.len(), constants::HEIGHT + 6);
+        assert_eq!(nodes.len(), constants::HEIGHT + 7);
         assert_eq!(tree.get_opt(0, 4), None);
         assert_eq!(tree.get_opt(0, 5), None);
     }
@@ -576,6 +596,34 @@ mod tests {
             proof.sibling[SUBROOT_HEIGHT - 1],
             tree.default_hashes[constants::HEIGHT - SUBROOT_HEIGHT]
         );
+    }
+
+    #[test]
+    fn test_merkle_proof_correct() {
+        let mut rng = CustomRng;
+        let mut tree = MerkleTree::new(create(1), POOL_PARAMS.clone());
+
+        let leaf1 = rng.gen();
+        tree.add_hash(0, leaf1, false);
+        let leaf2 = rng.gen();
+        tree.add_hash(1, leaf2, false);
+
+        let root = tree.get_root();
+
+        let mp = tree.get_proof_unchecked::<HEIGHT>(0);
+        let mp_root = tree.merkle_proof_root(leaf1, mp);
+
+        assert_eq!(root, mp_root);
+
+        let mp = tree.get_proof_unchecked::<HEIGHT>(1);
+        let mp_root = tree.merkle_proof_root(leaf2, mp);
+
+        assert_eq!(root, mp_root);
+
+        let mp = tree.get_proof_unchecked::<{ HEIGHT - OUTLOG }>(0);
+        let mp_root = tree.merkle_proof_root(tree.get(OUTLOG as u32, 0), mp);
+
+        assert_eq!(root, mp_root);
     }
 
     #[test_case(1, 0)]
@@ -668,7 +716,7 @@ mod tests {
         let tree_nodes = tree.get_all_nodes();
         assert_eq!(
             tree_nodes.len(),
-            constants::HEIGHT - full_height,
+            constants::HEIGHT - full_height + 1,
             "Some temporary subtree nodes were not removed."
         );
     }
