@@ -19,7 +19,7 @@ pub struct MerkleTree<D: KeyValueDB, P: PoolParams> {
     db: D,
     params: P,
     default_hashes: Vec<Hash<P::Fr>>,
-    last_index: u64,
+    next_index: u64,
 }
 
 #[cfg(feature = "native")]
@@ -54,12 +54,12 @@ impl<P: PoolParams> MerkleTree<NativeDatabase, P> {
 impl<D: KeyValueDB, P: PoolParams> MerkleTree<D, P> {
     pub fn new(db: D, params: P) -> Self {
         // TODO: Optimize, this is extremely inefficient. Cache the number of leaves or ditch kvdb?
-        let mut last_index = 0;
+        let mut next_index = 0;
         for (k, _v) in db.iter(0) {
             let (height, index) = Self::parse_node_key(&k);
 
-            if height == 0 && index > last_index {
-                last_index = index;
+            if height == 0 && index > next_index {
+                next_index = index + 1;
             }
         }
 
@@ -67,7 +67,7 @@ impl<D: KeyValueDB, P: PoolParams> MerkleTree<D, P> {
             db,
             default_hashes: Self::gen_default_hashes(&params),
             params,
-            last_index,
+            next_index,
         }
     }
 
@@ -86,13 +86,13 @@ impl<D: KeyValueDB, P: PoolParams> MerkleTree<D, P> {
 
         self.db.write(batch).unwrap();
 
-        if index > self.last_index {
-            self.last_index = index;
+        if index >= self.next_index {
+            self.next_index = index + 1;
         }
     }
 
     pub fn append_hash(&mut self, hash: Hash<P::Fr>, temporary: bool) -> u64 {
-        let index = self.last_index + 1;
+        let index = self.next_index;
         self.add_hash(index, hash, temporary);
         index
     }
@@ -260,13 +260,13 @@ impl<D: KeyValueDB, P: PoolParams> MerkleTree<D, P> {
         I: IntoIterator<Item = Hash<P::Fr>>,
     {
         // TODO: Optimize, no need to mutate the database.
-        let index_offset = self.last_index + 1;
+        let index_offset = self.next_index;
         self.add_hashes(new_hashes.into_iter().enumerate().map(|(index, hash)| {
             let new_index = index_offset + index as u64;
             (new_index, hash, true)
         }));
 
-        let proofs = (index_offset..=self.last_index)
+        let proofs = (index_offset..self.next_index)
             .map(|index| {
                 self.get_leaf_proof(index)
                     .expect("Leaf was expected to be present (bug)")
@@ -275,7 +275,7 @@ impl<D: KeyValueDB, P: PoolParams> MerkleTree<D, P> {
 
         // FIXME: Not all nodes are deleted here
         let mut batch = self.db.transaction();
-        for index in index_offset..=self.last_index {
+        for index in index_offset..self.next_index {
             self.remove_batched(&mut batch, 0, index);
         }
         self.db.write(batch).unwrap();
