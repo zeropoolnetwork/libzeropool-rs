@@ -1,5 +1,3 @@
-use std::{cell::RefCell, rc::Rc};
-
 use kvdb::KeyValueDB;
 use libzeropool::{
     constants,
@@ -31,7 +29,6 @@ use self::state::{State, Transaction};
 use crate::{
     address::{format_address, parse_address, AddressParseError},
     keys::{reduce_sk, Keys},
-    merkle::Hash,
     random::CustomRng,
     utils::keccak256,
 };
@@ -56,6 +53,9 @@ pub struct TransactionData<Fr: PrimeField> {
     pub secret: TransferSec<Fr>,
     pub ciphertext: Vec<u8>,
     pub memo: Vec<u8>,
+    pub out_hashes: SizedVec<Num<Fr>, { constants::OUT + 1 }>,
+    pub output_energy: Num<Fr>,
+    pub output_value: Num<Fr>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -67,7 +67,7 @@ pub struct TxOutput<Fr: PrimeField> {
 pub struct UserAccount<D: KeyValueDB, P: PoolParams> {
     pub keys: Keys<P>,
     pub params: P,
-    pub state: Rc<RefCell<State<D, P>>>,
+    pub state: State<D, P>,
     pub sign_callback: Option<Box<dyn Fn(&[u8]) -> Vec<u8>>>, // TODO: Find a way to make it async
 }
 
@@ -83,7 +83,7 @@ where
 
         UserAccount {
             keys,
-            state: Rc::new(RefCell::new(state)),
+            state,
             params,
             sign_callback: None,
         }
@@ -145,10 +145,11 @@ where
         }
 
         let mut rng = CustomRng;
-        let state = self.state.clone();
         let keys = self.keys.clone();
-        let state = state.borrow();
+        let state = &self.state;
 
+        let next_index = state.tree.next_index();
+        // FIXME: What if there are more owned notes than input limit? Only take as much as needed.
         let spend_interval_index = state.latest_note_index + 1;
         let prev_account = state.latest_account.unwrap_or_else(|| Account {
             eta: Num::ZERO,
@@ -205,6 +206,14 @@ where
             .take(constants::OUT)
             .collect::<Result<SizedVec<_, { constants::OUT }>, AddressParseError>>()?;
 
+        // FIXME: Check if correct
+        let out_notes_with_index =
+            next_index + 1..(next_index + out_notes.as_slice().len() as u64 + 1);
+        let mut output_energy = Num::ZERO;
+        for (note, note_index) in out_notes.iter().zip(out_notes_with_index) {
+            output_energy += note.b.to_num() * Num::from(spend_interval_index - note_index);
+        }
+
         let new_balance = if input_value.to_uint() >= output_value.to_uint() {
             input_value - output_value
         } else {
@@ -245,7 +254,7 @@ where
 
         // Same with output
         let out_note_hashes = out_notes.iter().map(|n| n.hash(&self.params));
-        let output_hashes: SizedVec<_, { constants::OUT + 1 }> = [out_account_hash]
+        let out_hashes: SizedVec<Num<P::Fr>, { constants::OUT + 1 }> = [out_account_hash]
             .iter()
             .copied()
             .chain(out_note_hashes)
@@ -253,7 +262,7 @@ where
             .take(constants::OUT + 1)
             .collect();
 
-        let out_commit = out_commitment_hash(output_hashes.as_slice(), &self.params);
+        let out_commit = out_commitment_hash(out_hashes.as_slice(), &self.params);
         let tx_hash = tx_hash(input_hashes.as_slice(), out_commit, &self.params);
 
         let delta = make_delta::<P::Fr>(
@@ -334,41 +343,25 @@ where
             secret,
             ciphertext,
             memo: memo_data,
+            out_hashes,
+            output_energy,
+            output_value,
         })
     }
 
     /// Cache account at specified index.
     pub fn add_account(&mut self, at_index: u64, account: Account<P::Fr>) {
-        self.state.borrow_mut().add_account(at_index, account)
+        self.state.add_account(at_index, account)
     }
 
     /// Caches a note at specified index.
     /// Only cache received notes.
     pub fn add_received_note(&mut self, at_index: u64, note: Note<P::Fr>) {
-        self.state.borrow_mut().add_received_note(at_index, note)
+        self.state.add_received_note(at_index, note)
     }
 
     /// Returns user's total balance (account + available notes).
     pub fn total_balance(&self) -> Num<P::Fr> {
-        self.state.borrow().total_balance()
-    }
-
-    // TODO: Expose the tree?
-
-    pub fn get_merkle_proof(
-        &self,
-        index: u64,
-    ) -> Option<MerkleProof<P::Fr, { constants::HEIGHT }>> {
-        self.state.borrow().tree.get_leaf_proof(index)
-    }
-
-    pub fn get_merkle_proof_for_new<I>(
-        &self,
-        new_hashes: I,
-    ) -> Vec<MerkleProof<P::Fr, { constants::HEIGHT }>>
-    where
-        I: IntoIterator<Item = Hash<P::Fr>>,
-    {
-        self.state.borrow_mut().tree.get_proof_for_new(new_hashes)
+        self.state.total_balance()
     }
 }

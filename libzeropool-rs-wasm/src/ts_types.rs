@@ -45,6 +45,9 @@ export interface TransactionData {
     secret: TransferSec;
     ciphertext: string;
     memo: string;
+    out_hashes: string[];
+    output_energy: string;
+    output_value: string;
 }
 
 export interface TreePub {

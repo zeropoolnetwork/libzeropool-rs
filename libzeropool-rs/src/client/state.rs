@@ -24,11 +24,12 @@ pub enum Transaction<Fr: PrimeField> {
 
 pub struct State<D: KeyValueDB, P: PoolParams> {
     params: P,
-    pub(crate) tree: MerkleTree<D, P>,
+    pub tree: MerkleTree<D, P>,
     /// Stores only usable (own) accounts and notes
     pub(crate) txs: TxStorage<D, P::Fr>,
     pub(crate) latest_account: Option<NativeAccount<P::Fr>>,
     pub latest_account_index: u64,
+    /// Latest owned note index
     pub latest_note_index: u64,
     pub(crate) total_balance: BoundedNum<P::Fr, { constants::BALANCE_SIZE }>,
 }
