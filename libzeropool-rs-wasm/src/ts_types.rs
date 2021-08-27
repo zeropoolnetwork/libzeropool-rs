@@ -1,7 +1,14 @@
 use wasm_bindgen::prelude::*;
 
 #[wasm_bindgen(typescript_custom_section)]
-const TS_APPEND_CONTENT: &'static str = r#"
+const TS_TYPES: &'static str = r#"
+export class Constants {
+  HEIGHT: number;
+  IN: number;
+  OUT: number;
+  OUTLOG: number;
+}
+
 export interface Note {
     d: string;
     p_d: string;
@@ -125,4 +132,7 @@ extern "C" {
 
     #[wasm_bindgen(typescript_type = "TransactionData")]
     pub type TransactionData;
+
+    #[wasm_bindgen(typescript_type = "Constants")]
+    pub type Constants;
 }
