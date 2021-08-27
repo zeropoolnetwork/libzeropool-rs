@@ -185,6 +185,13 @@ impl<D: KeyValueDB, P: PoolParams> MerkleTree<D, P> {
         }
     }
 
+    pub fn last_leaf(&self) -> Hash<P::Fr> {
+        match self.get_opt(0, self.next_index.checked_sub(1).unwrap_or(0)) {
+            Some(val) => val,
+            _ => self.default_hashes[0],
+        }
+    }
+
     pub fn get_root(&self) -> Hash<P::Fr> {
         self.get(constants::HEIGHT as u32, 0)
     }
@@ -222,7 +229,6 @@ impl<D: KeyValueDB, P: PoolParams> MerkleTree<D, P> {
     }
 
     pub fn get_proof_unchecked<const H: usize>(&self, index: u64) -> MerkleProof<P::Fr, { H }> {
-        // TODO: Add Default for SizedVec or make it's member public to replace all those iterators.
         let mut sibling: SizedVec<_, { H }> = (0..H).map(|_| Num::ZERO).collect();
         let mut path: SizedVec<_, { H }> = (0..H).map(|_| false).collect();
 
@@ -251,8 +257,19 @@ impl<D: KeyValueDB, P: PoolParams> MerkleTree<D, P> {
         Some(self.get_proof_unchecked(index))
     }
 
-    /// Returns proof
-    pub fn get_proof_for_new<I>(
+    pub fn get_commitment_proof(
+        &self,
+        index: u64,
+    ) -> Option<MerkleProof<P::Fr, { constants::HEIGHT - constants::OUTLOG }>> {
+        let key = Self::node_key(0, index);
+        let node_present = self.db.get(0, &key).map_or(false, |value| value.is_some());
+        if !node_present {
+            return None;
+        }
+        Some(self.get_proof_unchecked(index))
+    }
+
+    pub fn get_proof_after<I>(
         &mut self,
         new_hashes: I,
     ) -> Vec<MerkleProof<P::Fr, { constants::HEIGHT }>>
@@ -336,6 +353,10 @@ impl<D: KeyValueDB, P: PoolParams> MerkleTree<D, P> {
                 }
             })
             .collect()
+    }
+
+    pub fn next_index(&self) -> u64 {
+        self.next_index
     }
 
     fn update_path_batched(
