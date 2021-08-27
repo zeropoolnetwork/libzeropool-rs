@@ -2,7 +2,6 @@ use libzeropool_rs::libzeropool::fawkes_crypto::backend::bellman_groth16::engine
 use libzeropool_rs::libzeropool::native::params::{PoolBN256, PoolParams as PoolParamsTrait};
 use neon::prelude::*;
 
-mod client;
 mod helpers;
 mod merkle;
 mod params;
