@@ -1,6 +1,6 @@
 {
   "name": "libzeropool-rs-node",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "description": "Neon version of libzeropool-rs",
   "main": "index.js",
   "types": "index.d.ts",

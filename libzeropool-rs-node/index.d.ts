@@ -1,3 +1,10 @@
+export namespace Constants {
+    export const HEIGHT: number;
+    export const IN: number;
+    export const OUTLOG: number;
+    export const OUT: number;
+}
+
 declare class MerkleTree {
     constructor(path: string);
 

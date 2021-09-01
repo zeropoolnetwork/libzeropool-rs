@@ -1,6 +1,8 @@
+use libzeropool_rs::libzeropool::constants;
 use libzeropool_rs::libzeropool::fawkes_crypto::backend::bellman_groth16::engines::Bn256;
 use libzeropool_rs::libzeropool::native::params::{PoolBN256, PoolParams as PoolParamsTrait};
 use neon::prelude::*;
+use serde::Serialize;
 
 mod helpers;
 mod merkle;
@@ -13,9 +15,30 @@ pub type Fr = <PoolParams as PoolParamsTrait>::Fr;
 pub type Fs = <PoolParams as PoolParamsTrait>::Fs;
 pub type Engine = Bn256;
 
-// TODO: Nested modules
+#[allow(non_snake_case)]
+#[derive(Serialize)]
+struct Constants {
+    HEIGHT: usize,
+    IN: usize,
+    OUTLOG: usize,
+    OUT: usize,
+}
+
 #[neon::main]
 fn main(mut cx: ModuleContext) -> NeonResult<()> {
+    let constants = neon_serde::to_value(
+        &mut cx,
+        &Constants {
+            HEIGHT: constants::HEIGHT,
+            IN: constants::IN,
+            OUTLOG: constants::OUTLOG,
+            OUT: constants::OUT,
+        },
+    )
+    .unwrap();
+
+    cx.export_value("Constants", constants)?;
+
     cx.export_function("readParamsFromBinary", params::from_binary)?;
     cx.export_function("readParamsFromFile", params::from_file)?;
 
