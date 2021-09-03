@@ -124,13 +124,13 @@ impl<D: KeyValueDB, P: PoolParams> MerkleTree<D, P> {
         let mut batch = self.db.transaction();
 
         // set leaves
-        for index_shift in 0..size {
+        for (index_shift, &hash) in hashes.iter().enumerate() {
             // all leaves in subtree are permanent
             self.set_batched(
                 &mut batch,
                 0,
                 start_index + index_shift as u64,
-                hashes[index_shift],
+                hash,
                 0,
             );
         }
@@ -301,7 +301,7 @@ impl<D: KeyValueDB, P: PoolParams> MerkleTree<D, P> {
     }
 
     pub fn clean(&mut self) -> u64 {
-        return self.clean_before_index(u64::MAX);
+        self.clean_before_index(u64::MAX)
     }
 
     pub fn clean_before_index(&mut self, clean_before_index: u64) -> u64 {
@@ -322,7 +322,7 @@ impl<D: KeyValueDB, P: PoolParams> MerkleTree<D, P> {
             }
 
             // remove only nodes before specified index
-            if (index + 1) * (1 << height) - 1 >= clean_before_index {
+            if (index + 1) * (1 << height) > clean_before_index {
                 continue;
             }
 
@@ -379,19 +379,19 @@ impl<D: KeyValueDB, P: PoolParams> MerkleTree<D, P> {
     pub fn get_all_nodes(&self) -> Vec<Node<P::Fr>> {
         self.db
             .iter(0)
-            .map(|(key, value)| Self::build_node(key, value))
+            .map(|(key, value)| Self::build_node(&key, &value))
             .collect()
     }
 
     pub fn get_leaves(&self) -> Vec<Node<P::Fr>> {
-        return self.get_leaves_after(0);
+        self.get_leaves_after(0)
     }
 
     pub fn get_leaves_after(&self, index: u64) -> Vec<Node<P::Fr>> {
         let prefix = (0u32).to_be_bytes();
         self.db
             .iter_with_prefix(0, &prefix)
-            .map(|(key, value)| Self::build_node(key, value))
+            .map(|(key, value)| Self::build_node(&key, &value))
             .filter(|node| node.index >= index)
             .collect()
     }
@@ -554,9 +554,9 @@ impl<D: KeyValueDB, P: PoolParams> MerkleTree<D, P> {
         (height, index)
     }
 
-    fn build_node(key: Box<[u8]>, value: Box<[u8]>) -> Node<P::Fr> {
-        let (height, index) = Self::parse_node_key(&key[..]);
-        let value = Hash::try_from_slice(&value).unwrap();
+    fn build_node(key: &[u8], value: &[u8]) -> Node<P::Fr> {
+        let (height, index) = Self::parse_node_key(key);
+        let value = Hash::try_from_slice(value).unwrap();
 
         Node {
             index,
