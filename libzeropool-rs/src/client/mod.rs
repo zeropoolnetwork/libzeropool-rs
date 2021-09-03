@@ -64,6 +64,13 @@ pub struct TxOutput<Fr: PrimeField> {
     pub amount: BoundedNum<Fr, { constants::BALANCE_SIZE }>,
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+pub enum TxType<Fr: PrimeField> {
+    Transfer(Vec<TxOutput<Fr>>),
+    Deposit(BoundedNum<Fr, { constants::BALANCE_SIZE }>),
+    Withdraw(BoundedNum<Fr, { constants::BALANCE_SIZE }>),
+}
+
 pub struct UserAccount<D: KeyValueDB, P: PoolParams> {
     pub keys: Keys<P>,
     pub params: P,
@@ -118,7 +125,7 @@ where
     /// Constructs a transaction.
     pub fn create_tx(
         &self,
-        outputs: &[TxOutput<P::Fr>],
+        tx: TxType<P::Fr>,
         mut data: Option<Vec<u8>>,
     ) -> Result<TransactionData<P::Fr>, CreateTxError> {
         fn zero_note<Fr: PrimeField>() -> Note<Fr> {
@@ -135,13 +142,6 @@ where
                 sibling: (0..constants::HEIGHT).map(|_| Num::ZERO).collect(),
                 path: (0..constants::HEIGHT).map(|_| false).collect(),
             }
-        }
-
-        if outputs.len() >= constants::IN {
-            return Err(CreateTxError::TooManyOutputs {
-                max: constants::IN,
-                got: outputs.len(),
-            });
         }
 
         let mut rng = CustomRng;
@@ -187,24 +187,36 @@ where
         }
 
         let mut output_value = Num::ZERO;
-        let out_notes: SizedVec<_, { constants::OUT }> = outputs
-            .iter()
-            .map(|dest| {
-                let (to_d, to_p_d) = parse_address::<P>(&dest.to)?;
 
-                output_value += dest.amount.to_num();
+        let out_notes: SizedVec<_, { constants::OUT }> = if let TxType::Transfer(outputs) = &tx {
+            if outputs.len() >= constants::OUT {
+                return Err(CreateTxError::TooManyOutputs {
+                    max: constants::OUT,
+                    got: outputs.len(),
+                });
+            }
 
-                Ok(Note {
-                    d: to_d,
-                    p_d: to_p_d,
-                    b: dest.amount,
-                    t: rng.gen(),
+            outputs
+                .iter()
+                .map(|dest| {
+                    let (to_d, to_p_d) = parse_address::<P>(&dest.to)?;
+
+                    output_value += dest.amount.to_num();
+
+                    Ok(Note {
+                        d: to_d,
+                        p_d: to_p_d,
+                        b: dest.amount,
+                        t: rng.gen(),
+                    })
                 })
-            })
-            // fill out remaining output notes with zeroes
-            .chain((0..).map(|_| Ok(zero_note())))
-            .take(constants::OUT)
-            .collect::<Result<SizedVec<_, { constants::OUT }>, AddressParseError>>()?;
+                // fill out remaining output notes with zeroes
+                .chain((0..).map(|_| Ok(zero_note())))
+                .take(constants::OUT)
+                .collect::<Result<SizedVec<_, { constants::OUT }>, AddressParseError>>()?
+        } else {
+            (0..).map(|_| zero_note()).take(constants::OUT).collect()
+        };
 
         // FIXME: Check if correct
         let out_notes_with_index =
@@ -214,10 +226,16 @@ where
             output_energy += note.b.to_num() * Num::from(spend_interval_index - note_index);
         }
 
-        let new_balance = if input_value.to_uint() >= output_value.to_uint() {
-            input_value - output_value
-        } else {
-            return Err(CreateTxError::InsufficientBalance);
+        let new_balance = match &tx {
+            TxType::Transfer(_) => {
+                if input_value.to_uint() >= output_value.to_uint() {
+                    input_value - output_value
+                } else {
+                    return Err(CreateTxError::InsufficientBalance);
+                }
+            }
+            TxType::Withdraw(amount) => input_value + amount.to_num(),
+            TxType::Deposit(amount) => input_value - amount.to_num(),
         };
 
         let out_account = Account {

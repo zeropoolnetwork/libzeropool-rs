@@ -6,6 +6,7 @@ use kvdb_web::Database;
 use libzeropool::{
     constants,
     fawkes_crypto::{
+        core::sizedvec::SizedVec,
         ff_uint::Num,
         ff_uint::{NumRepr, Uint},
     },
@@ -17,7 +18,7 @@ use libzeropool::{
     },
 };
 use libzeropool_rs::{
-    client::{TxOutput, UserAccount as NativeUserAccount},
+    client::{TxOutput, TxType as NativeTxType, UserAccount as NativeUserAccount},
     merkle::Hash,
 };
 use serde::{Deserialize, Serialize};
@@ -32,6 +33,13 @@ use crate::{
 #[wasm_bindgen]
 pub struct UserAccount {
     inner: Rc<RefCell<NativeUserAccount<Database, PoolParams>>>,
+}
+
+#[wasm_bindgen]
+pub enum TxType {
+    Transfer = "transfer",
+    Deposit = "deposit",
+    Withdraw = "withdraw",
 }
 
 #[wasm_bindgen]
@@ -112,7 +120,7 @@ impl UserAccount {
 
     #[wasm_bindgen(js_name = "createTx")]
     /// Constructs a transaction.
-    pub fn create_tx(&self, outputs: TxOutputs, data: Option<Vec<u8>>) -> Promise {
+    pub fn create_tx(&self, ty: TxType, value: TxOutputs, data: Option<Vec<u8>>) -> Promise {
         crate::utils::set_panic_hook();
 
         #[derive(Deserialize)]
@@ -127,6 +135,9 @@ impl UserAccount {
             secret: NativeTransferSec<Fr>,
             ciphertext: Base64,
             memo: Base64,
+            out_hashes: SizedVec<Num<Fr>, { constants::OUT + 1 }>,
+            output_energy: Num<Fr>,
+            output_value: Num<Fr>,
         }
 
         // TODO: Signature callback
@@ -134,24 +145,49 @@ impl UserAccount {
         let account = self.inner.clone();
 
         future_to_promise(async move {
-            let js_outputs: JsValue = outputs.into();
-            let outputs = serde_wasm_bindgen::from_value::<Vec<Output>>(js_outputs)?
-                .into_iter()
-                .map(|out| TxOutput {
-                    to: out.to,
-                    amount: out.amount,
-                })
-                .collect::<Vec<_>>();
-            let tx = account
-                .borrow()
-                .create_tx(&outputs, data)
-                .map(|tx| TransactionData {
-                    public: tx.public,
-                    secret: tx.secret,
-                    ciphertext: Base64(tx.ciphertext),
-                    memo: Base64(tx.memo),
-                })
-                .map_err(|err| js_err!("{}", err))?;
+            let tx = match ty {
+                TxType::Transfer => {
+                    let js_outputs: JsValue = value.into();
+                    let outputs = serde_wasm_bindgen::from_value::<Vec<Output>>(js_outputs)?
+                        .into_iter()
+                        .map(|out| TxOutput {
+                            to: out.to,
+                            amount: out.amount,
+                        })
+                        .collect::<Vec<_>>();
+
+                    account
+                        .borrow()
+                        .create_tx(NativeTxType::Transfer(outputs), data)
+                },
+                TxType::Deposit => {
+                    let js_amount: JsValue = value.into();
+                    let amount = serde_wasm_bindgen::from_value(js_amount)?;
+
+                    account
+                        .borrow()
+                        .create_tx(NativeTxType::Deposit(amount), data)
+                }
+                TxType::Withdraw => {
+                    let js_amount: JsValue = value.into();
+                    let amount = serde_wasm_bindgen::from_value(js_amount)?;
+
+                    account
+                        .borrow()
+                        .create_tx(NativeTxType::Withdraw(amount), data)
+                }
+                _ => panic!("unknow tx type"),
+            }.map_err(|err| js_err!("{}", err))?;
+
+            let tx = TransactionData {
+                public: tx.public,
+                secret: tx.secret,
+                ciphertext: Base64(tx.ciphertext),
+                memo: Base64(tx.memo),
+                out_hashes: tx.out_hashes,
+                output_energy: tx.output_energy,
+                output_value: tx.output_value,
+            };
 
             Ok(serde_wasm_bindgen::to_value(&tx).unwrap())
         })

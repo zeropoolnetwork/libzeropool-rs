@@ -103,7 +103,7 @@ extern "C" {
     #[wasm_bindgen(typescript_type = "Array<boolean>")]
     pub type MerkleProofPath;
 
-    #[wasm_bindgen(typescript_type = "Array<Output>")]
+    #[wasm_bindgen(typescript_type = "Array<Output> | string")]
     pub type TxOutputs;
 
     #[wasm_bindgen(typescript_type = "Note")]
