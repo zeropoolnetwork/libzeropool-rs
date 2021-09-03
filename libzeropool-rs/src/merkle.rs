@@ -124,13 +124,13 @@ impl<D: KeyValueDB, P: PoolParams> MerkleTree<D, P> {
         let mut batch = self.db.transaction();
 
         // set leaves
-        for index_shift in 0..size {
+        for (index_shift, &hash) in hashes.iter().enumerate() {
             // all leaves in subtree are permanent
             self.set_batched(
                 &mut batch,
                 0,
                 start_index + index_shift as u64,
-                hashes[index_shift],
+                hash,
                 0,
             );
         }
@@ -300,11 +300,11 @@ impl<D: KeyValueDB, P: PoolParams> MerkleTree<D, P> {
         proofs
     }
 
-    pub fn clean(&mut self) {
-        self.clean_before_index(u64::MAX);
+    pub fn clean(&mut self) -> u64 {
+        self.clean_before_index(u64::MAX)
     }
 
-    pub fn clean_before_index(&mut self, clean_before_index: u64) {
+    pub fn clean_before_index(&mut self, clean_before_index: u64) -> u64 {
         let mut batch = self.db.transaction();
 
         // get all nodes
@@ -322,36 +322,77 @@ impl<D: KeyValueDB, P: PoolParams> MerkleTree<D, P> {
             }
 
             // remove only nodes before specified index
-            if index * (1 << height) >= clean_before_index {
+            if (index + 1) * (1 << height) > clean_before_index {
                 continue;
             }
 
-            let parent_temporary_leaves_count = self.get_temporary_count(height, index);
-            if parent_temporary_leaves_count == (1 << height) {
+            if self.subtree_contains_only_temporary_leaves(height, index) {
                 // all leaves in subtree are temporary, we can keep only subtree root
                 self.remove_batched(&mut batch, height - 1, 2 * index);
                 self.remove_batched(&mut batch, height - 1, 2 * index + 1);
             }
         }
 
+        self.set_clean_index_batched(&mut batch, clean_before_index);
+
         self.db.write(batch).unwrap();
+
+        self.next_index
+    }
+
+    pub fn rollback(&mut self, rollback_index: u64) -> Option<u64> {
+        let mut result: Option<u64> = None;
+
+        // check that nodes that are necessary for rollback were not removed by clean
+        let clean_index = self.get_clean_index();
+        if rollback_index < clean_index {
+            // find what nodes are missing
+            let mut nodes_request_index = self.next_index;
+            let mut index = rollback_index;
+            for height in 0..constants::HEIGHT as u32 {
+                let sibling_index = index ^ 1;
+                if sibling_index < index
+                    && !self.subtree_contains_only_temporary_leaves(height, sibling_index)
+                {
+                    let leaf_index = index * (1 << height);
+                    if leaf_index < nodes_request_index {
+                        nodes_request_index = leaf_index
+                    }
+                }
+                index /= 2;
+            }
+            if nodes_request_index < clean_index {
+                result = Some(nodes_request_index)
+            }
+        }
+
+        // remove leaves
+        for index in (rollback_index..self.next_index).rev() {
+            self.remove_leaf(index);
+        }
+
+        self.next_index = rollback_index;
+
+        result
     }
 
     pub fn get_all_nodes(&self) -> Vec<Node<P::Fr>> {
         self.db
             .iter(0)
-            .map(|(key, value)| {
-                let mut key_buf = &key[..];
-                let height = key_buf.read_u32::<BigEndian>().unwrap();
-                let index = key_buf.read_u64::<BigEndian>().unwrap();
-                let value = Hash::try_from_slice(&value).unwrap();
+            .map(|(key, value)| Self::build_node(&key, &value))
+            .collect()
+    }
 
-                Node {
-                    index,
-                    height,
-                    value,
-                }
-            })
+    pub fn get_leaves(&self) -> Vec<Node<P::Fr>> {
+        self.get_leaves_after(0)
+    }
+
+    pub fn get_leaves_after(&self, index: u64) -> Vec<Node<P::Fr>> {
+        let prefix = (0u32).to_be_bytes();
+        self.db
+            .iter_with_prefix(0, &prefix)
+            .map(|(key, value)| Self::build_node(&key, &value))
+            .filter(|node| node.index >= index)
             .collect()
     }
 
@@ -420,9 +461,15 @@ impl<D: KeyValueDB, P: PoolParams> MerkleTree<D, P> {
         temporary_leaves_count: u64,
     ) {
         let key = Self::node_key(height, index);
-        batch.put(0, &key, &hash.try_to_vec().unwrap());
+        if hash != self.default_hashes[height as usize] {
+            batch.put(0, &key, &hash.try_to_vec().unwrap());
+        } else {
+            batch.delete(0, &key);
+        }
         if temporary_leaves_count > 0 {
             batch.put(1, &key, &temporary_leaves_count.to_be_bytes());
+        } else {
+            batch.delete(1, &key);
         }
     }
 
@@ -430,6 +477,38 @@ impl<D: KeyValueDB, P: PoolParams> MerkleTree<D, P> {
         let key = Self::node_key(height, index);
         batch.delete(0, &key);
         batch.delete(1, &key);
+    }
+
+    fn remove_leaf(&mut self, index: u64) {
+        let mut batch = self.db.transaction();
+
+        self.remove_batched(&mut batch, 0, index);
+        self.update_path_batched(&mut batch, 0, index, self.default_hashes[0], 0);
+
+        self.db.write(batch).unwrap();
+    }
+
+    fn get_clean_index(&self) -> u64 {
+        match self.get_named_index_opt("clean_index") {
+            Some(val) => val,
+            _ => 0,
+        }
+    }
+
+    fn set_clean_index_batched(&mut self, batch: &mut DBTransaction, value: u64) {
+        self.set_named_index_batched(batch, "clean_index", value);
+    }
+
+    fn get_named_index_opt(&self, key: &str) -> Option<u64> {
+        let res = self.db.get(2, key.as_bytes());
+        match res {
+            Ok(Some(ref val)) => Some((&val[..]).read_u64::<BigEndian>().unwrap()),
+            _ => None,
+        }
+    }
+
+    fn set_named_index_batched(&mut self, batch: &mut DBTransaction, key: &str, value: u64) {
+        batch.put(2, key.as_bytes(), &value.to_be_bytes());
     }
 
     fn get_temporary_count(&self, height: u32, index: u64) -> u64 {
@@ -451,6 +530,10 @@ impl<D: KeyValueDB, P: PoolParams> MerkleTree<D, P> {
         }
     }
 
+    fn subtree_contains_only_temporary_leaves(&self, height: u32, index: u64) -> bool {
+        self.get_temporary_count(height, index) == (1 << height)
+    }
+
     #[inline]
     fn node_key(height: u32, index: u64) -> [u8; 12] {
         let mut data = [0u8; 12];
@@ -469,6 +552,17 @@ impl<D: KeyValueDB, P: PoolParams> MerkleTree<D, P> {
         let index = bytes.read_u64::<BigEndian>().unwrap();
 
         (height, index)
+    }
+
+    fn build_node(key: &[u8], value: &[u8]) -> Node<P::Fr> {
+        let (height, index) = Self::parse_node_key(key);
+        let value = Hash::try_from_slice(value).unwrap();
+
+        Node {
+            index,
+            height,
+            value,
+        }
     }
 
     fn gen_default_hashes(params: &P) -> Vec<Hash<P::Fr>> {
@@ -505,7 +599,7 @@ mod tests {
     #[test]
     fn test_add_hashes_first_3() {
         let mut rng = CustomRng;
-        let mut tree = MerkleTree::new(create(2), POOL_PARAMS.clone());
+        let mut tree = MerkleTree::new(create(3), POOL_PARAMS.clone());
         let hashes: Vec<_> = (0..3).map(|n| (n, rng.gen(), false)).collect();
         tree.add_hashes(hashes.clone());
 
@@ -524,7 +618,7 @@ mod tests {
     #[test]
     fn test_add_hashes_last_3() {
         let mut rng = CustomRng;
-        let mut tree = MerkleTree::new(create(2), POOL_PARAMS.clone());
+        let mut tree = MerkleTree::new(create(3), POOL_PARAMS.clone());
 
         let max_index = (1 << constants::HEIGHT) - 1;
         let hashes: Vec<_> = (max_index - 2..=max_index)
@@ -548,7 +642,7 @@ mod tests {
     #[test]
     fn test_unnecessary_temporary_nodes_are_removed() {
         let mut rng = CustomRng;
-        let mut tree = MerkleTree::new(create(2), POOL_PARAMS.clone());
+        let mut tree = MerkleTree::new(create(3), POOL_PARAMS.clone());
 
         let mut hashes: Vec<_> = (0..6).map(|n| (n, rng.gen(), false)).collect();
 
@@ -563,7 +657,8 @@ mod tests {
 
         tree.add_hashes(hashes);
 
-        tree.clean();
+        let next_index = tree.clean();
+        assert_eq!(next_index, tree.next_index);
 
         let nodes = tree.get_all_nodes();
         assert_eq!(nodes.len(), constants::HEIGHT + 7);
@@ -574,7 +669,7 @@ mod tests {
     #[test]
     fn test_get_leaf_proof() {
         let mut rng = CustomRng;
-        let mut tree = MerkleTree::new(create(2), POOL_PARAMS.clone());
+        let mut tree = MerkleTree::new(create(3), POOL_PARAMS.clone());
         let proof = tree.get_leaf_proof(123);
 
         assert!(proof.is_none());
@@ -589,7 +684,7 @@ mod tests {
     #[test]
     fn test_get_proof_unchecked() {
         let mut rng = CustomRng;
-        let mut tree = MerkleTree::new(create(2), POOL_PARAMS.clone());
+        let mut tree = MerkleTree::new(create(3), POOL_PARAMS.clone());
 
         // Get proof for the right child of the root of the tree
         const SUBROOT_HEIGHT: usize = 1;
@@ -622,7 +717,7 @@ mod tests {
     #[test]
     fn test_merkle_proof_correct() {
         let mut rng = CustomRng;
-        let mut tree = MerkleTree::new(create(1), POOL_PARAMS.clone());
+        let mut tree = MerkleTree::new(create(3), POOL_PARAMS.clone());
 
         let leaf1 = rng.gen();
         tree.add_hash(0, leaf1, false);
@@ -658,8 +753,8 @@ mod tests {
     #[test_case(16, constants::HEIGHT - 16)]
     fn test_add_subtree(subtree_size: usize, start_index: usize) {
         let mut rng = CustomRng;
-        let mut tree_add_hashes = MerkleTree::new(create(2), POOL_PARAMS.clone());
-        let mut tree_add_subtree = MerkleTree::new(create(2), POOL_PARAMS.clone());
+        let mut tree_add_hashes = MerkleTree::new(create(3), POOL_PARAMS.clone());
+        let mut tree_add_subtree = MerkleTree::new(create(3), POOL_PARAMS.clone());
 
         let hash_values: Vec<_> = (0..subtree_size).map(|_| rng.gen()).collect();
         let hashes = (0..subtree_size).map(|n| ((start_index + n) as u64, hash_values[n], false));
@@ -693,7 +788,7 @@ mod tests {
     #[test]
     fn test_temporary_nodes_are_used_to_calculate_hashes_first() {
         let mut rng = CustomRng;
-        let mut tree = MerkleTree::new(create(2), POOL_PARAMS.clone());
+        let mut tree = MerkleTree::new(create(3), POOL_PARAMS.clone());
 
         let hash0: Hash<_> = rng.gen();
         let hash1: Hash<_> = rng.gen();
@@ -727,7 +822,7 @@ mod tests {
         let mut subtree_indexes: Vec<_> = (0..subtrees_count).map(|i| start_index + i).collect();
         subtree_indexes.shuffle(&mut thread_rng());
 
-        let mut tree = MerkleTree::new(create(2), POOL_PARAMS.clone());
+        let mut tree = MerkleTree::new(create(3), POOL_PARAMS.clone());
         for subtree_index in subtree_indexes {
             tree.add_subtree_root(subtree_height, subtree_index, rng.gen());
         }
@@ -740,5 +835,136 @@ mod tests {
             constants::HEIGHT - full_height + 1,
             "Some temporary subtree nodes were not removed."
         );
+    }
+
+    #[test_case(32, 16)]
+    #[test_case(0, 24)]
+    #[test_case(16, 0)]
+    #[test_case(11, 7)]
+    fn test_rollback_removes_nodes_correctly(keep_size: u64, remove_size: u64) {
+        let mut rng = CustomRng;
+        let mut tree = MerkleTree::new(create(3), POOL_PARAMS.clone());
+
+        for index in 0..keep_size {
+            let leaf = rng.gen();
+            tree.add_hash(index, leaf, false);
+        }
+        let original_root = tree.get_root();
+
+        for index in keep_size..keep_size + remove_size {
+            let leaf = rng.gen();
+            tree.add_hash(index, leaf, false);
+        }
+
+        let rollback_result = tree.rollback(keep_size);
+        assert!(rollback_result.is_none());
+        let rollback_root = tree.get_root();
+        assert_eq!(rollback_root, original_root);
+        assert_eq!(tree.next_index, keep_size)
+    }
+
+    #[test]
+    fn test_rollback_works_correctly_after_clean() {
+        let mut rng = CustomRng;
+        let mut tree = MerkleTree::new(create(3), POOL_PARAMS.clone());
+
+        for index in 0..4 {
+            let leaf = rng.gen();
+            tree.add_hash(index, leaf, true);
+        }
+        for index in 4..6 {
+            let leaf = rng.gen();
+            tree.add_hash(index, leaf, false);
+        }
+        for index in 6..12 {
+            let leaf = rng.gen();
+            tree.add_hash(index, leaf, true);
+        }
+        let original_root = tree.get_root();
+        for index in 12..16 {
+            let leaf = rng.gen();
+            tree.add_hash(index, leaf, true);
+        }
+
+        tree.clean_before_index(10);
+
+        let rollback_result = tree.rollback(12);
+        assert!(rollback_result.is_none());
+        let rollback_root = tree.get_root();
+        assert_eq!(rollback_root, original_root);
+        assert_eq!(tree.next_index, 12)
+    }
+
+    #[test]
+    fn test_rollback_of_cleaned_nodes() {
+        let mut rng = CustomRng;
+        let mut tree = MerkleTree::new(create(3), POOL_PARAMS.clone());
+
+        for index in 0..4 {
+            let leaf = rng.gen();
+            tree.add_hash(index, leaf, true);
+        }
+        for index in 4..6 {
+            let leaf = rng.gen();
+            tree.add_hash(index, leaf, false);
+        }
+        for index in 6..7 {
+            let leaf = rng.gen();
+            tree.add_hash(index, leaf, true);
+        }
+        let original_root = tree.get_root();
+        for index in 7..16 {
+            let leaf = rng.gen();
+            tree.add_hash(index, leaf, true);
+        }
+
+        tree.clean_before_index(10);
+
+        let rollback_result = tree.rollback(7);
+        assert_eq!(rollback_result.unwrap(), 6);
+        let rollback_root = tree.get_root();
+        assert_ne!(rollback_root, original_root);
+        assert_eq!(tree.next_index, 7)
+    }
+
+    #[test]
+    fn test_get_leaves() {
+        let mut rng = CustomRng;
+        let mut tree = MerkleTree::new(create(3), POOL_PARAMS.clone());
+
+        let leaves_count = 6;
+
+        for index in 0..leaves_count {
+            let leaf = rng.gen();
+            tree.add_hash(index, leaf, true);
+        }
+
+        let leaves = tree.get_leaves();
+
+        assert_eq!(leaves.len(), leaves_count as usize);
+        for index in 0..leaves_count {
+            assert!(leaves.iter().any(|node| node.index == index));
+        }
+    }
+
+    #[test]
+    fn test_get_leaves_after() {
+        let mut rng = CustomRng;
+        let mut tree = MerkleTree::new(create(3), POOL_PARAMS.clone());
+
+        let leaves_count = 6;
+        let skip_count = 2;
+
+        for index in 0..leaves_count {
+            let leaf = rng.gen();
+            tree.add_hash(index, leaf, true);
+        }
+
+        let leaves = tree.get_leaves_after(skip_count);
+
+        assert_eq!(leaves.len(), (leaves_count - skip_count) as usize);
+        for index in skip_count..leaves_count {
+            assert!(leaves.iter().any(|node| node.index == index));
+        }
     }
 }
