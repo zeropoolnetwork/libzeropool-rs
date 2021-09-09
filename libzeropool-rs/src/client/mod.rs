@@ -223,7 +223,8 @@ where
             next_index + 1..(next_index + out_notes.as_slice().len() as u64 + 1);
         let mut output_energy = Num::ZERO;
         for (note, note_index) in out_notes.iter().zip(out_notes_with_index) {
-            output_energy += note.b.to_num() * Num::from(spend_interval_index - note_index);
+            output_energy +=
+                note.b.to_num() * Num::from(spend_interval_index.saturating_sub(note_index));
         }
 
         let new_balance = match &tx {
@@ -234,8 +235,14 @@ where
                     return Err(CreateTxError::InsufficientBalance);
                 }
             }
-            TxType::Withdraw(amount) => input_value + amount.to_num(),
-            TxType::Deposit(amount) => input_value - amount.to_num(),
+            TxType::Withdraw(amount) => {
+                if input_value.to_uint() >= amount.to_num().to_uint() {
+                    input_value - amount.to_num()
+                } else {
+                    return Err(CreateTxError::InsufficientBalance);
+                }
+            }
+            TxType::Deposit(amount) => input_value + amount.to_num(),
         };
 
         let out_account = Account {
@@ -390,9 +397,17 @@ mod tests {
     use libzeropool::POOL_PARAMS;
 
     #[test]
-    fn test_create_tx() {
-        // let param = ();
+    fn test_create_tx_deposit_zero() {
+        let state = State::init_test(POOL_PARAMS.clone());
+        let acc = UserAccount::new(Num::ZERO, state, POOL_PARAMS.clone());
 
+        let _tx = acc
+            .create_tx(TxType::Deposit(BoundedNum::new(Num::ZERO)), None)
+            .unwrap();
+    }
+
+    #[test]
+    fn test_create_tx_deposit_one() {
         let state = State::init_test(POOL_PARAMS.clone());
         let acc = UserAccount::new(Num::ZERO, state, POOL_PARAMS.clone());
 
