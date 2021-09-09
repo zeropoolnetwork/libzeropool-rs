@@ -6,6 +6,7 @@ use kvdb::{DBTransaction, KeyValueDB};
 use kvdb_rocksdb::{Database as NativeDatabase, DatabaseConfig};
 #[cfg(feature = "web")]
 use kvdb_web::Database as WebDatabase;
+use kvdb_memorydb::InMemory as MemoryDatabase;
 
 /// A persistent sparse array built on top of kvdb
 pub struct SparseArray<D: KeyValueDB, T: BorshSerialize + BorshDeserialize> {
@@ -49,6 +50,20 @@ where
             db,
             _phantom: Default::default(),
         })
+    }
+}
+
+impl<T> SparseArray<MemoryDatabase, T>
+where
+    T: BorshSerialize + BorshDeserialize,
+{
+    pub fn new_test() -> SparseArray<MemoryDatabase, T> {
+        let db = kvdb_memorydb::create(0);
+
+        SparseArray {
+            db,
+            _phantom: Default::default(),
+        }
     }
 }
 

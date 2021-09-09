@@ -383,3 +383,21 @@ where
         self.state.total_balance()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use libzeropool::POOL_PARAMS;
+
+    #[test]
+    fn test_create_tx() {
+        // let param = ();
+
+        let state = State::init_test(POOL_PARAMS.clone());
+        let acc = UserAccount::new(Num::ZERO, state, POOL_PARAMS.clone());
+
+        let _tx = acc
+            .create_tx(TxType::Deposit(BoundedNum::new(Num::ONE)), None)
+            .unwrap();
+    }
+}

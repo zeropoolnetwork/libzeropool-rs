@@ -3,6 +3,7 @@ use std::convert::TryInto;
 use kvdb::KeyValueDB;
 #[cfg(feature = "web")]
 use kvdb_web::Database as WebDatabase;
+use kvdb_memorydb::InMemory as MemoryDatabase;
 use libzeropool::{
     constants,
     fawkes_crypto::{ff_uint::Num, ff_uint::PrimeField, BorshDeserialize, BorshSerialize},
@@ -45,6 +46,19 @@ where
         let tx_db_name = format!("zeropool.{}.txs", &db_id);
         let tree = MerkleTree::new_web(&merkle_db_name, params.clone()).await;
         let txs = TxStorage::new_web(&tx_db_name).await;
+
+        Self::new(tree, txs, params)
+    }
+}
+
+impl<P> State<MemoryDatabase, P>
+where
+    P: PoolParams,
+    P::Fr: 'static,
+{
+    pub fn init_test(params: P) -> Self {
+        let tree = MerkleTree::new_test(params.clone());
+        let txs = TxStorage::new_test();
 
         Self::new(tree, txs, params)
     }

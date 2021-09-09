@@ -5,6 +5,7 @@ use kvdb::{DBTransaction, KeyValueDB};
 use kvdb_rocksdb::{Database as NativeDatabase, DatabaseConfig};
 #[cfg(feature = "web")]
 use kvdb_web::Database as WebDatabase;
+use kvdb_memorydb::InMemory as MemoryDatabase;
 use libzeropool::{
     constants,
     fawkes_crypto::core::sizedvec::SizedVec,
@@ -47,6 +48,12 @@ impl<P: PoolParams> MerkleTree<NativeDatabase, P> {
         let db = NativeDatabase::open(config, path)?;
 
         Ok(Self::new(db, params))
+    }
+}
+
+impl<P: PoolParams> MerkleTree<MemoryDatabase, P> {
+    pub fn new_test(params: P) -> MerkleTree<MemoryDatabase, P> {
+        Self::new(kvdb_memorydb::create(3), params)
     }
 }
 
