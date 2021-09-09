@@ -1,6 +1,6 @@
 [package]
 name = "libzeropool-rs-node"
-version = "0.1.6"
+version = "0.1.7"
 authors = ["Dmitry Vdovin <voidxnull@gmail.com>"]
 repository = "https://github.com/zeropoolnetwork/libzeropool-rs/"
 license = "MIT OR Apache-2.0"
