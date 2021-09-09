@@ -401,8 +401,7 @@ mod tests {
         let state = State::init_test(POOL_PARAMS.clone());
         let acc = UserAccount::new(Num::ZERO, state, POOL_PARAMS.clone());
 
-        let _tx = acc
-            .create_tx(TxType::Deposit(BoundedNum::new(Num::ZERO)), None)
+        acc.create_tx(TxType::Deposit(BoundedNum::new(Num::ZERO)), None)
             .unwrap();
     }
 
@@ -411,8 +410,39 @@ mod tests {
         let state = State::init_test(POOL_PARAMS.clone());
         let acc = UserAccount::new(Num::ZERO, state, POOL_PARAMS.clone());
 
-        let _tx = acc
-            .create_tx(TxType::Deposit(BoundedNum::new(Num::ONE)), None)
+        acc.create_tx(TxType::Deposit(BoundedNum::new(Num::ONE)), None)
             .unwrap();
+    }
+
+    // It's ok to transfer 0 while balance = 0
+    #[test]
+    fn test_create_tx_transfer_zero() {
+        let state = State::init_test(POOL_PARAMS.clone());
+        let acc = UserAccount::new(Num::ZERO, state, POOL_PARAMS.clone());
+
+        let addr = acc.generate_address();
+
+        let out = TxOutput {
+            to: addr,
+            amount: BoundedNum::new(Num::ZERO),
+        };
+
+        acc.create_tx(TxType::Transfer(vec![out]), None).unwrap();
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_create_tx_transfer_one_no_balance() {
+        let state = State::init_test(POOL_PARAMS.clone());
+        let acc = UserAccount::new(Num::ZERO, state, POOL_PARAMS.clone());
+
+        let addr = acc.generate_address();
+
+        let out = TxOutput {
+            to: addr,
+            amount: BoundedNum::new(Num::ONE),
+        };
+
+        acc.create_tx(TxType::Transfer(vec![out]), None).unwrap();
     }
 }
