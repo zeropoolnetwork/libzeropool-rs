@@ -120,3 +120,13 @@ pub fn merkle_get_node(mut cx: FunctionContext) -> JsResult<JsValue> {
 
     Ok(result)
 }
+
+pub fn merkle_get_next_index(mut cx: FunctionContext) -> JsResult<JsValue> {
+    let tree = cx.argument::<BoxedMerkleTree>(0)?;
+
+    let root = tree.borrow().inner.next_index();
+
+    let result = neon_serde::to_value(&mut cx, &root).unwrap();
+
+    Ok(result)
+}

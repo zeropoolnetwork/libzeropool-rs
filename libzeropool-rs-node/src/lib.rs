@@ -47,6 +47,7 @@ fn main(mut cx: ModuleContext) -> NeonResult<()> {
 
     cx.export_function("merkleNew", merkle::merkle_new)?;
     cx.export_function("merkleGetRoot", merkle::merkle_get_root)?;
+    cx.export_function("merkleGetNextIndex", merkle::merkle_get_next_index)?;
     cx.export_function("merkleGetNode", merkle::merkle_get_node)?;
     cx.export_function("merkleAddHash", merkle::merkle_add_hash)?;
     cx.export_function("merkleAppendHash", merkle::merkle_append_hash)?;

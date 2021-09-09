@@ -8,7 +8,8 @@ export namespace Constants {
 declare class MerkleTree {
     constructor(path: string);
 
-    getRoot(): string
+    getRoot(): string;
+    getNextIndex(): number;
     getNode(height: number, index: number): string;
     addHash(index: number, hash: Buffer): void;
     appendHash(hash: Buffer): number;
@@ -18,7 +19,7 @@ declare class MerkleTree {
 
 declare class TxStorage {
     constructor(path: string);
-    add(index: BigInt, data: Buffer): void;
+    add(index: number, data: Buffer): void;
     get(index: BigInt): Buffer | null;
     delete(index: BigInt): void;
 }
