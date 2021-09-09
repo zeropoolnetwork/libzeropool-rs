@@ -20,8 +20,8 @@ declare class MerkleTree {
 declare class TxStorage {
     constructor(path: string);
     add(index: number, data: Buffer): void;
-    get(index: BigInt): Buffer | null;
-    delete(index: BigInt): void;
+    get(index: number): Buffer | null;
+    delete(index: number): void;
 }
 
 export interface TransferPub {
