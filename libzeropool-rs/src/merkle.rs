@@ -468,7 +468,7 @@ impl<D: KeyValueDB, P: PoolParams> MerkleTree<D, P> {
         }
         if temporary_leaves_count > 0 {
             batch.put(1, &key, &temporary_leaves_count.to_be_bytes());
-        } else {
+        } else if self.db.has_key(1, &key).unwrap_or(false) {
             batch.delete(1, &key);
         }
     }
