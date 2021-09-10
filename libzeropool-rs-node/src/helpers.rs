@@ -1,7 +1,9 @@
+use std::str::FromStr;
+
 use libzeropool_rs::libzeropool::constants::OUT;
 use libzeropool_rs::libzeropool::fawkes_crypto::borsh::BorshDeserialize;
 use libzeropool_rs::libzeropool::fawkes_crypto::ff_uint::Num;
-use libzeropool_rs::libzeropool::native::tx::out_commitment_hash;
+use libzeropool_rs::libzeropool::native::tx::{out_commitment_hash, parse_delta};
 use libzeropool_rs::libzeropool::POOL_PARAMS;
 
 use neon::prelude::*;
@@ -30,4 +32,23 @@ pub fn out_commitment(mut cx: FunctionContext) -> JsResult<JsValue> {
     let res = neon_serde::to_value(&mut cx, &commitment).unwrap();
 
     Ok(res)
+}
+
+pub fn parse_delta_string(mut cx: FunctionContext) -> JsResult<JsObject> {
+    let delta_str_js = cx.argument::<JsString>(0)?;
+    let delta_str = delta_str_js.value(&mut cx);
+
+    let delta: Num<Fr> = Num::from_str(delta_str.as_str()).unwrap();
+
+    let delta_params = parse_delta(delta);
+    let v = neon_serde::to_value(&mut cx, &delta_params.0).unwrap();
+    let e = neon_serde::to_value(&mut cx, &delta_params.1).unwrap();
+    let index = neon_serde::to_value(&mut cx, &delta_params.2).unwrap();
+
+    let js_object = JsObject::new(&mut cx);
+    js_object.set(&mut cx, "v", v)?;
+    js_object.set(&mut cx, "e", e)?;
+    js_object.set(&mut cx, "index", index)?;
+
+    Ok(js_object)
 }
