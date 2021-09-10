@@ -13,6 +13,7 @@ use libzeropool::{
     fawkes_crypto::native::poseidon::{poseidon, MerkleProof},
     native::params::PoolParams,
 };
+use std::collections::HashMap;
 
 pub type Hash<F> = Num<F>;
 
@@ -133,13 +134,7 @@ impl<D: KeyValueDB, P: PoolParams> MerkleTree<D, P> {
         // set leaves
         for (index_shift, &hash) in hashes.iter().enumerate() {
             // all leaves in subtree are permanent
-            self.set_batched(
-                &mut batch,
-                0,
-                start_index + index_shift as u64,
-                hash,
-                0,
-            );
+            self.set_batched(&mut batch, 0, start_index + index_shift as u64, hash, 0);
         }
 
         // build subtree
@@ -298,13 +293,112 @@ impl<D: KeyValueDB, P: PoolParams> MerkleTree<D, P> {
             .collect();
 
         // FIXME: Not all nodes are deleted here
-        let mut batch = self.db.transaction();
         for index in index_offset..self.next_index {
-            self.remove_batched(&mut batch, 0, index);
+            self.remove_leaf(index);
         }
-        self.db.write(batch).unwrap();
 
         proofs
+    }
+
+    pub fn get_proof_after_virtual<I>(
+        &self,
+        new_hashes: I,
+    ) -> Vec<MerkleProof<P::Fr, { constants::HEIGHT }>>
+    where
+        I: IntoIterator<Item = Hash<P::Fr>>,
+    {
+        let index_offset = self.next_index;
+
+        let mut virtual_nodes: HashMap<(u32, u64), Hash<P::Fr>> = new_hashes
+            .into_iter()
+            .enumerate()
+            .map(|(index, hash)| ((0, index_offset + index as u64), hash))
+            .collect();
+        let new_hashes_count = virtual_nodes.len() as u64;
+
+        (index_offset..index_offset + new_hashes_count)
+            .map(|index| {
+                self.get_proof_virtual(
+                    index,
+                    &mut virtual_nodes,
+                    index_offset,
+                    index_offset + new_hashes_count,
+                )
+            })
+            .collect()
+    }
+
+    fn get_proof_virtual<const H: usize>(
+        &self,
+        index: u64,
+        virtual_nodes: &mut HashMap<(u32, u64), Hash<P::Fr>>,
+        new_hashes_left_index: u64,
+        new_hashes_right_index: u64,
+    ) -> MerkleProof<P::Fr, { H }> {
+        let mut sibling: SizedVec<_, { H }> = (0..H).map(|_| Num::ZERO).collect();
+        let mut path: SizedVec<_, { H }> = (0..H).map(|_| false).collect();
+
+        let start_height = constants::HEIGHT - H;
+
+        sibling.iter_mut().zip(path.iter_mut()).enumerate().fold(
+            index,
+            |x, (h, (sibling, is_right))| {
+                let cur_height = (start_height + h) as u32;
+                *is_right = x % 2 == 1;
+                *sibling = self.get_virtual_node(
+                    cur_height,
+                    x ^ 1,
+                    virtual_nodes,
+                    new_hashes_left_index,
+                    new_hashes_right_index,
+                );
+
+                x / 2
+            },
+        );
+
+        MerkleProof { sibling, path }
+    }
+
+    fn get_virtual_node(
+        &self,
+        height: u32,
+        index: u64,
+        virtual_nodes: &mut HashMap<(u32, u64), Hash<P::Fr>>,
+        new_hashes_left_index: u64,
+        new_hashes_right_index: u64,
+    ) -> Hash<P::Fr> {
+        let node_left = index * (1 << height);
+        let node_right = (index + 1) * (1 << height);
+        if node_right <= new_hashes_left_index || new_hashes_right_index <= node_left {
+            return self.get(height, index);
+        }
+
+        let key = (height, index);
+        match virtual_nodes.get(&key) {
+            Some(hash) => *hash,
+            None => {
+                let left_child = self.get_virtual_node(
+                    height - 1,
+                    2 * index,
+                    virtual_nodes,
+                    new_hashes_left_index,
+                    new_hashes_right_index,
+                );
+                let right_child = self.get_virtual_node(
+                    height - 1,
+                    2 * index + 1,
+                    virtual_nodes,
+                    new_hashes_left_index,
+                    new_hashes_right_index,
+                );
+                let pair = [left_child, right_child];
+                let hash = poseidon(pair.as_ref(), self.params.compress());
+                virtual_nodes.insert(key, hash);
+
+                hash
+            }
+        }
     }
 
     pub fn clean(&mut self) -> u64 {
@@ -972,6 +1066,71 @@ mod tests {
         assert_eq!(leaves.len(), (leaves_count - skip_count) as usize);
         for index in skip_count..leaves_count {
             assert!(leaves.iter().any(|node| node.index == index));
+        }
+    }
+
+    #[test]
+    fn test_get_proof_after() {
+        let mut rng = CustomRng;
+        let mut tree = MerkleTree::new(create(3), POOL_PARAMS.clone());
+
+        let tree_size = 6;
+        let new_hashes_size = 3;
+
+        for index in 0..tree_size {
+            let leaf = rng.gen();
+            tree.add_hash(index, leaf, false);
+        }
+
+        let root_before_call = tree.get_root();
+
+        let new_hashes: Vec<_> = (0..new_hashes_size).map(|_| rng.gen()).collect();
+        tree.get_proof_after(new_hashes);
+
+        let root_after_call = tree.get_root();
+
+        assert_eq!(root_before_call, root_after_call);
+    }
+
+    #[test_case(12, 4)]
+    #[test_case(13, 5)]
+    #[test_case(0, 1)]
+    #[test_case(0, 5)]
+    #[test_case(0, 8)]
+    #[test_case(4, 16)]
+    fn test_get_proof_after_virtual(tree_size: u64, new_hashes_size: u64) {
+        let mut rng = CustomRng;
+        let mut tree = MerkleTree::new(create(3), POOL_PARAMS.clone());
+
+        for index in 0..tree_size {
+            let leaf = rng.gen();
+            tree.add_hash(index, leaf, false);
+        }
+
+        let new_hashes: Vec<_> = (0..new_hashes_size).map(|_| rng.gen()).collect();
+
+        let root_before_call = tree.get_root();
+
+        let proofs_virtual = tree.get_proof_after_virtual(new_hashes.clone());
+        let proofs_simple = tree.get_proof_after(new_hashes.clone());
+
+        let root_after_call = tree.get_root();
+
+        assert_eq!(root_before_call, root_after_call);
+        assert_eq!(proofs_simple.len(), proofs_virtual.len());
+        for (simple_proof, virtual_proof) in proofs_simple.iter().zip(proofs_virtual) {
+            for (simple_sibling, virtual_sibling) in simple_proof
+                .sibling
+                .iter()
+                .zip(virtual_proof.sibling.iter())
+            {
+                assert_eq!(simple_sibling, virtual_sibling);
+            }
+            for (simple_path, virtual_path) in
+                simple_proof.path.iter().zip(virtual_proof.path.iter())
+            {
+                assert_eq!(simple_path, virtual_path);
+            }
         }
     }
 }
