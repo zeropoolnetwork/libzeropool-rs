@@ -32,6 +32,26 @@ export interface TransferPub {
     memo: string;
 }
 
+export interface Note {
+    d: string;
+    p_d: string;
+    b: string;
+    t: string;
+}
+
+export interface Account {
+    eta: string;
+    i: string;
+    b: string;
+    e: string;
+    t: string;
+}
+
+export interface Tx {
+    input: { account: Account; notes: Array<Note> };
+    output: { account: Account; notes: Array<Note> };
+}
+
 export interface TransferSec {
     tx: Tx;
     in_proof: { account: MerkleProof; notes: Array<MerkleProof> };
