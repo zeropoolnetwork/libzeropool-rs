@@ -66,6 +66,10 @@ class Helpers {
     static outCommitmentHash(outHashes) {
         return zp.helpersOutCommitment(outHashes)
     }
+
+    static parseDelta(delta) {
+        return zp.helpersParseDelta(delta)
+    }
 }
 
 zp.MerkleTree = MerkleTree;

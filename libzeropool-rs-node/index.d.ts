@@ -98,4 +98,5 @@ declare class Proof {
 
 declare class Helpers {
     static outCommitmentHash(hashes: Array<Buffer>): string
+    static parseDelta(delta: string): { v: string, e: string, index: string }
 }

@@ -60,6 +60,7 @@ fn main(mut cx: ModuleContext) -> NeonResult<()> {
     cx.export_function("txStorageGet", storage::tx_storage_get)?;
 
     cx.export_function("helpersOutCommitment", helpers::out_commitment)?;
+    cx.export_function("helpersParseDelta", helpers::parse_delta_string)?;
 
     Ok(())
 }
