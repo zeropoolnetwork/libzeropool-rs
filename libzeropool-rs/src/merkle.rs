@@ -596,7 +596,7 @@ mod tests {
     use super::*;
     use crate::random::CustomRng;
     use kvdb_memorydb::create;
-    use libzeropool::constants::{HEIGHT, OUTLOG};
+    use libzeropool::constants::{HEIGHT, OUTPLUSONELOG};
     use libzeropool::fawkes_crypto::ff_uint::rand::Rng;
     use libzeropool::POOL_PARAMS;
     use rand::seq::SliceRandom;
@@ -743,8 +743,8 @@ mod tests {
 
         assert_eq!(root, mp_root);
 
-        let mp = tree.get_proof_unchecked::<{ HEIGHT - OUTLOG }>(0);
-        let mp_root = tree.merkle_proof_root(tree.get(OUTLOG as u32, 0), mp);
+        let mp = tree.get_proof_unchecked::<{ HEIGHT - OUTPLUSONELOG }>(0);
+        let mp_root = tree.merkle_proof_root(tree.get(OUTPLUSONELOG as u32, 0), mp);
 
         assert_eq!(root, mp_root);
     }
