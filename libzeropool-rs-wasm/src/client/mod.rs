@@ -126,7 +126,7 @@ impl UserAccount {
         #[derive(Deserialize)]
         struct Output {
             to: String,
-            amount: BoundedNum<Fr, { constants::BALANCE_SIZE }>,
+            amount: BoundedNum<Fr, { constants::BALANCE_SIZE_BITS }>,
         }
 
         #[derive(Serialize)]

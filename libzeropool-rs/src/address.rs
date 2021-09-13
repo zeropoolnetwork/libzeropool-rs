@@ -26,11 +26,11 @@ pub fn parse_address<P: PoolParams>(
     address: &str,
 ) -> Result<
     (
-        BoundedNum<P::Fr, { constants::DIVERSIFIER_SIZE }>,
+        BoundedNum<P::Fr, { constants::DIVERSIFIER_SIZE_BITS }>,
         Num<P::Fr>,
     ),
     AddressParseError,
-> {
+>{
     let mut bytes = [0; ADDR_LEN];
     bs58::decode(address).into(&mut bytes)?;
 
@@ -49,7 +49,7 @@ pub fn parse_address<P: PoolParams>(
 }
 
 pub fn format_address<P: PoolParams>(
-    d: BoundedNum<P::Fr, { constants::DIVERSIFIER_SIZE }>,
+    d: BoundedNum<P::Fr, { constants::DIVERSIFIER_SIZE_BITS }>,
     p_d: Num<P::Fr>,
 ) -> String {
     let mut buf: [u8; ADDR_LEN] = [0; ADDR_LEN];

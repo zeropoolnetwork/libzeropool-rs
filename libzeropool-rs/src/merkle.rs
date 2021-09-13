@@ -267,8 +267,8 @@ impl<D: KeyValueDB, P: PoolParams> MerkleTree<D, P> {
     pub fn get_commitment_proof(
         &self,
         index: u64,
-    ) -> Option<MerkleProof<P::Fr, { constants::HEIGHT - constants::OUTLOG }>> {
-        let key = Self::node_key(constants::OUTLOG as u32, index);
+    ) -> Option<MerkleProof<P::Fr, { constants::HEIGHT - constants::OUTPLUSONELOG }>> {
+        let key = Self::node_key(constants::OUTPLUSONELOG as u32, index);
         let node_present = self.db.get(0, &key).map_or(false, |value| value.is_some());
         if !node_present {
             return None;

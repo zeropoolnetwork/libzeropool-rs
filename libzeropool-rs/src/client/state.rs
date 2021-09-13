@@ -32,7 +32,7 @@ pub struct State<D: KeyValueDB, P: PoolParams> {
     pub latest_account_index: u64,
     /// Latest owned note index
     pub latest_note_index: u64,
-    pub(crate) total_balance: BoundedNum<P::Fr, { constants::BALANCE_SIZE }>,
+    pub(crate) total_balance: BoundedNum<P::Fr, { constants::BALANCE_SIZE_BITS }>,
 }
 
 #[cfg(feature = "web")]

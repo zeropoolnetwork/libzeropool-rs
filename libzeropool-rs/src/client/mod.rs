@@ -61,14 +61,14 @@ pub struct TransactionData<Fr: PrimeField> {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct TxOutput<Fr: PrimeField> {
     pub to: String,
-    pub amount: BoundedNum<Fr, { constants::BALANCE_SIZE }>,
+    pub amount: BoundedNum<Fr, { constants::BALANCE_SIZE_BITS }>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 pub enum TxType<Fr: PrimeField> {
     Transfer(Vec<TxOutput<Fr>>),
-    Deposit(BoundedNum<Fr, { constants::BALANCE_SIZE }>),
-    Withdraw(BoundedNum<Fr, { constants::BALANCE_SIZE }>),
+    Deposit(BoundedNum<Fr, { constants::BALANCE_SIZE_BITS }>),
+    Withdraw(BoundedNum<Fr, { constants::BALANCE_SIZE_BITS }>),
 }
 
 pub struct UserAccount<D: KeyValueDB, P: PoolParams> {
@@ -107,7 +107,7 @@ where
     pub fn generate_address(&self) -> String {
         let mut rng = CustomRng;
 
-        let d: BoundedNum<_, { constants::DIVERSIFIER_SIZE }> = rng.gen();
+        let d: BoundedNum<_, { constants::DIVERSIFIER_SIZE_BITS }> = rng.gen();
         let pk_d = derive_key_p_d(d.to_num(), self.keys.eta, &self.params);
         format_address::<P>(d, pk_d.x)
     }

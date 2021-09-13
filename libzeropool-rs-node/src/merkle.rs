@@ -2,7 +2,10 @@ use std::cell::RefCell;
 
 use libzeropool_rs::libzeropool::fawkes_crypto::borsh::BorshDeserialize;
 use libzeropool_rs::libzeropool::fawkes_crypto::ff_uint::Num;
-use libzeropool_rs::libzeropool::{POOL_PARAMS, constants::{HEIGHT, OUTLOG}};
+use libzeropool_rs::libzeropool::{
+    constants::{HEIGHT, OUTPLUSONELOG},
+    POOL_PARAMS,
+};
 use libzeropool_rs::merkle::NativeMerkleTree;
 use neon::prelude::*;
 
@@ -86,7 +89,7 @@ pub fn merkle_get_commitment_proof(mut cx: FunctionContext) -> JsResult<JsValue>
     let proof = tree
         .borrow()
         .inner
-        .get_proof_unchecked::<{ HEIGHT - OUTLOG }>(index);
+        .get_proof_unchecked::<{ HEIGHT - OUTPLUSONELOG }>(index);
 
     let result = neon_serde::to_value(&mut cx, &proof).unwrap();
 
