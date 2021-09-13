@@ -137,4 +137,7 @@ extern "C" {
 
     #[wasm_bindgen(typescript_type = "Constants")]
     pub type Constants;
+
+    #[wasm_bindgen(typescript_type = "string[]")]
+    pub type Hashes;
 }

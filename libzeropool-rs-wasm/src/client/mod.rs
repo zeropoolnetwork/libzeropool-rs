@@ -26,9 +26,11 @@ use wasm_bindgen::{prelude::*, JsCast};
 use wasm_bindgen_futures::future_to_promise;
 
 use crate::{
-    keys::reduce_sk, utils::Base64, Account, Fr, Fs, MerkleProof, Note, Notes, Pair, PoolParams,
-    TxOutputs, UserState, POOL_PARAMS,
+    keys::reduce_sk, utils::Base64, Account, Fr, Fs, Hashes, MerkleProof, Note, Notes, Pair,
+    PoolParams, TxOutputs, UserState, POOL_PARAMS,
 };
+
+// TODO: Find a way to expose MerkleTree, 
 
 #[wasm_bindgen]
 pub struct UserAccount {
@@ -238,6 +240,19 @@ impl UserAccount {
         self.inner.borrow().state.tree.last_leaf().to_string()
     }
 
+    #[wasm_bindgen(js_name = "addMerkleSubtree")]
+    pub fn add_merkle_subtree(&self, hashes: Hashes, start_index: u64) -> Result<(), JsValue> {
+        let hashes: Vec<Hash<Fr>> = serde_wasm_bindgen::from_value(hashes.unchecked_into())?;
+
+        self.inner
+            .borrow_mut()
+            .state
+            .tree
+            .add_subtree(&hashes, start_index);
+
+        Ok(())
+    }
+
     #[wasm_bindgen(js_name = "getMerkleProof")]
     /// Returns merkle proof for the specified index in the tree.
     pub fn get_merkle_proof(&self, index: u64) -> Option<MerkleProof> {
@@ -255,8 +270,8 @@ impl UserAccount {
 
     #[wasm_bindgen(js_name = "getMerkleProofAfter")]
     /// Returns merkle proofs for the specified leafs (hashes) as if they were appended to the tree.
-    pub fn get_merkle_proof_after(&self, hashes: JsValue) -> Result<Vec<MerkleProof>, JsValue> {
-        let hashes: Vec<Hash<Fr>> = serde_wasm_bindgen::from_value(hashes)?;
+    pub fn get_merkle_proof_after(&self, hashes: Hashes) -> Result<Vec<MerkleProof>, JsValue> {
+        let hashes: Vec<Hash<Fr>> = serde_wasm_bindgen::from_value(hashes.unchecked_into())?;
 
         let proofs = self
             .inner
