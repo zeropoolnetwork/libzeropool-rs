@@ -51,7 +51,7 @@ impl SerConstants {
         SerConstants {
             IN: constants::IN,
             OUT: constants::OUT,
-            OUTLOG: constants::OUTLOG,
+            OUTLOG: constants::OUTPLUSONELOG,
             HEIGHT: constants::HEIGHT,
         }
     }

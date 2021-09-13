@@ -61,14 +61,14 @@ pub struct TransactionData<Fr: PrimeField> {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct TxOutput<Fr: PrimeField> {
     pub to: String,
-    pub amount: BoundedNum<Fr, { constants::BALANCE_SIZE }>,
+    pub amount: BoundedNum<Fr, { constants::BALANCE_SIZE_BITS }>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 pub enum TxType<Fr: PrimeField> {
     Transfer(Vec<TxOutput<Fr>>),
-    Deposit(BoundedNum<Fr, { constants::BALANCE_SIZE }>),
-    Withdraw(BoundedNum<Fr, { constants::BALANCE_SIZE }>),
+    Deposit(BoundedNum<Fr, { constants::BALANCE_SIZE_BITS }>),
+    Withdraw(BoundedNum<Fr, { constants::BALANCE_SIZE_BITS }>),
 }
 
 pub struct UserAccount<D: KeyValueDB, P: PoolParams> {
@@ -107,7 +107,7 @@ where
     pub fn generate_address(&self) -> String {
         let mut rng = CustomRng;
 
-        let d: BoundedNum<_, { constants::DIVERSIFIER_SIZE }> = rng.gen();
+        let d: BoundedNum<_, { constants::DIVERSIFIER_SIZE_BITS }> = rng.gen();
         let pk_d = derive_key_p_d(d.to_num(), self.keys.eta, &self.params);
         format_address::<P>(d, pk_d.x)
     }
@@ -223,7 +223,8 @@ where
             next_index + 1..(next_index + out_notes.as_slice().len() as u64 + 1);
         let mut output_energy = Num::ZERO;
         for (note, note_index) in out_notes.iter().zip(out_notes_with_index) {
-            output_energy += note.b.to_num() * Num::from(spend_interval_index - note_index);
+            output_energy +=
+                note.b.to_num() * Num::from(spend_interval_index.saturating_sub(note_index));
         }
 
         let new_balance = match &tx {
@@ -234,8 +235,14 @@ where
                     return Err(CreateTxError::InsufficientBalance);
                 }
             }
-            TxType::Withdraw(amount) => input_value + amount.to_num(),
-            TxType::Deposit(amount) => input_value - amount.to_num(),
+            TxType::Withdraw(amount) => {
+                if input_value.to_uint() >= amount.to_num().to_uint() {
+                    input_value - amount.to_num()
+                } else {
+                    return Err(CreateTxError::InsufficientBalance);
+                }
+            }
+            TxType::Deposit(amount) => input_value + amount.to_num(),
         };
 
         let out_account = Account {
@@ -381,5 +388,61 @@ where
     /// Returns user's total balance (account + available notes).
     pub fn total_balance(&self) -> Num<P::Fr> {
         self.state.total_balance()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use libzeropool::POOL_PARAMS;
+
+    #[test]
+    fn test_create_tx_deposit_zero() {
+        let state = State::init_test(POOL_PARAMS.clone());
+        let acc = UserAccount::new(Num::ZERO, state, POOL_PARAMS.clone());
+
+        acc.create_tx(TxType::Deposit(BoundedNum::new(Num::ZERO)), None)
+            .unwrap();
+    }
+
+    #[test]
+    fn test_create_tx_deposit_one() {
+        let state = State::init_test(POOL_PARAMS.clone());
+        let acc = UserAccount::new(Num::ZERO, state, POOL_PARAMS.clone());
+
+        acc.create_tx(TxType::Deposit(BoundedNum::new(Num::ONE)), None)
+            .unwrap();
+    }
+
+    // It's ok to transfer 0 while balance = 0
+    #[test]
+    fn test_create_tx_transfer_zero() {
+        let state = State::init_test(POOL_PARAMS.clone());
+        let acc = UserAccount::new(Num::ZERO, state, POOL_PARAMS.clone());
+
+        let addr = acc.generate_address();
+
+        let out = TxOutput {
+            to: addr,
+            amount: BoundedNum::new(Num::ZERO),
+        };
+
+        acc.create_tx(TxType::Transfer(vec![out]), None).unwrap();
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_create_tx_transfer_one_no_balance() {
+        let state = State::init_test(POOL_PARAMS.clone());
+        let acc = UserAccount::new(Num::ZERO, state, POOL_PARAMS.clone());
+
+        let addr = acc.generate_address();
+
+        let out = TxOutput {
+            to: addr,
+            amount: BoundedNum::new(Num::ONE),
+        };
+
+        acc.create_tx(TxType::Transfer(vec![out]), None).unwrap();
     }
 }

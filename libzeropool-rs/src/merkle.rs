@@ -5,6 +5,7 @@ use kvdb::{DBTransaction, KeyValueDB};
 use kvdb_rocksdb::{Database as NativeDatabase, DatabaseConfig};
 #[cfg(feature = "web")]
 use kvdb_web::Database as WebDatabase;
+use kvdb_memorydb::InMemory as MemoryDatabase;
 use libzeropool::{
     constants,
     fawkes_crypto::core::sizedvec::SizedVec,
@@ -47,6 +48,12 @@ impl<P: PoolParams> MerkleTree<NativeDatabase, P> {
         let db = NativeDatabase::open(config, path)?;
 
         Ok(Self::new(db, params))
+    }
+}
+
+impl<P: PoolParams> MerkleTree<MemoryDatabase, P> {
+    pub fn new_test(params: P) -> MerkleTree<MemoryDatabase, P> {
+        Self::new(kvdb_memorydb::create(3), params)
     }
 }
 
@@ -260,8 +267,8 @@ impl<D: KeyValueDB, P: PoolParams> MerkleTree<D, P> {
     pub fn get_commitment_proof(
         &self,
         index: u64,
-    ) -> Option<MerkleProof<P::Fr, { constants::HEIGHT - constants::OUTLOG }>> {
-        let key = Self::node_key(constants::OUTLOG as u32, index);
+    ) -> Option<MerkleProof<P::Fr, { constants::HEIGHT - constants::OUTPLUSONELOG }>> {
+        let key = Self::node_key(constants::OUTPLUSONELOG as u32, index);
         let node_present = self.db.get(0, &key).map_or(false, |value| value.is_some());
         if !node_present {
             return None;
@@ -589,7 +596,7 @@ mod tests {
     use super::*;
     use crate::random::CustomRng;
     use kvdb_memorydb::create;
-    use libzeropool::constants::{HEIGHT, OUTLOG};
+    use libzeropool::constants::{HEIGHT, OUTPLUSONELOG};
     use libzeropool::fawkes_crypto::ff_uint::rand::Rng;
     use libzeropool::POOL_PARAMS;
     use rand::seq::SliceRandom;
@@ -736,8 +743,8 @@ mod tests {
 
         assert_eq!(root, mp_root);
 
-        let mp = tree.get_proof_unchecked::<{ HEIGHT - OUTLOG }>(0);
-        let mp_root = tree.merkle_proof_root(tree.get(OUTLOG as u32, 0), mp);
+        let mp = tree.get_proof_unchecked::<{ HEIGHT - OUTPLUSONELOG }>(0);
+        let mp_root = tree.merkle_proof_root(tree.get(OUTPLUSONELOG as u32, 0), mp);
 
         assert_eq!(root, mp_root);
     }

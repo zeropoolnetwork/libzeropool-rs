@@ -31,7 +31,7 @@ fn main(mut cx: ModuleContext) -> NeonResult<()> {
         &Constants {
             HEIGHT: constants::HEIGHT,
             IN: constants::IN,
-            OUTLOG: constants::OUTLOG,
+            OUTLOG: constants::OUTPLUSONELOG,
             OUT: constants::OUT,
         },
     )
