@@ -49,6 +49,8 @@ impl UserAccount {
     #[wasm_bindgen(constructor)]
     /// Initializes UserAccount with a spending key that has to be an element of the prime field Fs (p = 6554484396890773809930967563523245729705921265872317281365359162392183254199).
     pub fn new(sk: &[u8], state: UserState) -> Result<UserAccount, JsValue> {
+        crate::utils::set_panic_hook();
+        
         let sk = Num::<Fs>::from_uint(NumRepr(Uint::from_little_endian(sk)))
             .ok_or_else(|| js_err!("Invalid spending key"))?;
         let account = NativeUserAccount::new(sk, state.inner, POOL_PARAMS.clone());
@@ -62,8 +64,6 @@ impl UserAccount {
     #[wasm_bindgen(js_name = fromSeed)]
     /// Same as constructor but accepts arbitrary data as spending key.
     pub fn from_seed(seed: &[u8], state: UserState) -> Result<UserAccount, JsValue> {
-        crate::utils::set_panic_hook();
-
         let sk = reduce_sk(seed);
         Self::new(&sk, state)
     }
@@ -71,16 +71,12 @@ impl UserAccount {
     #[wasm_bindgen(js_name = generateAddress)]
     /// Generates a new private address.
     pub fn generate_address(&self) -> String {
-        crate::utils::set_panic_hook();
-
         self.inner.borrow().generate_address()
     }
 
     #[wasm_bindgen(js_name = decryptNotes)]
     /// Attempts to decrypt notes.
     pub fn decrypt_notes(&self, data: Vec<u8>) -> Result<Notes, JsValue> {
-        crate::utils::set_panic_hook();
-
         let notes = self
             .inner
             .borrow()
@@ -97,8 +93,6 @@ impl UserAccount {
     #[wasm_bindgen(js_name = decryptPair)]
     /// Attempts to decrypt account and notes.
     pub fn decrypt_pair(&self, data: Vec<u8>) -> Result<Option<Pair>, JsValue> {
-        crate::utils::set_panic_hook();
-
         #[derive(Serialize)]
         struct SerPair {
             account: NativeAccount<Fr>,
@@ -123,8 +117,6 @@ impl UserAccount {
     #[wasm_bindgen(js_name = "createTx")]
     /// Constructs a transaction.
     pub fn create_tx(&self, ty: TxType, value: TxOutputs, data: Option<Vec<u8>>) -> Promise {
-        crate::utils::set_panic_hook();
-
         #[derive(Deserialize)]
         struct Output {
             to: String,
