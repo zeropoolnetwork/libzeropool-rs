@@ -14,7 +14,7 @@ use libzeropool::{
         account::Account as NativeAccount,
         boundednum::BoundedNum,
         note::Note as NativeNote,
-        tx::{TransferPub as NativeTransferPub, TransferSec as NativeTransferSec},
+        tx::{parse_delta, TransferPub as NativeTransferPub, TransferSec as NativeTransferSec},
     },
 };
 use libzeropool_rs::{
@@ -130,14 +130,20 @@ impl UserAccount {
         }
 
         #[derive(Serialize)]
-        pub struct TransactionData {
+        struct ParsedDelta {
+            v: Num<Fr>,
+            e: Num<Fr>,
+            index: Num<Fr>,
+        }
+
+        #[derive(Serialize)]
+        struct TransactionData {
             public: NativeTransferPub<Fr>,
             secret: NativeTransferSec<Fr>,
             ciphertext: Base64,
             memo: Base64,
             out_hashes: SizedVec<Num<Fr>, { constants::OUT + 1 }>,
-            output_energy: Num<Fr>,
-            output_value: Num<Fr>,
+            parsed_delta: ParsedDelta,
         }
 
         // TODO: Signature callback
@@ -179,14 +185,17 @@ impl UserAccount {
                 _ => panic!("unknow tx type"),
             }.map_err(|err| js_err!("{}", err))?;
 
+            let (v, e, index) = parse_delta(tx.public.delta);
+
             let tx = TransactionData {
                 public: tx.public,
                 secret: tx.secret,
                 ciphertext: Base64(tx.ciphertext),
                 memo: Base64(tx.memo),
                 out_hashes: tx.out_hashes,
-                output_energy: tx.output_energy,
-                output_value: tx.output_value,
+                parsed_delta: ParsedDelta {
+                    v, e, index,
+                },
             };
 
             Ok(serde_wasm_bindgen::to_value(&tx).unwrap())

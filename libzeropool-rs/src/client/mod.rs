@@ -54,8 +54,6 @@ pub struct TransactionData<Fr: PrimeField> {
     pub ciphertext: Vec<u8>,
     pub memo: Vec<u8>,
     pub out_hashes: SizedVec<Num<Fr>, { constants::OUT + 1 }>,
-    pub output_energy: Num<Fr>,
-    pub output_value: Num<Fr>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -148,7 +146,6 @@ where
         let keys = self.keys.clone();
         let state = &self.state;
 
-        let next_index = state.tree.next_index();
         // FIXME: What if there are more owned notes than input limit? Only take as much as needed.
         let spend_interval_index = state.latest_note_index + 1;
         let prev_account = state.latest_account.unwrap_or_else(|| Account {
@@ -218,15 +215,6 @@ where
             (0..).map(|_| zero_note()).take(constants::OUT).collect()
         };
 
-        // FIXME: Check if correct
-        let out_notes_with_index =
-            next_index + 1..(next_index + out_notes.as_slice().len() as u64 + 1);
-        let mut output_energy = Num::ZERO;
-        for (note, note_index) in out_notes.iter().zip(out_notes_with_index) {
-            output_energy +=
-                note.b.to_num() * Num::from(spend_interval_index.saturating_sub(note_index));
-        }
-
         let new_balance = match &tx {
             TxType::Transfer(_) => {
                 if input_value.to_uint() >= output_value.to_uint() {
@@ -293,7 +281,7 @@ where
         let delta = make_delta::<P::Fr>(
             input_value,
             input_energy,
-            Num::from(spend_interval_index as u32),
+            Num::from(spend_interval_index as u64),
         );
 
         let tree = &state.tree;
@@ -369,8 +357,6 @@ where
             ciphertext,
             memo: memo_data,
             out_hashes,
-            output_energy,
-            output_value,
         })
     }
 

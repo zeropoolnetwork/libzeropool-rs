@@ -46,8 +46,7 @@ export interface TransactionData {
     ciphertext: string;
     memo: string;
     out_hashes: string[];
-    output_energy: string;
-    output_value: string;
+    parsed_delta: { v: string; e: string; index: string; };
 }
 
 export interface TreePub {
