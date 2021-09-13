@@ -90,16 +90,16 @@ export interface SnarkProof {
 
 #[wasm_bindgen]
 extern "C" {
-    #[wasm_bindgen(typescript_type = "Array<Note>")]
+    #[wasm_bindgen(typescript_type = "Note[]")]
     pub type Notes;
 
     #[wasm_bindgen(typescript_type = "MerkleProof")]
     pub type MerkleProof;
 
-    #[wasm_bindgen(typescript_type = "Array<string>")]
+    #[wasm_bindgen(typescript_type = "string[]")]
     pub type MerkleProofSibling;
 
-    #[wasm_bindgen(typescript_type = "Array<boolean>")]
+    #[wasm_bindgen(typescript_type = "boolean[]")]
     pub type MerkleProofPath;
 
     #[wasm_bindgen(typescript_type = "Array<Output> | string")]
@@ -140,4 +140,7 @@ extern "C" {
 
     #[wasm_bindgen(typescript_type = "string[]")]
     pub type Hashes;
+
+    #[wasm_bindgen(typescript_type = "string")]
+    pub type Hash;
 }

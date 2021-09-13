@@ -25,6 +25,7 @@ use serde::{Deserialize, Serialize};
 use wasm_bindgen::{prelude::*, JsCast};
 use wasm_bindgen_futures::future_to_promise;
 
+use crate::ts_types::Hash as JsHash;
 use crate::{
     keys::reduce_sk, utils::Base64, Account, Fr, Fs, Hashes, MerkleProof, Note, Notes, Pair,
     PoolParams, TxOutputs, UserState, POOL_PARAMS,
@@ -50,7 +51,7 @@ impl UserAccount {
     /// Initializes UserAccount with a spending key that has to be an element of the prime field Fs (p = 6554484396890773809930967563523245729705921265872317281365359162392183254199).
     pub fn new(sk: &[u8], state: UserState) -> Result<UserAccount, JsValue> {
         crate::utils::set_panic_hook();
-        
+
         let sk = Num::<Fs>::from_uint(NumRepr(Uint::from_little_endian(sk)))
             .ok_or_else(|| js_err!("Invalid spending key"))?;
         let account = NativeUserAccount::new(sk, state.inner, POOL_PARAMS.clone());
@@ -241,6 +242,46 @@ impl UserAccount {
             .state
             .tree
             .add_subtree(&hashes, start_index);
+
+        Ok(())
+    }
+
+    #[wasm_bindgen(js_name = "addMerkleLeaf")]
+    pub fn add_merkle_leaf(&self, index: u64, hash: JsHash) -> Result<(), JsValue> {
+        let hash: Hash<Fr> = serde_wasm_bindgen::from_value(hash.unchecked_into())?;
+
+        self.inner
+            .borrow_mut()
+            .state
+            .tree
+            .add_hash(index, hash, false);
+
+        Ok(())
+    }
+
+    #[wasm_bindgen(js_name = "appendMerkleLeaf")]
+    pub fn append_merkle_leaf(&self, hash: JsHash) -> Result<(), JsValue> {
+        let hash: Hash<Fr> = serde_wasm_bindgen::from_value(hash.unchecked_into())?;
+
+        self.inner.borrow_mut().state.tree.append_hash(hash, false);
+
+        Ok(())
+    }
+
+    #[wasm_bindgen(js_name = "addMerkleSubtreeRoot")]
+    pub fn add_merkle_subtree_root(
+        &self,
+        height: u32,
+        index: u64,
+        hash: JsHash,
+    ) -> Result<(), JsValue> {
+        let hash: Hash<Fr> = serde_wasm_bindgen::from_value(hash.unchecked_into())?;
+
+        self.inner
+            .borrow_mut()
+            .state
+            .tree
+            .add_subtree_root(height, index, hash);
 
         Ok(())
     }
