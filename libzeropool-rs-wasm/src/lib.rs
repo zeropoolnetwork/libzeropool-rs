@@ -4,6 +4,7 @@ use libzeropool::{
     native::params::{PoolBN256, PoolParams as PoolParamsTrait},
     POOL_PARAMS as NATIVE_POOL_PARAMS,
 };
+use libzeropool_rs::address::parse_address;
 use serde::Serialize;
 use wasm_bindgen::{prelude::*, JsCast};
 
@@ -59,5 +60,12 @@ impl SerConstants {
 
 #[wasm_bindgen(js_name = "getConstants")]
 pub fn get_constants() -> Constants {
-    serde_wasm_bindgen::to_value(&*CONSTANTS).unwrap().unchecked_into::<Constants>()
+    serde_wasm_bindgen::to_value(&*CONSTANTS)
+        .unwrap()
+        .unchecked_into::<Constants>()
+}
+
+#[wasm_bindgen(js_name = "validateAddress")]
+pub fn validate_address(address: &str) -> bool {
+    parse_address::<PoolParams>(address).is_ok()
 }
