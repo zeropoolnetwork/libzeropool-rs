@@ -100,7 +100,6 @@ where
         Self::new(sk, state, params)
     }
 
-    // TODO: Create a separate structure containing address elements
     /// Generates a new private address.
     pub fn generate_address(&self) -> String {
         let mut rng = CustomRng;
@@ -146,8 +145,6 @@ where
         let keys = self.keys.clone();
         let state = &self.state;
 
-        // FIXME: What if there are more owned notes than input limit? Only take as much as needed.
-        let spend_interval_index = state.latest_note_index + 1;
         let prev_account = state.latest_account.unwrap_or_else(|| Account {
             eta: Num::ZERO,
             i: BoundedNum::new(Num::ZERO),
@@ -168,6 +165,11 @@ where
                 _ => None,
             })
             .collect();
+
+        let spend_interval_index = in_notes
+            .last()
+            .map(|(index, _)| *index)
+            .unwrap_or(state.latest_note_index);
 
         // Calculate total balance (account + constants::IN notes).
         let mut input_value = prev_account.b.to_num();
