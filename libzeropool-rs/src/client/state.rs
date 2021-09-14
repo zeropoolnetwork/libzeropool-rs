@@ -78,13 +78,13 @@ where
         for (index, tx) in txs.iter() {
             match tx {
                 Transaction::Account(acc) => {
-                    if index > latest_account_index {
+                    if index >= latest_account_index {
                         latest_account_index = index;
                         latest_account = Some(acc);
                     }
                 }
                 Transaction::Note(_) => {
-                    if index > latest_note_index {
+                    if index >= latest_note_index {
                         latest_note_index = index;
                     }
                 }

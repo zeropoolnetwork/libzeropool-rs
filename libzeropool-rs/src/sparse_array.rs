@@ -26,7 +26,7 @@ where
     T: BorshSerialize + BorshDeserialize,
 {
     pub async fn new_web(name: &str) -> SparseArray<WebDatabase, T> {
-        let db = WebDatabase::open(name.to_owned(), 0).await.unwrap();
+        let db = WebDatabase::open(name.to_owned(), 1).await.unwrap();
 
         SparseArray {
             db,

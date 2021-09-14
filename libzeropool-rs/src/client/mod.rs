@@ -156,7 +156,7 @@ where
         let next_usable_index = state.earliest_usable_index();
 
         // Fetch constants::IN usable notes from state
-        let in_notes: Vec<(u64, Note<P::Fr>)> = state
+        let in_notes_original: Vec<(u64, Note<P::Fr>)> = state
             .txs
             .iter_slice(next_usable_index..=state.latest_note_index)
             .take(constants::IN)
@@ -166,14 +166,14 @@ where
             })
             .collect();
 
-        let spend_interval_index = in_notes
+        let spend_interval_index = in_notes_original
             .last()
             .map(|(index, _)| *index)
             .unwrap_or(state.latest_note_index);
 
         // Calculate total balance (account + constants::IN notes).
         let mut input_value = prev_account.b.to_num();
-        for (_index, note) in &in_notes {
+        for (_index, note) in &in_notes_original {
             input_value += note.b.to_num();
         }
 
@@ -181,7 +181,7 @@ where
         input_energy +=
             prev_account.b.to_num() * (Num::from(spend_interval_index) - prev_account.i.to_num());
 
-        for (note_index, note) in &in_notes {
+        for (note_index, note) in &in_notes_original {
             input_energy += note.b.to_num() * Num::from(spend_interval_index - note_index);
         }
 
@@ -243,8 +243,8 @@ where
             t: rng.gen(),
         };
 
-        let out_account_hash = out_account.hash(&self.params);
-        let nullifier = nullifier(out_account_hash, keys.eta, &self.params);
+        let in_account_hash = prev_account.hash(&self.params);
+        let nullifier = nullifier(in_account_hash, keys.eta, &self.params);
 
         let ciphertext = {
             let entropy: [u8; 32] = rng.gen();
@@ -258,23 +258,37 @@ where
         };
 
         // Hash input account + notes filling remaining space with non-hashed zeroes
-        let in_note_hashes = in_notes.iter().map(|(_, note)| note.hash(&self.params));
-        let input_hashes: SizedVec<_, { constants::IN }> = [prev_account.hash(&self.params)]
+        let owned_zero_notes = (0..).map(|_| {
+            let d:BoundedNum<_, {constants::DIVERSIFIER_SIZE_BITS}> = rng.gen();
+            let p_d = derive_key_p_d::<P, P::Fr>(d.to_num(), keys.eta, &self.params).x;
+            Note {
+                d,
+                p_d,
+                b: BoundedNum::new(Num::ZERO),
+                t: rng.gen(),
+            }
+        });
+        let in_notes: SizedVec<Note<P::Fr>, { constants::IN }> = in_notes_original
+            .iter()
+            .map(|(_, note)| note)
+            .cloned()
+            .chain(owned_zero_notes)
+            .take(constants::IN)
+            .collect();
+        let in_note_hashes = in_notes.iter().map(|note| note.hash(&self.params));
+        let input_hashes: SizedVec<_, { constants::IN + 1 }> = [in_account_hash]
             .iter()
             .copied()
             .chain(in_note_hashes)
-            .chain((0..).map(|_| Num::ZERO))
-            .take(constants::IN)
             .collect();
 
         // Same with output
+        let out_account_hash = out_account.hash(&self.params);
         let out_note_hashes = out_notes.iter().map(|n| n.hash(&self.params));
         let out_hashes: SizedVec<Num<P::Fr>, { constants::OUT + 1 }> = [out_account_hash]
             .iter()
             .copied()
             .chain(out_note_hashes)
-            .chain((0..).map(|_| Num::ZERO))
-            .take(constants::OUT + 1)
             .collect();
 
         let out_commit = out_commitment_hash(out_hashes.as_slice(), &self.params);
@@ -310,13 +324,7 @@ where
         let tx = Tx {
             input: (
                 prev_account,
-                in_notes
-                    .iter()
-                    .map(|(_, note)| note)
-                    .cloned()
-                    .chain((0..).map(|_| zero_note()))
-                    .take(constants::IN)
-                    .collect(),
+                in_notes,
             ),
             output: (out_account, out_notes),
         };
@@ -330,7 +338,7 @@ where
 
         let (eddsa_s, eddsa_r) = tx_sign(keys.sk, tx_hash, &self.params);
 
-        let note_proofs = in_notes
+        let note_proofs = in_notes_original
             .iter()
             .copied()
             .map(|(index, _note)| {
