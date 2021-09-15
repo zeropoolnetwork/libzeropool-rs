@@ -311,7 +311,7 @@ impl UserAccount {
             .borrow_mut()
             .state
             .tree
-            .get_proof_after(hashes)
+            .get_proof_after_virtual(hashes)
             .into_iter()
             .map(|proof| {
                 serde_wasm_bindgen::to_value(&proof)
