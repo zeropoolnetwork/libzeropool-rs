@@ -217,6 +217,7 @@ where
             (0..).map(|_| zero_note()).take(constants::OUT).collect()
         };
 
+        let mut delta_value = Num::ZERO;
         let new_balance = match &tx {
             TxType::Transfer(_) => {
                 if input_value.to_uint() >= output_value.to_uint() {
@@ -226,13 +227,17 @@ where
                 }
             }
             TxType::Withdraw(amount) => {
-                if input_value.to_uint() >= amount.to_num().to_uint() {
-                    input_value - amount.to_num()
+                delta_value = -amount.to_num();
+                if input_value.to_uint() + delta_value.to_uint() >= NumRepr::ZERO {
+                    input_value + delta_value
                 } else {
                     return Err(CreateTxError::InsufficientBalance);
                 }
             }
-            TxType::Deposit(amount) => input_value + amount.to_num(),
+            TxType::Deposit(amount) => {
+                delta_value = amount.to_num();
+                input_value + delta_value
+            }
         };
 
         let out_account = Account {
@@ -295,7 +300,7 @@ where
         let tx_hash = tx_hash(input_hashes.as_slice(), out_commit, &self.params);
 
         let delta = make_delta::<P::Fr>(
-            input_value,
+            delta_value,
             input_energy,
             Num::from(spend_interval_index as u64),
         );
