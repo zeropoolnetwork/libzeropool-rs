@@ -288,17 +288,16 @@ impl UserAccount {
 
     #[wasm_bindgen(js_name = "getMerkleProof")]
     /// Returns merkle proof for the specified index in the tree.
-    pub fn get_merkle_proof(&self, index: u64) -> Option<MerkleProof> {
-        self.inner
+    pub fn get_merkle_proof(&self, index: u64) -> MerkleProof {
+        let proof = self.inner
             .borrow()
             .state
             .tree
-            .get_leaf_proof(index)
-            .map(|proof| {
-                serde_wasm_bindgen::to_value(&proof)
-                    .unwrap()
-                    .unchecked_into::<MerkleProof>()
-            })
+            .get_proof_unchecked::<{ constants::HEIGHT }>(index);
+
+        serde_wasm_bindgen::to_value(&proof)
+            .unwrap()
+            .unchecked_into::<MerkleProof>()
     }
 
     #[wasm_bindgen(js_name = "getMerkleProofAfter")]
@@ -324,13 +323,16 @@ impl UserAccount {
     }
 
     #[wasm_bindgen(js_name = "getCommitmentMerkleProof")]
-    pub fn get_commitment_merkle_proof(&self, index: u64) -> Option<MerkleProof> {
-        let proof = self.inner.borrow().state.tree.get_commitment_proof(index)?;
+    pub fn get_commitment_merkle_proof(&self, index: u64) -> MerkleProof {
+        let proof = self
+            .inner
+            .borrow()
+            .state
+            .tree
+            .get_proof_unchecked::<{ constants::HEIGHT - constants::OUTPLUSONELOG }>(index);
 
-        Some(
-            serde_wasm_bindgen::to_value(&proof)
-                .unwrap()
-                .unchecked_into::<MerkleProof>(),
-        )
+        serde_wasm_bindgen::to_value(&proof)
+            .unwrap()
+            .unchecked_into::<MerkleProof>()
     }
 }
