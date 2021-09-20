@@ -392,7 +392,7 @@ where
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "heavy-tests"))]
 mod tests {
     use super::*;
     use libzeropool::fawkes_crypto::engines::bn256::Fr;
