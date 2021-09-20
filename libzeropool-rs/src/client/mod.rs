@@ -395,15 +395,35 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use libzeropool::POOL_PARAMS;
+    use libzeropool::fawkes_crypto::engines::bn256::Fr;
+    use libzeropool::{
+        circuit::tx::{c_transfer, CTransferPub, CTransferSec},
+        fawkes_crypto::{
+            backend::bellman_groth16::{engines::Bn256, prover::prove, setup::setup, Parameters},
+            circuit::cs::CS,
+        },
+        POOL_PARAMS,
+    };
+
+    fn circuit<C: CS<Fr = Fr>>(public: CTransferPub<C>, secret: CTransferSec<C>) {
+        c_transfer(&public, &secret, &*POOL_PARAMS);
+    }
+
+    lazy_static::lazy_static! {
+        static ref PARAMETERS: Parameters<Bn256> = {
+            setup::<Bn256, _, _, _>(circuit)
+        };
+    }
 
     #[test]
     fn test_create_tx_deposit_zero() {
         let state = State::init_test(POOL_PARAMS.clone());
         let acc = UserAccount::new(Num::ZERO, state, POOL_PARAMS.clone());
 
-        acc.create_tx(TxType::Deposit(BoundedNum::new(Num::ZERO)), None)
+        let tx = acc.create_tx(TxType::Deposit(BoundedNum::new(Num::ZERO)), None)
             .unwrap();
+
+        prove(&*PARAMETERS, &tx.public, &tx.secret, circuit);
     }
 
     #[test]
@@ -411,8 +431,11 @@ mod tests {
         let state = State::init_test(POOL_PARAMS.clone());
         let acc = UserAccount::new(Num::ZERO, state, POOL_PARAMS.clone());
 
-        acc.create_tx(TxType::Deposit(BoundedNum::new(Num::ONE)), None)
+        let tx = acc
+            .create_tx(TxType::Deposit(BoundedNum::new(Num::ONE)), None)
             .unwrap();
+
+        prove(&*PARAMETERS, &tx.public, &tx.secret, circuit);
     }
 
     // It's ok to transfer 0 while balance = 0
@@ -428,7 +451,9 @@ mod tests {
             amount: BoundedNum::new(Num::ZERO),
         };
 
-        acc.create_tx(TxType::Transfer(vec![out]), None).unwrap();
+        let tx = acc.create_tx(TxType::Transfer(vec![out]), None).unwrap();
+
+        prove(&*PARAMETERS, &tx.public, &tx.secret, circuit);
     }
 
     #[test]
