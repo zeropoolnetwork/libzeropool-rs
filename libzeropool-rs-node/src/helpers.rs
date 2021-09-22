@@ -1,4 +1,5 @@
 use std::str::FromStr;
+use std::convert::TryInto;
 
 use libzeropool_rs::libzeropool::constants::OUT;
 use libzeropool_rs::libzeropool::fawkes_crypto::borsh::BorshDeserialize;
@@ -21,9 +22,7 @@ pub fn out_commitment(mut cx: FunctionContext) -> JsResult<JsValue> {
         .iter()
         .map(|&val| {
             let buf = val.downcast::<JsBuffer, FunctionContext>(&mut cx).unwrap();
-            cx.borrow(&buf, |data| {
-                Num::try_from_slice(data.as_slice()).unwrap()
-            })
+            cx.borrow(&buf, |data| Num::try_from_slice(data.as_slice()).unwrap())
         })
         .collect();
 
@@ -41,9 +40,13 @@ pub fn parse_delta_string(mut cx: FunctionContext) -> JsResult<JsObject> {
     let delta: Num<Fr> = Num::from_str(delta_str.as_str()).unwrap();
 
     let delta_params = parse_delta(delta);
-    let v = neon_serde::to_value(&mut cx, &delta_params.0).unwrap();
-    let e = neon_serde::to_value(&mut cx, &delta_params.1).unwrap();
-    let index = neon_serde::to_value(&mut cx, &delta_params.2).unwrap();
+    let value_int: i64 = delta_params.0.try_into().unwrap();
+    let energy_int: i64 = delta_params.1.try_into().unwrap();
+    let index_uint: u64 = delta_params.2.try_into().unwrap();
+
+    let v = neon_serde::to_value(&mut cx,&value_int).unwrap();
+    let e = neon_serde::to_value(&mut cx, &energy_int).unwrap();
+    let index = neon_serde::to_value(&mut cx, &index_uint).unwrap();
 
     let js_object = JsObject::new(&mut cx);
     js_object.set(&mut cx, "v", v)?;

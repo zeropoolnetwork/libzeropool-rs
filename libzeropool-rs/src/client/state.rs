@@ -128,7 +128,7 @@ where
         // Update merkle tree
         self.tree.add_hash(at_index, account_hash, false);
 
-        if at_index > self.latest_account_index {
+        if at_index >= self.latest_account_index {
             self.latest_account_index = at_index;
             self.latest_account = Some(account);
         }
