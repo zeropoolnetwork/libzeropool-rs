@@ -316,10 +316,10 @@ where
             let data_size = data.as_ref().map(|d| d.len()).unwrap_or(0);
             Vec::with_capacity(ciphertext_size + data_size)
         };
-        memo_data.extend(&ciphertext);
         if let Some(data) = &mut data {
             memo_data.append(data);
         }
+        memo_data.extend(&ciphertext);
 
         let memo_hash = keccak256(&memo_data);
         let memo = Num::from_uint_reduced(NumRepr(Uint::from_big_endian(&memo_hash)));
