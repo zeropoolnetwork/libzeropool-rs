@@ -43,8 +43,8 @@ pub enum CreateTxError {
     ProofNotFound(u64),
     #[error("Failed to parse address: {0}")]
     AddressParseError(#[from] AddressParseError),
-    #[error("Insufficient balance: sum of outputs is greater than sum of inputs")]
-    InsufficientBalance,
+    #[error("Insufficient balance: sum of outputs is greater than sum of inputs: {0} > {1}")]
+    InsufficientBalance(String, String),
 }
 
 #[derive(Serialize, Deserialize)]
@@ -146,7 +146,7 @@ where
         let state = &self.state;
 
         let prev_account = state.latest_account.unwrap_or_else(|| Account {
-            eta: Num::ZERO,
+            eta: keys.eta,
             i: BoundedNum::new(Num::ZERO),
             b: BoundedNum::new(Num::ZERO),
             e: BoundedNum::new(Num::ZERO),
@@ -223,7 +223,10 @@ where
                 if input_value.to_uint() >= output_value.to_uint() {
                     input_value - output_value
                 } else {
-                    return Err(CreateTxError::InsufficientBalance);
+                    return Err(CreateTxError::InsufficientBalance(
+                        output_value.to_string(),
+                        input_value.to_string(),
+                    ));
                 }
             }
             TxType::Withdraw(amount) => {
@@ -231,7 +234,10 @@ where
                 if input_value.to_uint() + delta_value.to_uint() >= NumRepr::ZERO {
                     input_value + delta_value
                 } else {
-                    return Err(CreateTxError::InsufficientBalance);
+                    return Err(CreateTxError::InsufficientBalance(
+                        delta_value.to_string(),
+                        input_value.to_string(),
+                    ));
                 }
             }
             TxType::Deposit(amount) => {
@@ -264,7 +270,7 @@ where
 
         // Hash input account + notes filling remaining space with non-hashed zeroes
         let owned_zero_notes = (0..).map(|_| {
-            let d:BoundedNum<_, {constants::DIVERSIFIER_SIZE_BITS}> = rng.gen();
+            let d: BoundedNum<_, { constants::DIVERSIFIER_SIZE_BITS }> = rng.gen();
             let p_d = derive_key_p_d::<P, P::Fr>(d.to_num(), keys.eta, &self.params).x;
             Note {
                 d,
@@ -299,17 +305,20 @@ where
         let out_commit = out_commitment_hash(out_hashes.as_slice(), &self.params);
         let tx_hash = tx_hash(input_hashes.as_slice(), out_commit, &self.params);
 
-        let delta = make_delta::<P::Fr>(
-            delta_value,
-            input_energy,
-            Num::from(spend_interval_index as u64),
-        );
+        let delta_index = state.latest_account_index.map_or(0, |i| {
+            let leafs_num = (constants::OUT + 1) as u64;
+            (i / leafs_num + 1) * leafs_num
+        });
+        let delta = make_delta::<P::Fr>(delta_value, input_energy, Num::from(delta_index));
 
         let tree = &state.tree;
         let root: Num<P::Fr> = tree.get_root();
 
-        let mut memo_data =
-            Vec::with_capacity(data.as_ref().map(|d| d.len()).unwrap_or(0) + ciphertext.len());
+        let mut memo_data = {
+            let ciphertext_size = ciphertext.len();
+            let data_size = data.as_ref().map(|d| d.len()).unwrap_or(0);
+            Vec::with_capacity(ciphertext_size + data_size)
+        };
         if let Some(data) = &mut data {
             memo_data.append(data);
         }
@@ -327,10 +336,7 @@ where
         };
 
         let tx = Tx {
-            input: (
-                prev_account,
-                in_notes,
-            ),
+            input: (prev_account, in_notes),
             output: (out_account, out_notes),
         };
 
@@ -343,6 +349,10 @@ where
 
         let (eddsa_s, eddsa_r) = tx_sign(keys.sk, tx_hash, &self.params);
 
+        let account_proof = state.latest_account_index.map_or_else(
+            || Ok(zero_proof()),
+            |i| tree.get_leaf_proof(i).ok_or_else(|| CreateTxError::ProofNotFound(i))
+        )?;
         let note_proofs = in_notes_original
             .iter()
             .copied()
@@ -356,11 +366,7 @@ where
 
         let secret = TransferSec::<P::Fr> {
             tx,
-            in_proof: (
-                tree.get_leaf_proof(state.latest_account_index)
-                    .unwrap_or_else(zero_proof),
-                note_proofs,
-            ),
+            in_proof: (account_proof, note_proofs),
             eddsa_s: eddsa_s.to_other().unwrap(),
             eddsa_r,
             eddsa_a: keys.a,

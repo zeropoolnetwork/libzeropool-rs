@@ -29,7 +29,7 @@ pub struct State<D: KeyValueDB, P: PoolParams> {
     /// Stores only usable (own) accounts and notes
     pub(crate) txs: TxStorage<D, P::Fr>,
     pub(crate) latest_account: Option<NativeAccount<P::Fr>>,
-    pub latest_account_index: u64,
+    pub latest_account_index: Option<u64>,
     /// Latest owned note index
     pub latest_note_index: u64,
     pub(crate) total_balance: BoundedNum<P::Fr, { constants::BALANCE_SIZE_BITS }>,
@@ -72,14 +72,14 @@ where
 {
     pub fn new(tree: MerkleTree<D, P>, txs: TxStorage<D, P::Fr>, params: P) -> Self {
         // TODO: Cache
-        let mut latest_account_index = 0;
+        let mut latest_account_index = None;
         let mut latest_note_index = 0;
         let mut latest_account = None;
         for (index, tx) in txs.iter() {
             match tx {
                 Transaction::Account(acc) => {
-                    if index >= latest_account_index {
-                        latest_account_index = index;
+                    if index >= latest_account_index.unwrap_or(0){
+                        latest_account_index = Some(index);
                         latest_account = Some(acc);
                     }
                 }
@@ -128,8 +128,8 @@ where
         // Update merkle tree
         self.tree.add_hash(at_index, account_hash, false);
 
-        if at_index > self.latest_account_index {
-            self.latest_account_index = at_index;
+        if at_index >= self.latest_account_index.unwrap_or(0) {
+            self.latest_account_index = Some(at_index);
             self.latest_account = Some(account);
         }
 
