@@ -305,7 +305,10 @@ where
         let out_commit = out_commitment_hash(out_hashes.as_slice(), &self.params);
         let tx_hash = tx_hash(input_hashes.as_slice(), out_commit, &self.params);
 
-        let delta_index = (state.latest_account_index / 128) * 128;
+        let delta_index = state.latest_account_index.map_or(0, |i| {
+            let leafs_num = (constants::OUT + 1) as u64;
+            (i / leafs_num + 1) * leafs_num
+        });
         let delta = make_delta::<P::Fr>(delta_value, input_energy, Num::from(delta_index));
 
         let tree = &state.tree;
@@ -346,8 +349,10 @@ where
 
         let (eddsa_s, eddsa_r) = tx_sign(keys.sk, tx_hash, &self.params);
 
-        let account_proof = tree.get_leaf_proof(state.latest_account_index)
-                .unwrap_or_else(zero_proof);
+        let account_proof = state.latest_account_index.map_or_else(
+            || Ok(zero_proof()),
+            |i| tree.get_leaf_proof(i).ok_or_else(|| CreateTxError::ProofNotFound(i))
+        )?;
         let note_proofs = in_notes_original
             .iter()
             .copied()
