@@ -27,7 +27,7 @@ use wasm_bindgen_futures::future_to_promise;
 
 use crate::ts_types::Hash as JsHash;
 use crate::{
-    keys::reduce_sk, Account, Fr, Fs, Hashes, MerkleProof, Note, Notes, Pair, PoolParams,
+    keys::reduce_sk, Account, Fr, Fs, Hashes, IndexedNotes, MerkleProof, Note, Pair, PoolParams,
     TxOutputs, UserState, POOL_PARAMS,
 };
 
@@ -77,16 +77,29 @@ impl UserAccount {
 
     #[wasm_bindgen(js_name = decryptNotes)]
     /// Attempts to decrypt notes.
-    pub fn decrypt_notes(&self, data: Vec<u8>) -> Result<Notes, JsValue> {
+    pub fn decrypt_notes(&self, data: Vec<u8>) -> Result<IndexedNotes, JsValue> {
+        #[derive(Serialize)]
+        struct IndexedNote {
+            index: u64,
+            note: NativeNote<Fr>,
+        }
+
         let notes = self
             .inner
             .borrow()
             .decrypt_notes(data)
             .into_iter()
-            .flatten()
-            .map(|note| serde_wasm_bindgen::to_value(&note).unwrap())
+            .enumerate()
+            .filter_map(|(index, note)| {
+                let note = IndexedNote {
+                    index: index as u64,
+                    note: note?,
+                };
+
+                Some(serde_wasm_bindgen::to_value(&note).unwrap())
+            })
             .collect::<Array>()
-            .unchecked_into::<Notes>();
+            .unchecked_into::<IndexedNotes>();
 
         Ok(notes)
     }
