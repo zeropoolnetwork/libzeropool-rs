@@ -81,3 +81,4 @@ impl Proof {
         Ok(serde_wasm_bindgen::to_value(&proof)?.unchecked_into::<crate::ts_types::Proof>())
     }
 }
+

@@ -188,7 +188,7 @@ impl<D: KeyValueDB, P: PoolParams> MerkleTree<D, P> {
     }
 
     pub fn last_leaf(&self) -> Hash<P::Fr> {
-        match self.get_opt(0, self.next_index.checked_sub(1).unwrap_or(0)) {
+        match self.get_opt(0, self.next_index.saturating_sub(1)) {
             Some(val) => val,
             _ => self.default_hashes[0],
         }

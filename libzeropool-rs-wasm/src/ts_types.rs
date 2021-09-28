@@ -46,6 +46,7 @@ export interface TransactionData {
     ciphertext: string;
     memo: string;
     out_hashes: string[];
+    commitment_root: string;
     parsed_delta: { v: string; e: string; index: string; };
 }
 

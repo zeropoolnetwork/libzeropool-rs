@@ -27,8 +27,8 @@ use wasm_bindgen_futures::future_to_promise;
 
 use crate::ts_types::Hash as JsHash;
 use crate::{
-    keys::reduce_sk, utils::Base64, Account, Fr, Fs, Hashes, MerkleProof, Note, Notes, Pair,
-    PoolParams, TxOutputs, UserState, POOL_PARAMS,
+    keys::reduce_sk, Account, Fr, Fs, Hashes, MerkleProof, Note, Notes, Pair, PoolParams,
+    TxOutputs, UserState, POOL_PARAMS,
 };
 
 // TODO: Find a way to expose MerkleTree, 
@@ -135,8 +135,11 @@ impl UserAccount {
         struct TransactionData {
             public: NativeTransferPub<Fr>,
             secret: NativeTransferSec<Fr>,
-            ciphertext: Base64,
-            memo: Base64,
+            #[serde(with = "hex")]
+            ciphertext: Vec<u8>,
+            #[serde(with = "hex")]
+            memo: Vec<u8>,
+            commitment_root: Num<Fr>,
             out_hashes: SizedVec<Num<Fr>, { constants::OUT + 1 }>,
             parsed_delta: ParsedDelta,
         }
@@ -185,9 +188,10 @@ impl UserAccount {
             let tx = TransactionData {
                 public: tx.public,
                 secret: tx.secret,
-                ciphertext: Base64(tx.ciphertext),
-                memo: Base64(tx.memo),
+                ciphertext: tx.ciphertext,
+                memo: tx.memo,
                 out_hashes: tx.out_hashes,
+                commitment_root: tx.commitment_root,
                 parsed_delta: ParsedDelta {
                     v, e, index,
                 },

@@ -53,6 +53,7 @@ pub struct TransactionData<Fr: PrimeField> {
     pub secret: TransferSec<Fr>,
     pub ciphertext: Vec<u8>,
     pub memo: Vec<u8>,
+    pub commitment_root: Num<Fr>,
     pub out_hashes: SizedVec<Num<Fr>, { constants::OUT + 1 }>,
 }
 
@@ -302,6 +303,8 @@ where
             .chain(out_note_hashes)
             .collect();
 
+        let commitment_root = out_commitment_hash(out_hashes.as_slice(), &self.params);
+
         let out_commit = out_commitment_hash(out_hashes.as_slice(), &self.params);
         let tx_hash = tx_hash(input_hashes.as_slice(), out_commit, &self.params);
 
@@ -377,6 +380,7 @@ where
             secret,
             ciphertext,
             memo: memo_data,
+            commitment_root,
             out_hashes,
         })
     }
