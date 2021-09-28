@@ -33,7 +33,7 @@ pub type WebMerkleTree<P> = MerkleTree<WebDatabase, P>;
 #[cfg(feature = "web")]
 impl<P: PoolParams> MerkleTree<WebDatabase, P> {
     pub async fn new_web(name: &str, params: P) -> MerkleTree<WebDatabase, P> {
-        let db = WebDatabase::open(name.to_owned(), 1).await.unwrap();
+        let db = WebDatabase::open(name.to_owned(), 2).await.unwrap();
 
         Self::new(db, params)
     }
