@@ -250,6 +250,19 @@ impl UserAccount {
         self.inner.borrow().state.tree.last_leaf().to_string()
     }
 
+    #[wasm_bindgen(js_name = "addMerkleProof")]
+    pub fn add_merkle_proof(&self, index: u64, hashes: Hashes) -> Result<(), JsValue> {
+        let hashes: Vec<Hash<Fr>> = serde_wasm_bindgen::from_value(hashes.unchecked_into())?;
+
+        self.inner
+            .borrow_mut()
+            .state
+            .tree
+            .add_proof::<{ constants::HEIGHT }>(index, &hashes);
+
+        Ok(())
+    }
+
     #[wasm_bindgen(js_name = "addMerkleSubtree")]
     pub fn add_merkle_subtree(&self, hashes: Hashes, start_index: u64) -> Result<(), JsValue> {
         let hashes: Vec<Hash<Fr>> = serde_wasm_bindgen::from_value(hashes.unchecked_into())?;
