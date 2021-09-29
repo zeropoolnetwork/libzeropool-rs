@@ -125,6 +125,7 @@ where
         &self,
         tx: TxType<P::Fr>,
         mut data: Option<Vec<u8>>,
+        delta_index: Option<u64>,
     ) -> Result<TransactionData<P::Fr>, CreateTxError> {
         fn zero_note<Fr: PrimeField>() -> Note<Fr> {
             Note {
@@ -308,9 +309,11 @@ where
         let out_commit = out_commitment_hash(out_hashes.as_slice(), &self.params);
         let tx_hash = tx_hash(input_hashes.as_slice(), out_commit, &self.params);
 
-        let delta_index = state.latest_account_index.map_or(0, |i| {
-            let leafs_num = (constants::OUT + 1) as u64;
-            (i / leafs_num + 1) * leafs_num
+        let delta_index = delta_index.unwrap_or_else(|| {
+            state.latest_account_index.map_or(0, |i| {
+                let leafs_num = (constants::OUT + 1) as u64;
+                (i / leafs_num + 1) * leafs_num
+            })
         });
         let delta = make_delta::<P::Fr>(delta_value, input_energy, Num::from(delta_index));
 
@@ -342,13 +345,6 @@ where
             input: (prev_account, in_notes),
             output: (out_account, out_notes),
         };
-
-        // TODO: Create an abstraction for signatures
-        // let sk = if let Some(f) = &self.sign_callback {
-        //     f()
-        // } else {
-        //     keys.sk
-        // };
 
         let (eddsa_s, eddsa_r) = tx_sign(keys.sk, tx_hash, &self.params);
 
@@ -412,7 +408,7 @@ mod tests {
         let state = State::init_test(POOL_PARAMS.clone());
         let acc = UserAccount::new(Num::ZERO, state, POOL_PARAMS.clone());
 
-        acc.create_tx(TxType::Deposit(BoundedNum::new(Num::ZERO)), None)
+        acc.create_tx(TxType::Deposit(BoundedNum::new(Num::ZERO)), None, None)
             .unwrap();
     }
 
@@ -421,7 +417,7 @@ mod tests {
         let state = State::init_test(POOL_PARAMS.clone());
         let acc = UserAccount::new(Num::ZERO, state, POOL_PARAMS.clone());
 
-        acc.create_tx(TxType::Deposit(BoundedNum::new(Num::ONE)), None)
+        acc.create_tx(TxType::Deposit(BoundedNum::new(Num::ONE)), None, None)
             .unwrap();
     }
 
@@ -438,7 +434,7 @@ mod tests {
             amount: BoundedNum::new(Num::ZERO),
         };
 
-        acc.create_tx(TxType::Transfer(vec![out]), None).unwrap();
+        acc.create_tx(TxType::Transfer(vec![out]), None, None).unwrap();
     }
 
     #[test]
@@ -454,6 +450,6 @@ mod tests {
             amount: BoundedNum::new(Num::ONE),
         };
 
-        acc.create_tx(TxType::Transfer(vec![out]), None).unwrap();
+        acc.create_tx(TxType::Transfer(vec![out]), None, None).unwrap();
     }
 }

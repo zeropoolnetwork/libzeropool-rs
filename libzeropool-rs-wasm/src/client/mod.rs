@@ -130,7 +130,13 @@ impl UserAccount {
 
     #[wasm_bindgen(js_name = "createTx")]
     /// Constructs a transaction.
-    pub fn create_tx(&self, ty: TxType, value: TxOutputs, data: Option<Vec<u8>>) -> Promise {
+    pub fn create_tx(
+        &self,
+        ty: TxType,
+        value: TxOutputs,
+        data: Option<Vec<u8>>,
+        delta_index: Option<u64>,
+    ) -> Promise {
         #[derive(Deserialize)]
         struct Output {
             to: String,
@@ -175,7 +181,7 @@ impl UserAccount {
 
                     account
                         .borrow()
-                        .create_tx(NativeTxType::Transfer(outputs), data)
+                        .create_tx(NativeTxType::Transfer(outputs), data, delta_index)
                 },
                 TxType::Deposit => {
                     let js_amount: JsValue = value.into();
@@ -183,7 +189,7 @@ impl UserAccount {
 
                     account
                         .borrow()
-                        .create_tx(NativeTxType::Deposit(amount), data)
+                        .create_tx(NativeTxType::Deposit(amount), data, delta_index)
                 }
                 TxType::Withdraw => {
                     let js_amount: JsValue = value.into();
@@ -191,7 +197,7 @@ impl UserAccount {
 
                     account
                         .borrow()
-                        .create_tx(NativeTxType::Withdraw(amount), data)
+                        .create_tx(NativeTxType::Withdraw(amount), data, delta_index)
                 }
                 _ => panic!("unknow tx type"),
             }.map_err(|err| js_err!("{}", err))?;
