@@ -1,11 +1,11 @@
 use borsh::{BorshDeserialize, BorshSerialize};
 use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
 use kvdb::{DBTransaction, KeyValueDB};
+use kvdb_memorydb::InMemory as MemoryDatabase;
 #[cfg(feature = "native")]
 use kvdb_rocksdb::{Database as NativeDatabase, DatabaseConfig};
 #[cfg(feature = "web")]
 use kvdb_web::Database as WebDatabase;
-use kvdb_memorydb::InMemory as MemoryDatabase;
 use libzeropool::{
     constants,
     fawkes_crypto::core::sizedvec::SizedVec,
@@ -176,6 +176,26 @@ impl<D: KeyValueDB, P: PoolParams> MerkleTree<D, P> {
 
         // update path
         self.update_path_batched(&mut batch, height, index, hash, 1 << height);
+
+        self.db.write(batch).unwrap();
+    }
+
+    pub fn add_proof<const H: usize>(&mut self, index: u64, nodes: &[Hash<P::Fr>]) {
+        let mut batch = self.db.transaction();
+
+        let start_height = constants::HEIGHT - H;
+        let mut tree_index = index;
+        for (height, hash) in nodes.iter().enumerate() {
+            // todo: check if it's correct to use temporary_leaves_count = 0
+            self.set_batched(
+                &mut batch,
+                (start_height + height) as u32,
+                tree_index ^ 1,
+                *hash,
+                0,
+            );
+            tree_index /= 2;
+        }
 
         self.db.write(batch).unwrap();
     }
@@ -1130,6 +1150,50 @@ mod tests {
                 simple_proof.path.iter().zip(virtual_proof.path.iter())
             {
                 assert_eq!(simple_path, virtual_path);
+            }
+        }
+    }
+
+    #[test]
+    fn test_add_proof() {
+        let mut rng = CustomRng;
+        let mut tree = MerkleTree::new(create(3), POOL_PARAMS.clone());
+
+        let tree_size = 6;
+        for index in 0..tree_size {
+            let leaf = rng.gen();
+            tree.add_hash(index, leaf, false);
+        }
+
+        // Leaf proofs
+        let leaf_proofs_count = 3;
+        for index in tree_size..tree_size + leaf_proofs_count {
+            let proof_hashes: Vec<_> = (0..constants::HEIGHT).map(|_| rng.gen()).collect();
+            tree.add_proof::<HEIGHT>(index, &proof_hashes);
+            let tree_proof = tree.get_proof_unchecked::<HEIGHT>(index).sibling;
+
+            assert_eq!(tree_proof.as_slice().len(), proof_hashes.len());
+            for (actual_hash, expected_hash) in tree_proof.iter().zip(proof_hashes.iter()) {
+                assert_eq!(actual_hash, expected_hash);
+            }
+        }
+
+        // Commitment proofs
+        let commitment_proofs_count = 3;
+        for index in
+            tree_size + leaf_proofs_count..tree_size + leaf_proofs_count + commitment_proofs_count
+        {
+            let proof_hashes: Vec<_> = (0..constants::HEIGHT - constants::OUTPLUSONELOG)
+                .map(|_| rng.gen())
+                .collect();
+            tree.add_proof::<{ HEIGHT - OUTPLUSONELOG }>(index, &proof_hashes);
+            let tree_proof = tree
+                .get_proof_unchecked::<{ HEIGHT - OUTPLUSONELOG }>(index)
+                .sibling;
+
+            assert_eq!(tree_proof.as_slice().len(), proof_hashes.len());
+            for (actual_hash, expected_hash) in tree_proof.iter().zip(proof_hashes.iter()) {
+                assert_eq!(actual_hash, expected_hash);
             }
         }
     }
