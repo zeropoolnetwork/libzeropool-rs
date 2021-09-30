@@ -147,7 +147,7 @@ where
         let keys = self.keys.clone();
         let state = &self.state;
 
-        let prev_account = state.latest_account.unwrap_or_else(|| Account {
+        let in_account = state.latest_account.unwrap_or_else(|| Account {
             eta: keys.eta,
             i: BoundedNum::new(Num::ZERO),
             b: BoundedNum::new(Num::ZERO),
@@ -174,17 +174,9 @@ where
             .unwrap_or(state.latest_note_index);
 
         // Calculate total balance (account + constants::IN notes).
-        let mut input_value = prev_account.b.to_num();
+        let mut input_value = in_account.b.to_num();
         for (_index, note) in &in_notes_original {
             input_value += note.b.to_num();
-        }
-
-        let mut input_energy = prev_account.e.to_num();
-        input_energy +=
-            prev_account.b.to_num() * (Num::from(spend_interval_index) - prev_account.i.to_num());
-
-        for (note_index, note) in &in_notes_original {
-            input_energy += note.b.to_num() * Num::from(spend_interval_index - note_index);
         }
 
         let mut output_value = Num::ZERO;
@@ -223,6 +215,23 @@ where
         // TODO Add user user defined value for energy
         // By default all account energy will be withdrawn on withdraw tx
         let mut delta_energy = Num::ZERO;
+
+        let in_account_pos = state.latest_account_index.unwrap_or(0);
+        // Should be provided by relayer together with note proofs, but as a fallback
+        // take max(in_account_pos, latest_in_note_pos) ceiled to a number divisible by 128
+        let delta_index = Num::from(delta_index.unwrap_or_else(|| {
+            let latest_in_note_pos = in_notes_original.last().map_or(0, |(i, _)| *i);
+            let i = std::cmp::max(in_account_pos, latest_in_note_pos);
+            let leafs_num = (constants::OUT + 1) as u64;
+            (i / leafs_num + 1) * leafs_num
+        }));
+
+        let mut input_energy = in_account.e.to_num();
+        input_energy += in_account.b.to_num() * (delta_index - Num::from(in_account_pos));
+
+        for (note_index, note) in &in_notes_original {
+            input_energy += note.b.to_num() * (delta_index - Num::from(*note_index));
+        }
         let new_balance = match &tx {
             TxType::Transfer(_) => {
                 if input_value.to_uint() >= output_value.to_uint() {
@@ -260,7 +269,7 @@ where
             t: rng.gen(),
         };
 
-        let in_account_hash = prev_account.hash(&self.params);
+        let in_account_hash = in_account.hash(&self.params);
         let nullifier = nullifier(in_account_hash, keys.eta, &self.params);
 
         let ciphertext = {
@@ -313,13 +322,7 @@ where
         let out_commit = out_commitment_hash(out_hashes.as_slice(), &self.params);
         let tx_hash = tx_hash(input_hashes.as_slice(), out_commit, &self.params);
 
-        let delta_index = delta_index.unwrap_or_else(|| {
-            state.latest_account_index.map_or(0, |i| {
-                let leafs_num = (constants::OUT + 1) as u64;
-                (i / leafs_num + 1) * leafs_num
-            })
-        });
-        let delta = make_delta::<P::Fr>(delta_value, delta_energy, Num::from(delta_index));
+        let delta = make_delta::<P::Fr>(delta_value, delta_energy, delta_index);
 
         let tree = &state.tree;
         let root: Num<P::Fr> = tree.get_root();
@@ -346,7 +349,7 @@ where
         };
 
         let tx = Tx {
-            input: (prev_account, in_notes),
+            input: (in_account, in_notes),
             output: (out_account, out_notes),
         };
 
