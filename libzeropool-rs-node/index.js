@@ -32,6 +32,10 @@ class MerkleTree {
     getCommitmentProof(index) {
         return zp.merkleGetCommitmentProof(this.inner, index)
     }
+
+    getAllNodes() {
+        return zp.merkleGetAllNodes(this.inner)
+    }
 }
 
 class TxStorage {

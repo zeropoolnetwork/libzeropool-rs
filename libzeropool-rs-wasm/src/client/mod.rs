@@ -229,6 +229,14 @@ impl UserAccount {
         Ok(())
     }
 
+    #[wasm_bindgen(js_name = "getRoot")]
+    /// Get root
+    pub fn get_root(&mut self) -> String {
+        let root = self.inner.borrow_mut().state.tree.get_root().to_string();
+
+        root
+    }
+
     #[wasm_bindgen(js_name = "addReceivedNote")]
     /// Caches a note at specified index.
     /// Only cache received notes.
