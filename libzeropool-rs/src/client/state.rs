@@ -1,9 +1,9 @@
 use std::convert::TryInto;
 
 use kvdb::KeyValueDB;
+use kvdb_memorydb::InMemory as MemoryDatabase;
 #[cfg(feature = "web")]
 use kvdb_web::Database as WebDatabase;
-use kvdb_memorydb::InMemory as MemoryDatabase;
 use libzeropool::{
     constants,
     fawkes_crypto::{ff_uint::Num, ff_uint::PrimeField, BorshDeserialize, BorshSerialize},
@@ -78,7 +78,7 @@ where
         for (index, tx) in txs.iter() {
             match tx {
                 Transaction::Account(acc) => {
-                    if index >= latest_account_index.unwrap_or(0){
+                    if index >= latest_account_index.unwrap_or(0) {
                         latest_account_index = Some(index);
                         latest_account = Some(acc);
                     }
@@ -143,16 +143,19 @@ where
         // Update tx storage
         self.txs.set(at_index, &Transaction::Note(note));
 
-        // Update merkle tree
-        let hash = note.hash(&self.params);
-        self.tree.add_hash(at_index, hash, false);
+        // Update merkle tree and balance if leaf is not present
+        let leaf = self.tree.get_opt(0, at_index);
+        if leaf.is_none() {
+            let hash = note.hash(&self.params);
+            self.tree.add_hash(at_index, hash, false);
 
-        if at_index > self.latest_note_index {
-            self.latest_note_index = at_index;
+            if at_index > self.latest_note_index {
+                self.latest_note_index = at_index;
+            }
+
+            // Update balance
+            self.total_balance = BoundedNum::new(self.total_balance.to_num() + note.b.to_num());
         }
-
-        // Update balance
-        self.total_balance = BoundedNum::new(self.total_balance.to_num() + note.b.to_num());
     }
 
     /// Return an index of a earliest usable note.

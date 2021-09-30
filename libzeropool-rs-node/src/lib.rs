@@ -53,6 +53,7 @@ fn main(mut cx: ModuleContext) -> NeonResult<()> {
     cx.export_function("merkleAppendHash", merkle::merkle_append_hash)?;
     cx.export_function("merkleGetProof", merkle::merkle_get_leaf_proof)?;
     cx.export_function("merkleGetCommitmentProof", merkle::merkle_get_commitment_proof)?;
+    cx.export_function("merkleGetAllNodes", merkle::merkle_get_all_nodes)?;
 
     cx.export_function("txStorageNew", storage::tx_storage_new)?;
     cx.export_function("txStorageAdd", storage::tx_storage_add)?;

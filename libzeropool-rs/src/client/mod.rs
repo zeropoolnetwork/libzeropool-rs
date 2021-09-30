@@ -170,7 +170,7 @@ where
 
         let spend_interval_index = in_notes_original
             .last()
-            .map(|(index, _)| *index)
+            .map(|(index, _)| *index + 1)
             .unwrap_or(state.latest_note_index);
 
         // Calculate total balance (account + constants::IN notes).
@@ -220,6 +220,9 @@ where
         };
 
         let mut delta_value = Num::ZERO;
+        // TODO Add user user defined value for energy
+        // By default all account energy will be withdrawn on withdraw tx
+        let mut delta_energy = Num::ZERO;
         let new_balance = match &tx {
             TxType::Transfer(_) => {
                 if input_value.to_uint() >= output_value.to_uint() {
@@ -232,6 +235,7 @@ where
                 }
             }
             TxType::Withdraw(amount) => {
+                delta_energy = -input_energy;
                 delta_value = -amount.to_num();
                 if input_value.to_uint() + delta_value.to_uint() >= NumRepr::ZERO {
                     input_value + delta_value
@@ -252,7 +256,7 @@ where
             eta: keys.eta,
             i: BoundedNum::new(Num::from(spend_interval_index)),
             b: BoundedNum::new(new_balance),
-            e: BoundedNum::new(input_energy),
+            e: BoundedNum::new(delta_energy + input_energy),
             t: rng.gen(),
         };
 
@@ -315,7 +319,7 @@ where
                 (i / leafs_num + 1) * leafs_num
             })
         });
-        let delta = make_delta::<P::Fr>(delta_value, input_energy, Num::from(delta_index));
+        let delta = make_delta::<P::Fr>(delta_value, delta_energy, Num::from(delta_index));
 
         let tree = &state.tree;
         let root: Num<P::Fr> = tree.get_root();

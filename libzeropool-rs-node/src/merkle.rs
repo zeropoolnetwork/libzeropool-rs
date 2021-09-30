@@ -133,3 +133,18 @@ pub fn merkle_get_next_index(mut cx: FunctionContext) -> JsResult<JsValue> {
 
     Ok(result)
 }
+
+pub fn merkle_get_all_nodes(mut cx: FunctionContext) -> JsResult<JsValue> {
+    let tree = cx.argument::<BoxedMerkleTree>(0)?;
+
+    let nodes: Vec<(u64, u32)> = tree.
+        borrow().
+        inner.get_all_nodes()
+        .iter()
+        .map(|n| (n.index, n.height))
+        .collect();
+
+    let result = neon_serde::to_value(&mut cx, &nodes).unwrap();
+
+    Ok(result)
+}

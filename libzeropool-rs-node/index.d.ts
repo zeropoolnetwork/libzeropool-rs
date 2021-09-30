@@ -15,6 +15,7 @@ declare class MerkleTree {
     appendHash(hash: Buffer): number;
     getProof(index: number): MerkleProof;
     getCommitmentProof(index: number): MerkleProof;
+    getAllNodes(): any;
 }
 
 declare class TxStorage {
