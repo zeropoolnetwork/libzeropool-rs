@@ -380,7 +380,7 @@ impl<D: KeyValueDB, P: PoolParams> MerkleTree<D, P> {
         MerkleProof { sibling, path }
     }
 
-    fn get_virtual_node(
+    pub fn get_virtual_node(
         &self,
         height: u32,
         index: u64,
