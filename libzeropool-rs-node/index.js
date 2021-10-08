@@ -36,6 +36,23 @@ class MerkleTree {
     getAllNodes() {
         return zp.merkleGetAllNodes(this.inner)
     }
+
+    getVirtualNode(
+        height,
+        index,
+        virtual_nodes,
+        new_hashes_left_index,
+        new_hashes_right_index,
+    ) {
+        return zp.merkleGetVirtualNode(
+            this.inner,
+            height,
+            index,
+            virtual_nodes,
+            new_hashes_left_index,
+            new_hashes_right_index,
+        )
+    }
 }
 
 class TxStorage {
@@ -60,7 +77,7 @@ const Params = {
     fromBinary: zp.readParamsFromBinary,
     fromFile: zp.readParamsFromFile,
 };
- 
+
 const Proof = {
     tx: zp.proveTx,
     tree: zp.proveTree,
@@ -73,6 +90,10 @@ class Helpers {
 
     static parseDelta(delta) {
         return zp.helpersParseDelta(delta)
+    }
+
+    static numToStr(num) {
+        return zp.helpersNumToStr(num)
     }
 }
 

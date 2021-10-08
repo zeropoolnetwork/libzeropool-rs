@@ -1,4 +1,6 @@
+use std::vec::Vec;
 use std::cell::RefCell;
+use std::collections::HashMap;
 
 use libzeropool_rs::libzeropool::fawkes_crypto::borsh::BorshDeserialize;
 use libzeropool_rs::libzeropool::fawkes_crypto::ff_uint::Num;
@@ -137,14 +139,52 @@ pub fn merkle_get_next_index(mut cx: FunctionContext) -> JsResult<JsValue> {
 pub fn merkle_get_all_nodes(mut cx: FunctionContext) -> JsResult<JsValue> {
     let tree = cx.argument::<BoxedMerkleTree>(0)?;
 
-    let nodes: Vec<(u64, u32)> = tree.
-        borrow().
-        inner.get_all_nodes()
+    let nodes: Vec<(u64, u32)> = tree
+        .borrow()
+        .inner
+        .get_all_nodes()
         .iter()
         .map(|n| (n.index, n.height))
         .collect();
 
     let result = neon_serde::to_value(&mut cx, &nodes).unwrap();
+
+    Ok(result)
+}
+
+pub fn merkle_get_virtual_node(mut cx: FunctionContext) -> JsResult<JsValue> {
+    let tree = cx.argument::<BoxedMerkleTree>(0)?;
+    let height = {
+        let num = cx.argument::<JsNumber>(1)?;
+        num.value(&mut cx) as u32
+    };
+    let index = {
+        let num = cx.argument::<JsNumber>(2)?;
+        num.value(&mut cx) as u64
+    };
+    let mut virtual_nodes: HashMap<(u32, u64), Num<_>> = {
+        let nodes = cx.argument::<JsValue>(3)?;
+        let array: Vec<((u32, u64), Num<_>)> = neon_serde::from_value(&mut cx, nodes).unwrap();
+        array.into_iter().collect()
+    };
+    let new_hashes_left_index = {
+        let num = cx.argument::<JsNumber>(4)?;
+        num.value(&mut cx) as u64
+    };
+    let new_hashes_right_index = {
+        let num = cx.argument::<JsNumber>(5)?;
+        num.value(&mut cx) as u64
+    };
+
+    let node = tree.borrow().inner.get_virtual_node(
+        height,
+        index,
+        &mut virtual_nodes,
+        new_hashes_left_index,
+        new_hashes_right_index,
+    );
+
+    let result = neon_serde::to_value(&mut cx, &node).unwrap();
 
     Ok(result)
 }

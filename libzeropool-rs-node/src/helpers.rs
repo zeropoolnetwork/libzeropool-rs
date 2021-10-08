@@ -55,3 +55,13 @@ pub fn parse_delta_string(mut cx: FunctionContext) -> JsResult<JsObject> {
 
     Ok(js_object)
 }
+
+pub fn num_to_str(mut cx: FunctionContext) -> JsResult<JsString> {
+    let hash: Num<Fr> = {
+        let buffer = cx.argument::<JsBuffer>(0)?;
+        cx.borrow(&buffer, |data| {
+            Num::try_from_slice(data.as_slice()).unwrap()
+        })
+    };
+    Ok(cx.string(hash.to_string()))
+}

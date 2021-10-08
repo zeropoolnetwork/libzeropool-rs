@@ -16,6 +16,13 @@ declare class MerkleTree {
     getProof(index: number): MerkleProof;
     getCommitmentProof(index: number): MerkleProof;
     getAllNodes(): any;
+    getVirtualNode(
+        height: number,
+        index: number,
+        virtual_nodes: any,
+        new_hashes_left_index: number,
+        new_hashes_right_index: number,
+    ): any;
 }
 
 declare class TxStorage {
@@ -100,4 +107,5 @@ declare class Proof {
 declare class Helpers {
     static outCommitmentHash(hashes: Array<Buffer>): string
     static parseDelta(delta: string): { v: string, e: string, index: string }
+    static numToStr(num: Buffer): string
 }
