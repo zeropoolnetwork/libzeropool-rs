@@ -181,7 +181,7 @@ where
 
         let mut output_value = Num::ZERO;
 
-        let out_notes: SizedVec<_, { constants::OUT }> = if let TxType::Transfer(outputs) = &tx {
+        let (num_real_out_notes, out_notes): (_, SizedVec<_, { constants::OUT }>) = if let TxType::Transfer(outputs) = &tx {
             if outputs.len() >= constants::OUT {
                 return Err(CreateTxError::TooManyOutputs {
                     max: constants::OUT,
@@ -189,7 +189,7 @@ where
                 });
             }
 
-            outputs
+            let out_notes = outputs
                 .iter()
                 .map(|dest| {
                     let (to_d, to_p_d) = parse_address::<P>(&dest.to)?;
@@ -206,9 +206,11 @@ where
                 // fill out remaining output notes with zeroes
                 .chain((0..).map(|_| Ok(zero_note())))
                 .take(constants::OUT)
-                .collect::<Result<SizedVec<_, { constants::OUT }>, AddressParseError>>()?
+                .collect::<Result<SizedVec<_, { constants::OUT }>, AddressParseError>>()?;
+
+            (outputs.len(), out_notes)
         } else {
-            (0..).map(|_| zero_note()).take(constants::OUT).collect()
+            (0, (0..).map(|_| zero_note()).take(constants::OUT).collect())
         };
 
         let mut delta_value = Num::ZERO;
@@ -274,11 +276,15 @@ where
 
         let ciphertext = {
             let entropy: [u8; 32] = rng.gen();
+
+            // No need to include all the zero notes in the encrypted transaction
+            let out_notes = &out_notes.as_slice()[0..num_real_out_notes];
+
             cipher::encrypt(
                 &entropy,
                 keys.eta,
                 out_account,
-                out_notes.as_slice(),
+                out_notes,
                 &self.params,
             )
         };
