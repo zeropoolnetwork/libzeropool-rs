@@ -63,8 +63,8 @@ export interface TreeSec {
 }
 
 export interface Tx {
-    input: { account: Account; notes: Array<Note> };
-    output: { account: Account; notes: Array<Note> };
+    input: [Account, Array<Note>];
+    output: [Account, Array<Note>];
 }
 
 export interface Output {
