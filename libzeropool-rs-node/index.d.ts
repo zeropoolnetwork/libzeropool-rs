@@ -91,6 +91,14 @@ export interface SnarkProof {
     c: [string, string];
 }
 
+export interface VK {
+    alpha: string[];   // G1
+    beta: string[][];  // G2
+    gamma: string[][]; // G2
+    delta: string[][]; // G2
+    ic: string[][];    // G1[]
+}
+
 declare class Params {
     static fromBinary(data: Buffer): Params;
     static fromFile(path: string): Params;
@@ -102,6 +110,7 @@ declare class Proof {
 
     static tx(params: Params, tr_pub: TransferPub, tr_sec: TransferSec): Proof;
     static tree(params: Params, tr_pub: TreePub, tr_sec: TreeSec): Proof;
+    static verify(vk: VK, proof: SnarkProof, inputs: Array<string>): boolean;
 }
 
 declare class Helpers {

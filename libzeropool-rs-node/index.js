@@ -81,6 +81,7 @@ const Params = {
 const Proof = {
     tx: zp.proveTx,
     tree: zp.proveTree,
+    verify: zp.verify,
 };
 
 class Helpers {

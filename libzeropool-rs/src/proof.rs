@@ -1,8 +1,9 @@
 use libzeropool::{
     circuit::{tree::tree_update, tx::c_transfer},
     fawkes_crypto::{
-        backend::bellman_groth16::engines::Engine, backend::bellman_groth16::prover::prove,
-        backend::bellman_groth16::prover::Proof, backend::bellman_groth16::Parameters,
+        backend::bellman_groth16::engines::Engine,
+        backend::bellman_groth16::prover::{prove, Proof},
+        backend::bellman_groth16::Parameters,
         ff_uint::Num,
     },
     native::{
