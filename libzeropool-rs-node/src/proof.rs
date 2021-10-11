@@ -1,4 +1,5 @@
 use libzeropool_rs::libzeropool::fawkes_crypto::backend::bellman_groth16::prover::Proof as NativeProof;
+use libzeropool_rs::libzeropool::fawkes_crypto::backend::bellman_groth16::verifier::{verify, VK};
 use libzeropool_rs::libzeropool::fawkes_crypto::ff_uint::Num;
 use libzeropool_rs::libzeropool::POOL_PARAMS;
 use libzeropool_rs::proof::{prove_tree as prove_tree_native, prove_tx as prove_tx_native};
@@ -52,6 +53,22 @@ pub fn prove_tree(mut cx: FunctionContext) -> JsResult<JsValue> {
     };
 
     let result = neon_serde::to_value(&mut cx, &proof).unwrap();
+
+    Ok(result)
+}
+
+pub fn verify_proof(mut cx: FunctionContext) -> JsResult<JsValue> {
+    let vk_js = cx.argument::<JsValue>(0)?;
+    let proof_js = cx.argument::<JsValue>(1)?;
+    let inputs_js = cx.argument::<JsValue>(2)?;
+
+    let vk: VK<Engine> = neon_serde::from_value(&mut cx, vk_js).unwrap();
+    let proof = neon_serde::from_value(&mut cx, proof_js).unwrap();
+    let inputs: Vec<Num<Fr>> = neon_serde::from_value(&mut cx, inputs_js).unwrap();
+
+    let verfify_res = verify(&vk, &proof, &inputs);
+
+    let result = neon_serde::to_value(&mut cx, &verfify_res).unwrap();
 
     Ok(result)
 }
