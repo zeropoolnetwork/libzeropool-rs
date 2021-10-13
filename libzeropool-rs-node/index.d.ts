@@ -117,4 +117,5 @@ declare class Helpers {
     static outCommitmentHash(hashes: Array<Buffer>): string
     static parseDelta(delta: string): { v: string, e: string, index: string }
     static numToStr(num: Buffer): string
+    static strToNum(str: string): Buffer
 }

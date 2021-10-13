@@ -96,6 +96,10 @@ class Helpers {
     static numToStr(num) {
         return zp.helpersNumToStr(num)
     }
+
+    static strToNum(str) {
+        return zp.helpersStrToNum(str)
+    }
 }
 
 zp.MerkleTree = MerkleTree;
