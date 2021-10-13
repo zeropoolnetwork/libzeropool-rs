@@ -1,8 +1,8 @@
-use std::str::FromStr;
 use std::convert::TryInto;
+use std::str::FromStr;
 
 use libzeropool_rs::libzeropool::constants::OUT;
-use libzeropool_rs::libzeropool::fawkes_crypto::borsh::BorshDeserialize;
+use libzeropool_rs::libzeropool::fawkes_crypto::borsh::{BorshDeserialize, BorshSerialize};
 use libzeropool_rs::libzeropool::fawkes_crypto::ff_uint::Num;
 use libzeropool_rs::libzeropool::native::tx::{out_commitment_hash, parse_delta};
 use libzeropool_rs::libzeropool::POOL_PARAMS;
@@ -44,7 +44,7 @@ pub fn parse_delta_string(mut cx: FunctionContext) -> JsResult<JsObject> {
     let energy_int: i64 = delta_params.1.try_into().unwrap();
     let index_uint: u64 = delta_params.2.try_into().unwrap();
 
-    let v = neon_serde::to_value(&mut cx,&value_int).unwrap();
+    let v = neon_serde::to_value(&mut cx, &value_int).unwrap();
     let e = neon_serde::to_value(&mut cx, &energy_int).unwrap();
     let index = neon_serde::to_value(&mut cx, &index_uint).unwrap();
 
@@ -64,4 +64,18 @@ pub fn num_to_str(mut cx: FunctionContext) -> JsResult<JsString> {
         })
     };
     Ok(cx.string(hash.to_string()))
+}
+
+pub fn str_to_num(mut cx: FunctionContext) -> JsResult<JsBuffer> {
+    let num_str_js = cx.argument::<JsString>(0)?;
+    let num_str = num_str_js.value(&mut cx);
+
+    let num: Num<Fr> = Num::from_str(num_str.as_str()).unwrap();
+
+    let mut vec = vec![];
+    num.serialize(&mut vec).unwrap();
+
+    let buf = JsBuffer::external(&mut cx, vec);
+
+    Ok(buf)
 }

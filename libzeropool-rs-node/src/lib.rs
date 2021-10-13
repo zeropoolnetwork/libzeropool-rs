@@ -65,6 +65,7 @@ fn main(mut cx: ModuleContext) -> NeonResult<()> {
     cx.export_function("helpersOutCommitment", helpers::out_commitment)?;
     cx.export_function("helpersParseDelta", helpers::parse_delta_string)?;
     cx.export_function("helpersNumToStr", helpers::num_to_str)?;
+    cx.export_function("helpersStrToNum", helpers::str_to_num)?;
 
     Ok(())
 }
