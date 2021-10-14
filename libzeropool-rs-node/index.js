@@ -21,6 +21,10 @@ class MerkleTree {
         zp.merkleAddHash(this.inner, index, hash);
     }
 
+    addCommitment(index, hash) {
+        zp.merkleAddCommitment(this.inner, index, hash)
+    }
+
     appendHash(hash) {
         return zp.merkleAppendHash(this.inner, hash);
     }
