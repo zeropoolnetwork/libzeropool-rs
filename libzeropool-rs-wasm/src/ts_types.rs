@@ -147,4 +147,7 @@ extern "C" {
 
     #[wasm_bindgen(typescript_type = "string")]
     pub type Hash;
+
+    #[wasm_bindgen(typescript_type = "Array<Uint8Array>")]
+    pub type RawHashes;
 }

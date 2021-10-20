@@ -26,6 +26,7 @@ mod keys;
 mod params;
 mod proof;
 mod state;
+mod helpers;
 mod ts_types;
 
 pub type PoolParams = PoolBN256;
