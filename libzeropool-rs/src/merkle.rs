@@ -79,24 +79,28 @@ impl<D: KeyValueDB, P: PoolParams> MerkleTree<D, P> {
         }
     }
 
-    /// Add hash for an element with a certain index
+    /// Add hash for an element with a certain index at a certain height
     /// Set `temporary` to true if you want this leaf and all unneeded connected nodes to be removed
     /// during cleanup.
-    pub fn add_hash(&mut self, index: u64, hash: Hash<P::Fr>, temporary: bool) {
+    pub fn add_hash_at_height(&mut self, height: u32, index: u64, hash: Hash<P::Fr>, temporary: bool) {
         let mut batch = self.db.transaction();
 
         // add leaf
         let temporary_leaves_count = if temporary { 1 } else { 0 };
-        self.set_batched(&mut batch, 0, index, hash, temporary_leaves_count);
+        self.set_batched(&mut batch, height, index, hash, temporary_leaves_count);
 
         // update inner nodes
-        self.update_path_batched(&mut batch, 0, index, hash, temporary_leaves_count);
+        self.update_path_batched(&mut batch, height, index, hash, temporary_leaves_count);
 
         self.db.write(batch).unwrap();
 
         if index >= self.next_index {
             self.next_index = index + 1;
         }
+    }
+
+    pub fn add_hash(&mut self, index: u64, hash: Hash<P::Fr>, temporary: bool) {
+        self.add_hash_at_height(0, index, hash, temporary)
     }
 
     pub fn append_hash(&mut self, hash: Hash<P::Fr>, temporary: bool) -> u64 {

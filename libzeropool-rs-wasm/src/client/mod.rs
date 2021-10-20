@@ -4,7 +4,7 @@ use std::rc::Rc;
 use js_sys::{Array, Promise};
 use kvdb_web::Database;
 use libzeropool::{
-    constants,
+    constants::{self, OUTPLUSONELOG},
     fawkes_crypto::{
         core::sizedvec::SizedVec,
         ff_uint::Num,
@@ -19,6 +19,7 @@ use libzeropool::{
 };
 use libzeropool_rs::{
     client::{TxOutput, TxType as NativeTxType, UserAccount as NativeUserAccount},
+    libzeropool::fawkes_crypto::borsh::BorshDeserialize,
     merkle::Hash,
 };
 use serde::{Deserialize, Serialize};
@@ -31,7 +32,7 @@ use crate::{
     TxOutputs, UserState, POOL_PARAMS,
 };
 
-// TODO: Find a way to expose MerkleTree, 
+// TODO: Find a way to expose MerkleTree,
 
 #[wasm_bindgen]
 pub struct UserAccount {
@@ -182,7 +183,7 @@ impl UserAccount {
                     account
                         .borrow()
                         .create_tx(NativeTxType::Transfer(outputs), data, delta_index)
-                },
+                }
                 TxType::Deposit => {
                     let js_amount: JsValue = value.into();
                     let amount = serde_wasm_bindgen::from_value(js_amount)?;
@@ -200,7 +201,8 @@ impl UserAccount {
                         .create_tx(NativeTxType::Withdraw(amount), data, delta_index)
                 }
                 _ => panic!("unknow tx type"),
-            }.map_err(|err| js_err!("{}", err))?;
+            }
+            .map_err(|err| js_err!("{}", err))?;
 
             let (v, e, index) = parse_delta(tx.public.delta);
 
@@ -211,9 +213,7 @@ impl UserAccount {
                 memo: tx.memo,
                 out_hashes: tx.out_hashes,
                 commitment_root: tx.commitment_root,
-                parsed_delta: ParsedDelta {
-                    v, e, index,
-                },
+                parsed_delta: ParsedDelta { v, e, index },
             };
 
             Ok(serde_wasm_bindgen::to_value(&tx).unwrap())
@@ -243,6 +243,19 @@ impl UserAccount {
     pub fn add_received_note(&mut self, at_index: u64, note: Note) -> Result<(), JsValue> {
         let note = serde_wasm_bindgen::from_value(note.into())?;
         self.inner.borrow_mut().add_received_note(at_index, note);
+
+        Ok(())
+    }
+
+    #[wasm_bindgen(js_name = "addCommitment")]
+    /// Add out commitment hash to the tree.
+    pub fn add_commitment(&mut self, index: u64, commitment: Vec<u8>) -> Result<(), JsValue> {
+        self.inner.borrow_mut().state.tree.add_hash_at_height(
+            OUTPLUSONELOG as u32,
+            index,
+            Num::try_from_slice(commitment.as_slice()).unwrap(),
+            false,
+        );
 
         Ok(())
     }
@@ -333,7 +346,8 @@ impl UserAccount {
     #[wasm_bindgen(js_name = "getMerkleProof")]
     /// Returns merkle proof for the specified index in the tree.
     pub fn get_merkle_proof(&self, index: u64) -> MerkleProof {
-        let proof = self.inner
+        let proof = self
+            .inner
             .borrow()
             .state
             .tree

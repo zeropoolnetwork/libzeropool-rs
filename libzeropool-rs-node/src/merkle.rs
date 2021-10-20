@@ -49,6 +49,25 @@ pub fn merkle_add_hash(mut cx: FunctionContext) -> JsResult<JsUndefined> {
     Ok(cx.undefined())
 }
 
+pub fn merkle_add_commitment(mut cx: FunctionContext) -> JsResult<JsUndefined> {
+    let tree = cx.argument::<BoxedMerkleTree>(0)?;
+    let index = {
+        let num = cx.argument::<JsNumber>(1)?;
+        num.value(&mut cx) as u64
+    };
+
+    let hash = {
+        let buffer = cx.argument::<JsBuffer>(2)?;
+        cx.borrow(&buffer, |data| {
+            Num::try_from_slice(data.as_slice()).unwrap()
+        })
+    };
+
+    tree.borrow_mut().inner.add_hash_at_height(OUTPLUSONELOG as u32, index, hash, false);
+
+    Ok(cx.undefined())
+}
+
 pub fn merkle_append_hash(mut cx: FunctionContext) -> JsResult<JsNumber> {
     let tree = cx.argument::<BoxedMerkleTree>(0)?;
 

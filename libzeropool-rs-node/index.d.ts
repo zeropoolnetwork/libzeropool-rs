@@ -12,6 +12,7 @@ declare class MerkleTree {
     getNextIndex(): number;
     getNode(height: number, index: number): string;
     addHash(index: number, hash: Buffer): void;
+    addCommitment(index: number, hash: Buffer): void;
     appendHash(hash: Buffer): number;
     getProof(index: number): MerkleProof;
     getCommitmentProof(index: number): MerkleProof;
