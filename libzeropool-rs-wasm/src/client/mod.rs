@@ -1,4 +1,4 @@
-use std::cell::RefCell;
+use std::{cell::RefCell, convert::TryInto};
 use std::rc::Rc;
 
 use js_sys::{Array, Promise};
@@ -146,9 +146,9 @@ impl UserAccount {
 
         #[derive(Serialize)]
         struct ParsedDelta {
-            v: Num<Fr>,
-            e: Num<Fr>,
-            index: Num<Fr>,
+            v: i64,
+            e: i64,
+            index: u64,
         }
 
         #[derive(Serialize)]
@@ -205,6 +205,11 @@ impl UserAccount {
             .map_err(|err| js_err!("{}", err))?;
 
             let (v, e, index) = parse_delta(tx.public.delta);
+            let parsed_delta = ParsedDelta {
+                v: v.try_into().unwrap(),
+                e: e.try_into().unwrap(),
+                index: index.try_into().unwrap(),
+            };
 
             let tx = TransactionData {
                 public: tx.public,
@@ -213,7 +218,7 @@ impl UserAccount {
                 memo: tx.memo,
                 out_hashes: tx.out_hashes,
                 commitment_root: tx.commitment_root,
-                parsed_delta: ParsedDelta { v, e, index },
+                parsed_delta,
             };
 
             Ok(serde_wasm_bindgen::to_value(&tx).unwrap())
