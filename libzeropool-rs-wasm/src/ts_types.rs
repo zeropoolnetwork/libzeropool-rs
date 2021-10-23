@@ -63,8 +63,8 @@ export interface TreeSec {
 }
 
 export interface Tx {
-    input: [Account, Array<Note>];
-    output: [Account, Array<Note>];
+    input: [Account, Note[]];
+    output: [Account, Note[]];
 }
 
 export interface Output {
@@ -73,12 +73,12 @@ export interface Output {
 }
 
 export interface MerkleProof {
-    sibling: Array<string>;
-    path: Array<boolean>;
+    sibling: string[];
+    path: boolean[];
 }
 
 export interface Proof {
-    inputs: Array<string>;
+    inputs: string[];
     proof: SnarkProof;
 }
 
@@ -86,6 +86,13 @@ export interface SnarkProof {
     a: [string, string];
     b: [[string, string], [string, string]];
     c: [string, string];
+}
+export interface VK {
+    alpha: string[];   // G1
+    beta: string[][];  // G2
+    gamma: string[][]; // G2
+    delta: string[][]; // G2
+    ic: string[][];    // G1[]
 }
 "#;
 
@@ -135,6 +142,12 @@ extern "C" {
 
     #[wasm_bindgen(typescript_type = "SnarkProof")]
     pub type SnarkProof;
+
+    #[wasm_bindgen(typescript_type = "string[]")]
+    pub type SnarkInputs;
+
+    #[wasm_bindgen(typescript_type = "VK")]
+    pub type VK;
 
     #[wasm_bindgen(typescript_type = "TransactionData")]
     pub type TransactionData;
