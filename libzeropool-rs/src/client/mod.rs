@@ -221,12 +221,7 @@ where
         let in_account_pos = state.latest_account_index.unwrap_or(0);
         // Should be provided by relayer together with note proofs, but as a fallback
         // take max(in_account_pos, latest_in_note_pos) ceiled to a number divisible by 128
-        let delta_index = Num::from(delta_index.unwrap_or_else(|| {
-            let latest_in_note_pos = in_notes_original.last().map_or(0, |(i, _)| *i);
-            let i = std::cmp::max(in_account_pos, latest_in_note_pos);
-            let leafs_num = (constants::OUT + 1) as u64;
-            (i / leafs_num + 1) * leafs_num
-        }));
+        let delta_index = Num::from(delta_index.unwrap_or_else(|| self.state.tree.next_index()));
 
         let mut input_energy = in_account.e.to_num();
         input_energy += in_account.b.to_num() * (delta_index - Num::from(in_account_pos));
