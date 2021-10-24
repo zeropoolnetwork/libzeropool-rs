@@ -243,7 +243,8 @@ where
             TxType::Withdraw(amount) => {
                 delta_energy = -input_energy;
                 delta_value = -amount.to_num();
-                if input_value.to_uint() + delta_value.to_uint() >= NumRepr::ZERO {
+
+                if input_value.to_uint() >= amount.to_num().to_uint() {
                     input_value + delta_value
                 } else {
                     return Err(CreateTxError::InsufficientBalance(
