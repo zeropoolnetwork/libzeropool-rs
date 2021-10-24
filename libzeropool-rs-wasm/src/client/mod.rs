@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::{cell::RefCell, convert::TryInto};
 use std::rc::Rc;
 
@@ -361,6 +362,30 @@ impl UserAccount {
         serde_wasm_bindgen::to_value(&proof)
             .unwrap()
             .unchecked_into::<MerkleProof>()
+    }
+
+    // TODO: This is a temporary method
+    #[wasm_bindgen(js_name = "getMerkleRootAfter")]
+    pub fn get_merkle_root_after(&self, index: u64, hashes: Hashes) -> Result<String, JsValue> {
+        let hashes: Vec<Hash<Fr>> = serde_wasm_bindgen::from_value(hashes.unchecked_into())?;
+        let mut nodes =
+            hashes
+                .into_iter()
+                .enumerate()
+                .fold(HashMap::default(), |mut map, (i, hash)| {
+                    map.insert((constants::HEIGHT as u32, index + i as u64), hash);
+                    map
+                });
+
+        let node = self.inner.borrow().state.tree.get_virtual_node(
+            constants::HEIGHT as u32,
+            0,
+            &mut nodes,
+            index,
+            index + constants::OUT as u64 + 1,
+        );
+
+        Ok(node.to_string())
     }
 
     #[wasm_bindgen(js_name = "getMerkleProofAfter")]
