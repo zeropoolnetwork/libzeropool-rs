@@ -1,4 +1,8 @@
+use libzeropool::native::note::Note as NativeNote;
+use serde::{Deserialize, Serialize};
 use wasm_bindgen::prelude::*;
+
+use crate::Fr;
 
 #[wasm_bindgen(typescript_custom_section)]
 const TS_TYPES: &'static str = r#"
@@ -101,7 +105,7 @@ extern "C" {
     #[wasm_bindgen(typescript_type = "Note[]")]
     pub type Notes;
 
-    #[wasm_bindgen(typescript_type = "{ note: Note, index: number }[]")]
+    #[wasm_bindgen(typescript_type = "{ note: Note, index: BigInt }[]")]
     pub type IndexedNotes;
 
     #[wasm_bindgen(typescript_type = "MerkleProof")]
@@ -163,4 +167,10 @@ extern "C" {
 
     #[wasm_bindgen(typescript_type = "Array<Uint8Array>")]
     pub type RawHashes;
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct IndexedNote {
+    pub index: u64,
+    pub note: NativeNote<Fr>,
 }

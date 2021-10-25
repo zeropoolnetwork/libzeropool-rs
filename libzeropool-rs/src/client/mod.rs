@@ -389,22 +389,6 @@ where
             out_hashes,
         })
     }
-
-    /// Cache account at specified index.
-    pub fn add_account(&mut self, at_index: u64, account: Account<P::Fr>) {
-        self.state.add_account(at_index, account)
-    }
-
-    /// Caches a note at specified index.
-    /// Only cache received notes.
-    pub fn add_received_note(&mut self, at_index: u64, note: Note<P::Fr>) {
-        self.state.add_received_note(at_index, note)
-    }
-
-    /// Returns user's total balance (account + available notes).
-    pub fn total_balance(&self) -> Num<P::Fr> {
-        self.state.total_balance()
-    }
 }
 
 #[cfg(test)]

@@ -27,6 +27,7 @@ use serde::{Deserialize, Serialize};
 use wasm_bindgen::{prelude::*, JsCast};
 use wasm_bindgen_futures::future_to_promise;
 
+use crate::IndexedNote;
 use crate::ts_types::Hash as JsHash;
 use crate::{
     keys::reduce_sk, Account, Fr, Fs, Hashes, IndexedNotes, MerkleProof, Note, Pair, PoolParams,
@@ -80,12 +81,6 @@ impl UserAccount {
     #[wasm_bindgen(js_name = decryptNotes)]
     /// Attempts to decrypt notes.
     pub fn decrypt_notes(&self, data: Vec<u8>) -> Result<IndexedNotes, JsValue> {
-        #[derive(Serialize)]
-        struct IndexedNote {
-            index: u64,
-            note: NativeNote<Fr>,
-        }
-
         let notes = self
             .inner
             .borrow()
@@ -228,15 +223,61 @@ impl UserAccount {
 
     #[wasm_bindgen(js_name = "addAccount")]
     /// Cache account at specified index.
-    pub fn add_account(&mut self, at_index: u64, account: Account) -> Result<(), JsValue> {
+    pub fn add_account(
+        &mut self,
+        at_index: u64,
+        hashes: Hashes,
+        account: Account,
+        notes: IndexedNotes,
+    ) -> Result<(), JsValue> {
         let account = serde_wasm_bindgen::from_value(account.into())?;
-        self.inner.borrow_mut().add_account(at_index, account);
+        let hashes: Vec<_> = serde_wasm_bindgen::from_value(hashes.unchecked_into())?;
+        let notes: Vec<_> =
+            serde_wasm_bindgen::from_value::<Vec<IndexedNote>>(notes.unchecked_into())?
+                .into_iter()
+                .map(|note| (note.index, note.note))
+                .collect();
+
+        self.inner
+            .borrow_mut()
+            .state
+            .add_own_tx(at_index, &hashes, account, &notes);
+
+        Ok(())
+    }
+
+    #[wasm_bindgen(js_name = "addHashes")]
+    pub fn add_hashes(&mut self, at_index: u64, hashes: Hashes) -> Result<(), JsValue> {
+        let hashes: Vec<_> = serde_wasm_bindgen::from_value(hashes.unchecked_into())?;
+
+        self.inner.borrow_mut().state.add_hashes(at_index, &hashes);
+
+        Ok(())
+    }
+
+    #[wasm_bindgen(js_name = "addNotes")]
+    pub fn add_notes(
+        &mut self,
+        at_index: u64,
+        hashes: Hashes,
+        notes: IndexedNotes,
+    ) -> Result<(), JsValue> {
+        let hashes: Vec<_> = serde_wasm_bindgen::from_value(hashes.unchecked_into())?;
+        let notes: Vec<_> =
+            serde_wasm_bindgen::from_value::<Vec<IndexedNote>>(notes.unchecked_into())?
+                .into_iter()
+                .map(|note| (note.index, note.note))
+                .collect();
+
+        self.inner
+            .borrow_mut()
+            .state
+            .add_notes(at_index, &hashes, &notes);
 
         Ok(())
     }
 
     #[wasm_bindgen(js_name = "getRoot")]
-    /// Get root
     pub fn get_root(&mut self) -> String {
         let root = self.inner.borrow_mut().state.tree.get_root().to_string();
 
@@ -248,7 +289,7 @@ impl UserAccount {
     /// Only cache received notes.
     pub fn add_received_note(&mut self, at_index: u64, note: Note) -> Result<(), JsValue> {
         let note = serde_wasm_bindgen::from_value(note.into())?;
-        self.inner.borrow_mut().add_received_note(at_index, note);
+        self.inner.borrow_mut().state.add_received_note(at_index, note);
 
         Ok(())
     }
@@ -269,7 +310,7 @@ impl UserAccount {
     #[wasm_bindgen(js_name = "totalBalance")]
     /// Returns user's total balance (account + available notes).
     pub fn total_balance(&self) -> String {
-        self.inner.borrow().total_balance().to_string()
+        self.inner.borrow().state.total_balance().to_string()
     }
 
     #[wasm_bindgen(js_name = "nextTreeIndex")]
@@ -293,72 +334,6 @@ impl UserAccount {
             .get(height, index);
 
         node.to_string()
-    }
-
-    #[wasm_bindgen(js_name = "addMerkleProof")]
-    pub fn add_merkle_proof(&self, index: u64, hashes: Hashes) -> Result<(), JsValue> {
-        let hashes: Vec<Hash<Fr>> = serde_wasm_bindgen::from_value(hashes.unchecked_into())?;
-
-        self.inner
-            .borrow_mut()
-            .state
-            .tree
-            .add_proof::<{ constants::HEIGHT }>(index, &hashes);
-
-        Ok(())
-    }
-
-    #[wasm_bindgen(js_name = "addMerkleSubtree")]
-    pub fn add_merkle_subtree(&self, hashes: Hashes, start_index: u64) -> Result<(), JsValue> {
-        let hashes: Vec<Hash<Fr>> = serde_wasm_bindgen::from_value(hashes.unchecked_into())?;
-
-        self.inner
-            .borrow_mut()
-            .state
-            .tree
-            .add_subtree(&hashes, start_index);
-
-        Ok(())
-    }
-
-    #[wasm_bindgen(js_name = "addMerkleLeaf")]
-    pub fn add_merkle_leaf(&self, index: u64, hash: JsHash) -> Result<(), JsValue> {
-        let hash: Hash<Fr> = serde_wasm_bindgen::from_value(hash.unchecked_into())?;
-
-        self.inner
-            .borrow_mut()
-            .state
-            .tree
-            .add_hash(index, hash, false);
-
-        Ok(())
-    }
-
-    #[wasm_bindgen(js_name = "appendMerkleLeaf")]
-    pub fn append_merkle_leaf(&self, hash: JsHash) -> Result<(), JsValue> {
-        let hash: Hash<Fr> = serde_wasm_bindgen::from_value(hash.unchecked_into())?;
-
-        self.inner.borrow_mut().state.tree.append_hash(hash, false);
-
-        Ok(())
-    }
-
-    #[wasm_bindgen(js_name = "addMerkleSubtreeRoot")]
-    pub fn add_merkle_subtree_root(
-        &self,
-        height: u32,
-        index: u64,
-        hash: JsHash,
-    ) -> Result<(), JsValue> {
-        let hash: Hash<Fr> = serde_wasm_bindgen::from_value(hash.unchecked_into())?;
-
-        self.inner
-            .borrow_mut()
-            .state
-            .tree
-            .add_subtree_root(height, index, hash);
-
-        Ok(())
     }
 
     #[wasm_bindgen(js_name = "getMerkleProof")]

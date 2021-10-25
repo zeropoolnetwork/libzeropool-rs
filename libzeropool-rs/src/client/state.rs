@@ -118,6 +118,68 @@ where
         }
     }
 
+    /// Add OUT + 1 hashes to the tree
+    pub fn add_hashes(&mut self, at_index: u64, hashes: &[Num<P::Fr>]) {
+        // FIXME: return an error instead of asserts
+        assert_eq!(
+            at_index % (constants::OUT as u64 + 1),
+            0,
+            "index must be divisible by {}",
+            constants::OUT + 1
+        );
+
+        assert_eq!(
+            hashes.len(),
+            constants::OUT + 1,
+            "Number of hashes must be equal to {} (number of outputs)",
+            constants::OUT + 1
+        );
+
+        // Update the tree
+        for (index, hash) in hashes.iter().cloned().enumerate() {
+            self.tree.add_hash(at_index + index as u64, hash, false);
+        }
+    }
+
+    /// Add hashes, account, and notes to state
+    pub fn add_own_tx(
+        &mut self,
+        at_index: u64,
+        hashes: &[Num<P::Fr>],
+        account: Account<P::Fr>,
+        notes: &[(u64, Note<P::Fr>)],
+    ) {
+        self.add_hashes(at_index, hashes);
+
+        // Store account
+        self.txs.set(at_index, &Transaction::Account(account));
+
+        // Store notes
+        for (index, note) in notes {
+            self.txs.set(*index, &Transaction::Note(*note));
+        }
+
+        if at_index >= self.latest_account_index.unwrap_or(0) {
+            self.latest_account_index = Some(at_index);
+            self.latest_account = Some(account);
+        }
+    }
+
+    /// Add hashes and notes to state
+    pub fn add_notes(
+        &mut self,
+        at_index: u64,
+        hashes: &[Num<P::Fr>],
+        notes: &[(u64, Note<P::Fr>)],
+    ) {
+        self.add_hashes(at_index, hashes);
+
+        // Store notes
+        for (index, note) in notes {
+            self.txs.set(*index, &Transaction::Note(*note));
+        }
+    }
+
     /// Cache account at specified index.
     pub fn add_account(&mut self, at_index: u64, account: Account<P::Fr>) {
         let account_hash = account.hash(&self.params);
