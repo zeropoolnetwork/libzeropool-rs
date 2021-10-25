@@ -283,6 +283,18 @@ impl UserAccount {
         self.inner.borrow().state.tree.last_leaf().to_string()
     }
 
+    #[wasm_bindgen(js_name = "getMerkleNode")]
+    pub fn get_merkle_node(&self, height: u32, index: u64) -> String {
+        let node = self
+            .inner
+            .borrow()
+            .state
+            .tree
+            .get(height, index);
+
+        node.to_string()
+    }
+
     #[wasm_bindgen(js_name = "addMerkleProof")]
     pub fn add_merkle_proof(&self, index: u64, hashes: Hashes) -> Result<(), JsValue> {
         let hashes: Vec<Hash<Fr>> = serde_wasm_bindgen::from_value(hashes.unchecked_into())?;
