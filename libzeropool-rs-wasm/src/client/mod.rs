@@ -377,24 +377,23 @@ impl UserAccount {
     }
 
     // TODO: This is a temporary method
-    #[wasm_bindgen(js_name = "getMerkleRootAfter")]
-    pub fn get_merkle_root_after(&self, index: u64, hashes: Hashes) -> Result<String, JsValue> {
-        let hashes: Vec<Hash<Fr>> = serde_wasm_bindgen::from_value(hashes.unchecked_into())?;
-        let mut nodes =
-            hashes
-                .into_iter()
-                .enumerate()
-                .fold(HashMap::default(), |mut map, (i, hash)| {
-                    map.insert((constants::HEIGHT as u32, index + i as u64), hash);
-                    map
-                });
+    #[wasm_bindgen(js_name = "getMerkleRootAfterCommitment")]
+    pub fn get_merkle_root_after_commitment(
+        &self,
+        commitment_index: u64,
+        commitment: JsHash,
+    ) -> Result<String, JsValue> {
+        let hash: Hash<Fr> = serde_wasm_bindgen::from_value(commitment.unchecked_into())?;
+        let mut nodes = HashMap::new();
+        nodes.insert((constants::OUTPLUSONELOG as u32, commitment_index), hash);
 
+        let left_index = commitment_index * (2u64.pow(constants::OUTPLUSONELOG as u32));
         let node = self.inner.borrow().state.tree.get_virtual_node(
             constants::HEIGHT as u32,
             0,
             &mut nodes,
-            index,
-            index + constants::OUT as u64 + 1,
+            left_index,
+            left_index + constants::OUT as u64 + 1,
         );
 
         Ok(node.to_string())
