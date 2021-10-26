@@ -97,20 +97,17 @@ where
         let mut account_balance = Num::ZERO;
         let mut note_balance = Num::ZERO;
 
+        let mut account_i = 0;
         if let Some(account) = &latest_account {
-            let account_i: u64 = account.i.to_num().try_into().unwrap();
-
+            account_i = account.i.to_num().try_into().unwrap();
             account_balance = account.b.to_num();
+            total_balance = account.b.to_num();
+        }
 
-            if account_i > latest_note_index {
-                total_balance = account.b.to_num();
-            } else {
-                for (_, tx) in txs.iter_slice(account_i..=latest_note_index) {
-                    if let Transaction::Note(note) = tx {
-                        total_balance += note.b.to_num();
-                        note_balance += note.b.to_num();
-                    }
-                }
+        for (_, tx) in txs.iter_slice(account_i..=latest_note_index) {
+            if let Transaction::Note(note) = tx {
+                total_balance += note.b.to_num();
+                note_balance += note.b.to_num();
             }
         }
 
