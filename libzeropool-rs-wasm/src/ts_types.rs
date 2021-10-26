@@ -105,7 +105,7 @@ extern "C" {
     #[wasm_bindgen(typescript_type = "Note[]")]
     pub type Notes;
 
-    #[wasm_bindgen(typescript_type = "{ note: Note, index: BigInt }[]")]
+    #[wasm_bindgen(typescript_type = "{ note: Note, index: number }[]")]
     pub type IndexedNotes;
 
     #[wasm_bindgen(typescript_type = "MerkleProof")]

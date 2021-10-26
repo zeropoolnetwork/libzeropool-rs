@@ -2,15 +2,15 @@ use std::{convert::TryFrom, marker::PhantomData, ops::RangeInclusive};
 
 use borsh::{BorshDeserialize, BorshSerialize};
 use kvdb::{DBTransaction, KeyValueDB};
+use kvdb_memorydb::InMemory as MemoryDatabase;
 #[cfg(feature = "native")]
 use kvdb_rocksdb::{Database as NativeDatabase, DatabaseConfig};
 #[cfg(feature = "web")]
 use kvdb_web::Database as WebDatabase;
-use kvdb_memorydb::InMemory as MemoryDatabase;
 
 /// A persistent sparse array built on top of kvdb
 pub struct SparseArray<D: KeyValueDB, T: BorshSerialize + BorshDeserialize> {
-    db: D,
+    pub db: D,
     _phantom: PhantomData<T>,
 }
 
@@ -58,7 +58,7 @@ where
     T: BorshSerialize + BorshDeserialize,
 {
     pub fn new_test() -> SparseArray<MemoryDatabase, T> {
-        let db = kvdb_memorydb::create(0);
+        let db = kvdb_memorydb::create(1);
 
         SparseArray {
             db,
@@ -96,8 +96,7 @@ where
     }
 
     pub fn iter_slice(&self, range: RangeInclusive<u64>) -> impl Iterator<Item = (u64, T)> + '_ {
-        self.iter()
-            .take_while(move |(index, _)| range.contains(index))
+        self.iter().filter(move |(index, _)| range.contains(index))
     }
 
     pub fn set(&self, index: u64, data: &T) {
@@ -150,5 +149,26 @@ impl<'a, T: BorshDeserialize> Iterator for SparseArrayIter<'a, T> {
 
             (index, data)
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_sparse_array_iter_slice() {
+        let a = SparseArray::new_test();
+        a.set(1, &1u32);
+        a.set(3, &2);
+        a.set(412345, &3);
+
+        assert_eq!(a.db.iter(0).count(), 3, "inner");
+        assert_eq!(a.iter().collect::<Vec<_>>().len(), 3, "iter");
+
+        assert_eq!(a.iter_slice(0..=412345).count(), 3, "all");
+        assert_eq!(a.iter_slice(1..=412345).count(), 3, "from 1");
+        assert_eq!(a.iter_slice(2..=412345).count(), 2, "from 2");
+        assert_eq!(a.iter_slice(2..=412344).count(), 1, "from 2 except last");
     }
 }

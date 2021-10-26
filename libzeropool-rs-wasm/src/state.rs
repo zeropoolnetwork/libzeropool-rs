@@ -3,18 +3,27 @@ use libzeropool::{
     fawkes_crypto::{BorshDeserialize, BorshSerialize},
     native::{account::Account as NativeAccount, note::Note as NativeNote},
 };
-use libzeropool_rs::client::state::State;
-use wasm_bindgen::{prelude::*, JsCast};
+use libzeropool_rs::client::state::{State, Transaction as InnerTransaction};
+use serde::{Deserialize, Serialize};
+use wasm_bindgen::prelude::*;
 
 use crate::{
-    ts_types::{Account, Note},
     utils, Fr, PoolParams, POOL_PARAMS,
 };
 
-#[derive(BorshSerialize, BorshDeserialize, PartialEq, Debug)]
+#[derive(Debug, PartialEq, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
 pub enum Transaction {
     Account(NativeAccount<Fr>),
     Note(NativeNote<Fr>),
+}
+
+impl From<InnerTransaction<Fr>> for Transaction {
+    fn from(other: InnerTransaction<Fr>) -> Self {
+        match other {
+            InnerTransaction::Account(acc) => Transaction::Account(acc),
+            InnerTransaction::Note(note) => Transaction::Note(note),
+        }
+    }
 }
 
 #[wasm_bindgen]
@@ -32,28 +41,6 @@ impl UserState {
         let state = State::init_web(db_id, POOL_PARAMS.clone()).await;
 
         UserState { inner: state }
-    }
-
-    #[wasm_bindgen(js_name = "addAccount")]
-    /// Cache account at specified index.
-    pub fn add_account(&mut self, at_index: u64, account: Account) -> Result<(), JsValue> {
-        let native_account: NativeAccount<Fr> =
-            serde_wasm_bindgen::from_value(account.unchecked_into())?;
-
-        self.inner.add_account(at_index, native_account);
-
-        Ok(())
-    }
-
-    #[wasm_bindgen(js_name = "addReceivedNote")]
-    /// Caches a note at specified index.
-    /// Only cache received notes.
-    pub fn add_received_note(&mut self, at_index: u64, note: Note) -> Result<(), JsValue> {
-        let native_note: NativeNote<_> = serde_wasm_bindgen::from_value(note.unchecked_into())?;
-
-        self.inner.add_received_note(at_index, native_note);
-
-        Ok(())
     }
 
     #[wasm_bindgen(js_name = "earliestUsableIndex")]

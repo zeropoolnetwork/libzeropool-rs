@@ -1,11 +1,11 @@
 use std::collections::HashMap;
-use std::{cell::RefCell, convert::TryInto};
 use std::rc::Rc;
+use std::{cell::RefCell, convert::TryInto};
 
 use js_sys::{Array, Promise};
 use kvdb_web::Database;
 use libzeropool::{
-    constants::{self, OUTPLUSONELOG},
+    constants,
     fawkes_crypto::{
         core::sizedvec::SizedVec,
         ff_uint::Num,
@@ -18,21 +18,21 @@ use libzeropool::{
         tx::{parse_delta, TransferPub as NativeTransferPub, TransferSec as NativeTransferSec},
     },
 };
+use libzeropool_rs::merkle::Node;
 use libzeropool_rs::{
     client::{TxOutput, TxType as NativeTxType, UserAccount as NativeUserAccount},
-    libzeropool::fawkes_crypto::borsh::BorshDeserialize,
     merkle::Hash,
 };
 use serde::{Deserialize, Serialize};
 use wasm_bindgen::{prelude::*, JsCast};
 use wasm_bindgen_futures::future_to_promise;
 
-use crate::IndexedNote;
 use crate::ts_types::Hash as JsHash;
 use crate::{
-    keys::reduce_sk, Account, Fr, Fs, Hashes, IndexedNotes, MerkleProof, Note, Pair, PoolParams,
+    keys::reduce_sk, Account, Fr, Fs, Hashes, IndexedNotes, MerkleProof, Pair, PoolParams,
     TxOutputs, UserState, POOL_PARAMS,
 };
+use crate::{IndexedNote, Transaction};
 
 // TODO: Find a way to expose MerkleTree,
 
@@ -222,7 +222,7 @@ impl UserAccount {
     }
 
     #[wasm_bindgen(js_name = "addAccount")]
-    /// Cache account at specified index.
+    /// Cache account and notes (own tx) at specified index.
     pub fn add_account(
         &mut self,
         at_index: u64,
@@ -241,12 +241,13 @@ impl UserAccount {
         self.inner
             .borrow_mut()
             .state
-            .add_own_tx(at_index, &hashes, account, &notes);
+            .add_full_tx(at_index, &hashes, account, &notes);
 
         Ok(())
     }
 
     #[wasm_bindgen(js_name = "addHashes")]
+    /// Cache tx hashes at specified index.
     pub fn add_hashes(&mut self, at_index: u64, hashes: Hashes) -> Result<(), JsValue> {
         let hashes: Vec<_> = serde_wasm_bindgen::from_value(hashes.unchecked_into())?;
 
@@ -256,6 +257,7 @@ impl UserAccount {
     }
 
     #[wasm_bindgen(js_name = "addNotes")]
+    /// Cache only notes at specified index
     pub fn add_notes(
         &mut self,
         at_index: u64,
@@ -272,7 +274,7 @@ impl UserAccount {
         self.inner
             .borrow_mut()
             .state
-            .add_notes(at_index, &hashes, &notes);
+            .add_full_tx(at_index, &hashes, None, &notes);
 
         Ok(())
     }
@@ -282,29 +284,6 @@ impl UserAccount {
         let root = self.inner.borrow_mut().state.tree.get_root().to_string();
 
         root
-    }
-
-    #[wasm_bindgen(js_name = "addReceivedNote")]
-    /// Caches a note at specified index.
-    /// Only cache received notes.
-    pub fn add_received_note(&mut self, at_index: u64, note: Note) -> Result<(), JsValue> {
-        let note = serde_wasm_bindgen::from_value(note.into())?;
-        self.inner.borrow_mut().state.add_received_note(at_index, note);
-
-        Ok(())
-    }
-
-    #[wasm_bindgen(js_name = "addCommitment")]
-    /// Add out commitment hash to the tree.
-    pub fn add_commitment(&mut self, index: u64, commitment: Vec<u8>) -> Result<(), JsValue> {
-        self.inner.borrow_mut().state.tree.add_hash_at_height(
-            OUTPLUSONELOG as u32,
-            index,
-            Num::try_from_slice(commitment.as_slice()).unwrap(),
-            false,
-        );
-
-        Ok(())
     }
 
     #[wasm_bindgen(js_name = "totalBalance")]
@@ -326,12 +305,7 @@ impl UserAccount {
 
     #[wasm_bindgen(js_name = "getMerkleNode")]
     pub fn get_merkle_node(&self, height: u32, index: u64) -> String {
-        let node = self
-            .inner
-            .borrow()
-            .state
-            .tree
-            .get(height, index);
+        let node = self.inner.borrow().state.tree.get(height, index);
 
         node.to_string()
     }
@@ -408,5 +382,26 @@ impl UserAccount {
         serde_wasm_bindgen::to_value(&proof)
             .unwrap()
             .unchecked_into::<MerkleProof>()
+    }
+
+    #[wasm_bindgen(js_name = "getWholeState")]
+    pub fn get_whole_state(&self) -> JsValue {
+        #[derive(Serialize)]
+        struct WholeState {
+            nodes: Vec<Node<Fr>>,
+            txs: Vec<(u64, Transaction)>,
+        }
+
+        let state = &self.inner.borrow().state;
+        let nodes = state.tree.get_all_nodes();
+        let txs = state
+            .get_all_txs()
+            .into_iter()
+            .map(|(i, tx)| (i, tx.into()))
+            .collect();
+
+        let data = WholeState { nodes, txs };
+
+        serde_wasm_bindgen::to_value(&data).unwrap()
     }
 }

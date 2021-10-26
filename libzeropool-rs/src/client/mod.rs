@@ -6,7 +6,6 @@ use libzeropool::{
         core::sizedvec::SizedVec,
         ff_uint::Num,
         ff_uint::{NumRepr, Uint},
-        native::poseidon::MerkleProof,
         rand::Rng,
     },
     native::{
@@ -30,7 +29,7 @@ use crate::{
     address::{format_address, parse_address, AddressParseError},
     keys::{reduce_sk, Keys},
     random::CustomRng,
-    utils::keccak256,
+    utils::{keccak256, zero_note, zero_proof},
 };
 
 pub mod state;
@@ -127,22 +126,6 @@ where
         mut data: Option<Vec<u8>>,
         delta_index: Option<u64>,
     ) -> Result<TransactionData<P::Fr>, CreateTxError> {
-        fn zero_note<Fr: PrimeField>() -> Note<Fr> {
-            Note {
-                d: BoundedNum::new(Num::ZERO),
-                p_d: Num::ZERO,
-                b: BoundedNum::new(Num::ZERO),
-                t: BoundedNum::new(Num::ZERO),
-            }
-        }
-
-        fn zero_proof<Fr: PrimeField>() -> MerkleProof<Fr, { constants::HEIGHT }> {
-            MerkleProof {
-                sibling: (0..constants::HEIGHT).map(|_| Num::ZERO).collect(),
-                path: (0..constants::HEIGHT).map(|_| false).collect(),
-            }
-        }
-
         let mut rng = CustomRng;
         let keys = self.keys.clone();
         let state = &self.state;
@@ -181,37 +164,38 @@ where
 
         let mut output_value = Num::ZERO;
 
-        let (num_real_out_notes, out_notes): (_, SizedVec<_, { constants::OUT }>) = if let TxType::Transfer(outputs) = &tx {
-            if outputs.len() >= constants::OUT {
-                return Err(CreateTxError::TooManyOutputs {
-                    max: constants::OUT,
-                    got: outputs.len(),
-                });
-            }
+        let (_num_real_out_notes, out_notes): (_, SizedVec<_, { constants::OUT }>) =
+            if let TxType::Transfer(outputs) = &tx {
+                if outputs.len() >= constants::OUT {
+                    return Err(CreateTxError::TooManyOutputs {
+                        max: constants::OUT,
+                        got: outputs.len(),
+                    });
+                }
 
-            let out_notes = outputs
-                .iter()
-                .map(|dest| {
-                    let (to_d, to_p_d) = parse_address::<P>(&dest.to)?;
+                let out_notes = outputs
+                    .iter()
+                    .map(|dest| {
+                        let (to_d, to_p_d) = parse_address::<P>(&dest.to)?;
 
-                    output_value += dest.amount.to_num();
+                        output_value += dest.amount.to_num();
 
-                    Ok(Note {
-                        d: to_d,
-                        p_d: to_p_d,
-                        b: dest.amount,
-                        t: rng.gen(),
+                        Ok(Note {
+                            d: to_d,
+                            p_d: to_p_d,
+                            b: dest.amount,
+                            t: rng.gen(),
+                        })
                     })
-                })
-                // fill out remaining output notes with zeroes
-                .chain((0..).map(|_| Ok(zero_note())))
-                .take(constants::OUT)
-                .collect::<Result<SizedVec<_, { constants::OUT }>, AddressParseError>>()?;
+                    // fill out remaining output notes with zeroes
+                    .chain((0..).map(|_| Ok(zero_note())))
+                    .take(constants::OUT)
+                    .collect::<Result<SizedVec<_, { constants::OUT }>, AddressParseError>>()?;
 
-            (outputs.len(), out_notes)
-        } else {
-            (0, (0..).map(|_| zero_note()).take(constants::OUT).collect())
-        };
+                (outputs.len(), out_notes)
+            } else {
+                (0, (0..).map(|_| zero_note()).take(constants::OUT).collect())
+            };
 
         let mut delta_value = Num::ZERO;
         // TODO Add user user defined value for energy
@@ -274,15 +258,9 @@ where
             let entropy: [u8; 32] = rng.gen();
 
             // No need to include all the zero notes in the encrypted transaction
-            let out_notes = &out_notes.as_slice()[0..num_real_out_notes];
+            let out_notes = &out_notes.as_slice();
 
-            cipher::encrypt(
-                &entropy,
-                keys.eta,
-                out_account,
-                out_notes,
-                &self.params,
-            )
+            cipher::encrypt(&entropy, keys.eta, out_account, out_notes, &self.params)
         };
 
         // Hash input account + notes filling remaining space with non-hashed zeroes
@@ -359,7 +337,10 @@ where
 
         let account_proof = state.latest_account_index.map_or_else(
             || Ok(zero_proof()),
-            |i| tree.get_leaf_proof(i).ok_or_else(|| CreateTxError::ProofNotFound(i))
+            |i| {
+                tree.get_leaf_proof(i)
+                    .ok_or_else(|| CreateTxError::ProofNotFound(i))
+            },
         )?;
         let note_proofs = in_notes_original
             .iter()
@@ -427,7 +408,8 @@ mod tests {
             amount: BoundedNum::new(Num::ZERO),
         };
 
-        acc.create_tx(TxType::Transfer(vec![out]), None, None).unwrap();
+        acc.create_tx(TxType::Transfer(vec![out]), None, None)
+            .unwrap();
     }
 
     #[test]
@@ -443,6 +425,7 @@ mod tests {
             amount: BoundedNum::new(Num::ONE),
         };
 
-        acc.create_tx(TxType::Transfer(vec![out]), None, None).unwrap();
+        acc.create_tx(TxType::Transfer(vec![out]), None, None)
+            .unwrap();
     }
 }
