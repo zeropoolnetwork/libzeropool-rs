@@ -292,6 +292,18 @@ impl UserAccount {
         self.inner.borrow().state.total_balance().to_string()
     }
 
+    #[wasm_bindgen(js_name = "accountBalance")]
+    /// Returns user's total balance (account + available notes).
+    pub fn account_balance(&self) -> String {
+        self.inner.borrow().state.account_balance().to_string()
+    }
+
+    #[wasm_bindgen(js_name = "noteBalance")]
+    /// Returns user's total balance (account + available notes).
+    pub fn note_balance(&self) -> String {
+        self.inner.borrow().state.note_balance().to_string()
+    }
+
     #[wasm_bindgen(js_name = "nextTreeIndex")]
     pub fn next_tree_index(&self) -> u64 {
         self.inner.borrow().state.tree.next_index()
