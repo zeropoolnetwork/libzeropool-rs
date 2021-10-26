@@ -187,6 +187,7 @@ where
         if account_i >= self.latest_note_index {
             self.total_balance = account.b;
             self.account_balance = account.b;
+            self.note_balance = BoundedNum::new(Num::ZERO);
         }
     }
 
