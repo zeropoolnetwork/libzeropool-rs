@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::rc::Rc;
 use std::{cell::RefCell, convert::TryInto};
 
+use borsh::BorshDeserialize;
 use js_sys::{Array, Promise};
 use kvdb_web::Database;
 use libzeropool::{
@@ -219,6 +220,19 @@ impl UserAccount {
 
             Ok(serde_wasm_bindgen::to_value(&tx).unwrap())
         })
+    }
+
+    #[wasm_bindgen(js_name = "addCommitment")]
+    /// Add out commitment hash to the tree.
+    pub fn add_commitment(&mut self, index: u64, commitment: Vec<u8>) -> Result<(), JsValue> {
+        self.inner.borrow_mut().state.tree.add_hash_at_height(
+            constants::OUTPLUSONELOG as u32,
+            index,
+            Num::try_from_slice(commitment.as_slice()).unwrap(),
+            false,
+        );
+
+        Ok(())
     }
 
     #[wasm_bindgen(js_name = "addAccount")]
