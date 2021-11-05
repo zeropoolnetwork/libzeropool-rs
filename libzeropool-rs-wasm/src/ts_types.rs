@@ -98,6 +98,29 @@ export interface VK {
     delta: string[][]; // G2
     ic: string[][];    // G1[]
 }
+
+export interface ITxBaseFields {
+    fee: string;
+    data: Uint8Array;
+}
+
+export interface IDepositData {
+    base_fields: ITxBaseFields;
+    amount: string;
+}
+
+export interface ITransferData {
+    base_fields: ITxBaseFields;
+    outputs: Output[];
+}
+
+export interface IWithdrawData {
+    base_fields: ITxBaseFields;
+    amount: string;
+    to: string;
+    native_amount: string;
+}
+
 "#;
 
 #[wasm_bindgen]
@@ -167,6 +190,15 @@ extern "C" {
 
     #[wasm_bindgen(typescript_type = "Array<Uint8Array>")]
     pub type RawHashes;
+
+    #[wasm_bindgen(typescript_type = "IDepositData")]
+    pub type IDepositData;
+
+    #[wasm_bindgen(typescript_type = "ITransferData")]
+    pub type ITransferData;
+
+    #[wasm_bindgen(typescript_type = "IWithdrawData")]
+    pub type IWithdrawData;
 }
 
 #[derive(Serialize, Deserialize)]

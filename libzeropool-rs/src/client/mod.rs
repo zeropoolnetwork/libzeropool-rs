@@ -56,17 +56,28 @@ pub struct TransactionData<Fr: PrimeField> {
     pub out_hashes: SizedVec<Num<Fr>, { constants::OUT + 1 }>,
 }
 
+pub type TokenAmount<Fr> = BoundedNum<Fr, { constants::BALANCE_SIZE_BITS }>;
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct TxOutput<Fr: PrimeField> {
     pub to: String,
-    pub amount: BoundedNum<Fr, { constants::BALANCE_SIZE_BITS }>,
+    pub amount: TokenAmount<Fr>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 pub enum TxType<Fr: PrimeField> {
-    Transfer(Vec<TxOutput<Fr>>),
-    Deposit(BoundedNum<Fr, { constants::BALANCE_SIZE_BITS }>),
-    Withdraw(BoundedNum<Fr, { constants::BALANCE_SIZE_BITS }>),
+    // fee, data, tx_outputs
+    Transfer(TokenAmount<Fr>, Vec<u8>, Vec<TxOutput<Fr>>),
+    // fee, data, deposit_amount
+    Deposit(TokenAmount<Fr>, Vec<u8>, TokenAmount<Fr>),
+    // fee, data, withdraw_amount, to, native_amount
+    Withdraw(
+        TokenAmount<Fr>,
+        Vec<u8>,
+        TokenAmount<Fr>,
+        String,
+        TokenAmount<Fr>,
+    ),
 }
 
 pub struct UserAccount<D: KeyValueDB, P: PoolParams> {
@@ -123,7 +134,6 @@ where
     pub fn create_tx(
         &self,
         tx: TxType<P::Fr>,
-        mut data: Option<Vec<u8>>,
         delta_index: Option<u64>,
     ) -> Result<TransactionData<P::Fr>, CreateTxError> {
         let mut rng = CustomRng;
@@ -165,7 +175,7 @@ where
         let mut output_value = Num::ZERO;
 
         let (_num_real_out_notes, out_notes): (_, SizedVec<_, { constants::OUT }>) =
-            if let TxType::Transfer(outputs) = &tx {
+            if let TxType::Transfer(_, _, outputs) = &tx {
                 if outputs.len() >= constants::OUT {
                     return Err(CreateTxError::TooManyOutputs {
                         max: constants::OUT,
@@ -214,7 +224,7 @@ where
             input_energy += note.b.to_num() * (delta_index - Num::from(*note_index));
         }
         let new_balance = match &tx {
-            TxType::Transfer(_) => {
+            TxType::Transfer(_, _, _) => {
                 if input_value.to_uint() >= output_value.to_uint() {
                     input_value - output_value
                 } else {
@@ -224,7 +234,7 @@ where
                     ));
                 }
             }
-            TxType::Withdraw(amount) => {
+            TxType::Withdraw(_, _, amount, _, _) => {
                 delta_energy = -input_energy;
                 delta_value = -amount.to_num();
 
@@ -237,7 +247,7 @@ where
                     ));
                 }
             }
-            TxType::Deposit(amount) => {
+            TxType::Deposit(_, _, amount) => {
                 delta_value = amount.to_num();
                 input_value + delta_value
             }
@@ -307,14 +317,17 @@ where
         let tree = &state.tree;
         let root: Num<P::Fr> = tree.get_root();
 
+        let data: &Vec<u8> = match &tx {
+            TxType::Deposit(_, data, _) => data,
+            TxType::Transfer(_, data, _) => data,
+            TxType::Withdraw(_, data, _, _, _) => data,
+        };
         let mut memo_data = {
             let ciphertext_size = ciphertext.len();
-            let data_size = data.as_ref().map(|d| d.len()).unwrap_or(0);
+            let data_size = data.len();
             Vec::with_capacity(ciphertext_size + data_size)
         };
-        if let Some(data) = &mut data {
-            memo_data.append(data);
-        }
+        memo_data.append(&mut data.clone());
         memo_data.extend(&ciphertext);
 
         let memo_hash = keccak256(&memo_data);
@@ -382,8 +395,15 @@ mod tests {
         let state = State::init_test(POOL_PARAMS.clone());
         let acc = UserAccount::new(Num::ZERO, state, POOL_PARAMS.clone());
 
-        acc.create_tx(TxType::Deposit(BoundedNum::new(Num::ZERO)), None, None)
-            .unwrap();
+        acc.create_tx(
+            TxType::Deposit(
+                BoundedNum::new(Num::ZERO),
+                vec![],
+                BoundedNum::new(Num::ZERO),
+            ),
+            None,
+        )
+        .unwrap();
     }
 
     #[test]
@@ -391,8 +411,15 @@ mod tests {
         let state = State::init_test(POOL_PARAMS.clone());
         let acc = UserAccount::new(Num::ZERO, state, POOL_PARAMS.clone());
 
-        acc.create_tx(TxType::Deposit(BoundedNum::new(Num::ONE)), None, None)
-            .unwrap();
+        acc.create_tx(
+            TxType::Deposit(
+                BoundedNum::new(Num::ZERO),
+                vec![],
+                BoundedNum::new(Num::ONE),
+            ),
+            None,
+        )
+        .unwrap();
     }
 
     // It's ok to transfer 0 while balance = 0
@@ -408,8 +435,11 @@ mod tests {
             amount: BoundedNum::new(Num::ZERO),
         };
 
-        acc.create_tx(TxType::Transfer(vec![out]), None, None)
-            .unwrap();
+        acc.create_tx(
+            TxType::Transfer(BoundedNum::new(Num::ZERO), vec![], vec![out]),
+            None,
+        )
+        .unwrap();
     }
 
     #[test]
@@ -425,7 +455,10 @@ mod tests {
             amount: BoundedNum::new(Num::ONE),
         };
 
-        acc.create_tx(TxType::Transfer(vec![out]), None, None)
-            .unwrap();
+        acc.create_tx(
+            TxType::Transfer(BoundedNum::new(Num::ZERO), vec![], vec![out]),
+            None,
+        )
+        .unwrap();
     }
 }

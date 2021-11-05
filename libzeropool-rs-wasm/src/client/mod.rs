@@ -14,39 +14,33 @@ use libzeropool::{
     },
     native::{
         account::Account as NativeAccount,
-        boundednum::BoundedNum,
         note::Note as NativeNote,
         tx::{parse_delta, TransferPub as NativeTransferPub, TransferSec as NativeTransferSec},
     },
 };
-use libzeropool_rs::merkle::Node;
 use libzeropool_rs::{
-    client::{TxOutput, TxType as NativeTxType, UserAccount as NativeUserAccount},
-    merkle::Hash,
+    client::{TxType as NativeTxType, UserAccount as NativeUserAccount},
+    merkle::{Hash, Node},
 };
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use wasm_bindgen::{prelude::*, JsCast};
 use wasm_bindgen_futures::future_to_promise;
 
 use crate::ts_types::Hash as JsHash;
 use crate::{
-    keys::reduce_sk, Account, Fr, Fs, Hashes, IndexedNotes, MerkleProof, Pair, PoolParams,
-    TxOutputs, UserState, POOL_PARAMS,
+    keys::reduce_sk, Account, Fr, Fs, Hashes, IDepositData, ITransferData, IWithdrawData,
+    IndexedNotes, MerkleProof, Pair, PoolParams, UserState, POOL_PARAMS,
 };
 use crate::{IndexedNote, Transaction};
+
+mod tx_types;
+use tx_types::JsTxType;
 
 // TODO: Find a way to expose MerkleTree,
 
 #[wasm_bindgen]
 pub struct UserAccount {
     inner: Rc<RefCell<NativeUserAccount<Database, PoolParams>>>,
-}
-
-#[wasm_bindgen]
-pub enum TxType {
-    Transfer = "transfer",
-    Deposit = "deposit",
-    Withdraw = "withdraw",
 }
 
 #[wasm_bindgen]
@@ -126,21 +120,7 @@ impl UserAccount {
         Ok(pair)
     }
 
-    #[wasm_bindgen(js_name = "createTx")]
-    /// Constructs a transaction.
-    pub fn create_tx(
-        &self,
-        ty: TxType,
-        value: TxOutputs,
-        data: Option<Vec<u8>>,
-        delta_index: Option<u64>,
-    ) -> Promise {
-        #[derive(Deserialize)]
-        struct Output {
-            to: String,
-            amount: BoundedNum<Fr, { constants::BALANCE_SIZE_BITS }>,
-        }
-
+    fn construct_tx_data(&self, native_tx: NativeTxType<Fr>) -> Promise {
         #[derive(Serialize)]
         struct ParsedDelta {
             v: i64,
@@ -161,45 +141,13 @@ impl UserAccount {
             parsed_delta: ParsedDelta,
         }
 
-        // TODO: Signature callback
-
         let account = self.inner.clone();
 
         future_to_promise(async move {
-            let tx = match ty {
-                TxType::Transfer => {
-                    let js_outputs: JsValue = value.into();
-                    let outputs = serde_wasm_bindgen::from_value::<Vec<Output>>(js_outputs)?
-                        .into_iter()
-                        .map(|out| TxOutput {
-                            to: out.to,
-                            amount: out.amount,
-                        })
-                        .collect::<Vec<_>>();
-
-                    account
-                        .borrow()
-                        .create_tx(NativeTxType::Transfer(outputs), data, delta_index)
-                }
-                TxType::Deposit => {
-                    let js_amount: JsValue = value.into();
-                    let amount = serde_wasm_bindgen::from_value(js_amount)?;
-
-                    account
-                        .borrow()
-                        .create_tx(NativeTxType::Deposit(amount), data, delta_index)
-                }
-                TxType::Withdraw => {
-                    let js_amount: JsValue = value.into();
-                    let amount = serde_wasm_bindgen::from_value(js_amount)?;
-
-                    account
-                        .borrow()
-                        .create_tx(NativeTxType::Withdraw(amount), data, delta_index)
-                }
-                _ => panic!("unknow tx type"),
-            }
-            .map_err(|err| js_err!("{}", err))?;
+            let tx = account
+                .borrow()
+                .create_tx(native_tx, None)
+                .map_err(|err| js_err!("{}", err))?;
 
             let (v, e, index) = parse_delta(tx.public.delta);
             let parsed_delta = ParsedDelta {
@@ -220,6 +168,21 @@ impl UserAccount {
 
             Ok(serde_wasm_bindgen::to_value(&tx).unwrap())
         })
+    }
+
+    #[wasm_bindgen(js_name = "createDeposit")]
+    pub fn create_deposit(&self, deposit: IDepositData) -> Result<Promise, JsValue> {
+        Ok(self.construct_tx_data(deposit.to_native()?))
+    }
+
+    #[wasm_bindgen(js_name = "createTransfer")]
+    pub fn create_tranfer(&self, transfer: ITransferData) -> Result<Promise, JsValue> {
+        Ok(self.construct_tx_data(transfer.to_native()?))
+    }
+
+    #[wasm_bindgen(js_name = "createWithdraw")]
+    pub fn create_withdraw(&self, withdraw: IWithdrawData) -> Result<Promise, JsValue> {
+        Ok(self.construct_tx_data(withdraw.to_native()?))
     }
 
     #[wasm_bindgen(js_name = "addCommitment")]
