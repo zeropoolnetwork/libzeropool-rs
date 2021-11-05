@@ -45,6 +45,8 @@ pub enum CreateTxError {
     AddressParseError(#[from] AddressParseError),
     #[error("Insufficient balance: sum of outputs is greater than sum of inputs: {0} > {1}")]
     InsufficientBalance(String, String),
+    #[error("Insufficient energy: available {0}, received {1}")]
+    InsufficientEnergy(String, String),
 }
 
 #[derive(Serialize, Deserialize)]
@@ -71,12 +73,13 @@ pub enum TxType<Fr: PrimeField> {
     Transfer(TokenAmount<Fr>, Vec<u8>, Vec<TxOutput<Fr>>),
     // fee, data, deposit_amount
     Deposit(TokenAmount<Fr>, Vec<u8>, TokenAmount<Fr>),
-    // fee, data, withdraw_amount, to, native_amount
+    // fee, data, withdraw_amount, to, native_amount, energy_amount
     Withdraw(
         TokenAmount<Fr>,
         Vec<u8>,
         TokenAmount<Fr>,
         Vec<u8>,
+        TokenAmount<Fr>,
         TokenAmount<Fr>,
     ),
 }
@@ -154,7 +157,7 @@ where
                     tx_data.write_all(&raw_fee.to_be_bytes()).unwrap();
                     (fee, tx_data, user_data)
                 }
-                TxType::Withdraw(fee, user_data, _, reciever, native_amount) => {
+                TxType::Withdraw(fee, user_data, _, reciever, native_amount, _) => {
                     let raw_fee: u64 = fee.to_num().try_into().unwrap();
                     let raw_native_amount: u64 = native_amount.to_num().try_into().unwrap();
 
@@ -235,7 +238,6 @@ where
             };
 
         let mut delta_value = -fee.as_num();
-        // TODO Add user user defined value for energy
         // By default all account energy will be withdrawn on withdraw tx
         let mut delta_energy = Num::ZERO;
 
@@ -261,11 +263,21 @@ where
                     ));
                 }
             }
-            TxType::Withdraw(_, _, amount, _, _) => {
-                delta_energy -= input_energy;
-                delta_value -= amount.to_num();
+            TxType::Withdraw(_, _, amount, _, _, energy) => {
+                let amount = amount.to_num();
+                let energy = energy.to_num();
 
-                if input_value.to_uint() >= amount.to_num().to_uint() {
+                if energy.to_uint() > input_energy.to_uint() {
+                    return Err(CreateTxError::InsufficientEnergy(
+                        input_energy.to_string(),
+                        energy.to_string(),
+                    ));
+                }
+
+                delta_energy -= energy;
+                delta_value -= amount;
+
+                if input_value.to_uint() >= amount.to_uint() {
                     input_value + delta_value
                 } else {
                     return Err(CreateTxError::InsufficientBalance(

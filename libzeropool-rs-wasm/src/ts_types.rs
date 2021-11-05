@@ -119,6 +119,7 @@ export interface IWithdrawData {
     amount: string;
     to: Uint8Array;
     native_amount: string;
+    energy_amount: string;
 }
 
 "#;

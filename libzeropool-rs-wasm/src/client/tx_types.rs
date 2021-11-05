@@ -86,6 +86,7 @@ pub struct WithdrawData {
     amount: TokenAmount<Fr>,
     to: Vec<u8>,
     native_amount: TokenAmount<Fr>,
+    energy_amount: TokenAmount<Fr>,
 }
 
 impl JsTxType for IWithdrawData {
@@ -95,6 +96,7 @@ impl JsTxType for IWithdrawData {
             amount,
             to,
             native_amount,
+            energy_amount,
         } = serde_wasm_bindgen::from_value(self.into())?;
 
         Ok(NativeTxType::Withdraw(
@@ -103,6 +105,7 @@ impl JsTxType for IWithdrawData {
             amount,
             to,
             native_amount,
+            energy_amount,
         ))
     }
 }
