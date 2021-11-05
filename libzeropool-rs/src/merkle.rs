@@ -733,26 +733,6 @@ mod tests {
     use test_case::test_case;
 
     #[test]
-    fn test_test() {
-        let leaf = "613361231981909686689353131852117979510637151415477226231667643813117181135";
-        let incorrect_root =
-            "3118733064817105314885663990396871361138144170770801684235040786284629425995";
-        let correct_root =
-            "11676868594362742495760313474590358885899620369406078442506463589036676423719";
-
-        let mut rng = CustomRng;
-        let mut tree = MerkleTree::new(create(3), POOL_PARAMS.clone());
-
-        tree.add_hash(0, Num::from_str(leaf).unwrap(), false);
-
-        // for i in 1..128 {
-        //     tree.add_hash(i, zero_note().hash(&*POOL_PARAMS), false);
-        // }
-
-        assert_eq!(tree.get_root().to_string(), correct_root);
-    }
-
-    #[test]
     fn test_add_hashes_first_3() {
         let mut rng = CustomRng;
         let mut tree = MerkleTree::new(create(3), POOL_PARAMS.clone());
