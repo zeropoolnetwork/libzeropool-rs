@@ -117,7 +117,7 @@ export interface ITransferData {
 export interface IWithdrawData {
     base_fields: ITxBaseFields;
     amount: string;
-    to: string;
+    to: Uint8Array;
     native_amount: string;
 }
 

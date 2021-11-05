@@ -84,7 +84,7 @@ impl JsTxType for ITransferData {
 pub struct WithdrawData {
     base_fields: TxBaseFields,
     amount: TokenAmount<Fr>,
-    to: String,
+    to: Vec<u8>,
     native_amount: TokenAmount<Fr>,
 }
 

@@ -22,6 +22,7 @@ use libzeropool::{
     },
 };
 use serde::{Deserialize, Serialize};
+use std::{convert::TryInto, io::Write};
 use thiserror::Error;
 
 use self::state::{State, Transaction};
@@ -75,7 +76,7 @@ pub enum TxType<Fr: PrimeField> {
         TokenAmount<Fr>,
         Vec<u8>,
         TokenAmount<Fr>,
-        String,
+        Vec<u8>,
         TokenAmount<Fr>,
     ),
 }
@@ -140,13 +141,31 @@ where
         let keys = self.keys.clone();
         let state = &self.state;
 
-        let (fee, data) = match &tx {
-            TxType::Deposit(fee, data, _) => (fee, data),
-            TxType::Transfer(fee, data, _) => (fee, data),
-            TxType::Withdraw(fee, data, _, _, _) => (fee, data),
+        let (fee, tx_data, user_data) = {
+            let mut tx_data: Vec<u8> = vec![];
+            match &tx {
+                TxType::Deposit(fee, user_data, _) => {
+                    let raw_fee: u64 = fee.to_num().try_into().unwrap();
+                    tx_data.write_all(&raw_fee.to_be_bytes()).unwrap();
+                    (fee, tx_data, user_data)
+                }
+                TxType::Transfer(fee, user_data, _) => {
+                    let raw_fee: u64 = fee.to_num().try_into().unwrap();
+                    tx_data.write_all(&raw_fee.to_be_bytes()).unwrap();
+                    (fee, tx_data, user_data)
+                }
+                TxType::Withdraw(fee, user_data, _, reciever, native_amount) => {
+                    let raw_fee: u64 = fee.to_num().try_into().unwrap();
+                    let raw_native_amount: u64 = native_amount.to_num().try_into().unwrap();
+
+                    tx_data.write_all(&raw_fee.to_be_bytes()).unwrap();
+                    tx_data.write_all(&raw_native_amount.to_be_bytes()).unwrap();
+                    tx_data.append(&mut reciever.clone());
+
+                    (fee, tx_data, user_data)
+                }
+            }
         };
-        let fee = fee.clone();
-        let data = data.clone();
 
         let in_account = state.latest_account.unwrap_or_else(|| Account {
             eta: keys.eta,
@@ -325,13 +344,16 @@ where
         let tree = &state.tree;
         let root: Num<P::Fr> = tree.get_root();
 
+        // memo = tx_specific_data, ciphertext, user_defined_data
         let mut memo_data = {
+            let tx_data_size = tx_data.len();
             let ciphertext_size = ciphertext.len();
-            let data_size = data.len();
-            Vec::with_capacity(ciphertext_size + data_size)
+            let user_data_size = user_data.len();
+            Vec::with_capacity(tx_data_size + ciphertext_size + user_data_size)
         };
-        memo_data.append(&mut data.clone());
+        memo_data.append(&mut tx_data.clone());
         memo_data.extend(&ciphertext);
+        memo_data.append(&mut user_data.clone());
 
         let memo_hash = keccak256(&memo_data);
         let memo = Num::from_uint_reduced(NumRepr(Uint::from_big_endian(&memo_hash)));
