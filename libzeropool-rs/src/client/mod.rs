@@ -140,6 +140,14 @@ where
         let keys = self.keys.clone();
         let state = &self.state;
 
+        let (fee, data) = match &tx {
+            TxType::Deposit(fee, data, _) => (fee, data),
+            TxType::Transfer(fee, data, _) => (fee, data),
+            TxType::Withdraw(fee, data, _, _, _) => (fee, data),
+        };
+        let fee = fee.clone();
+        let data = data.clone();
+
         let in_account = state.latest_account.unwrap_or_else(|| Account {
             eta: keys.eta,
             i: BoundedNum::new(Num::ZERO),
@@ -207,7 +215,7 @@ where
                 (0, (0..).map(|_| zero_note()).take(constants::OUT).collect())
             };
 
-        let mut delta_value = Num::ZERO;
+        let mut delta_value = -fee.as_num();
         // TODO Add user user defined value for energy
         // By default all account energy will be withdrawn on withdraw tx
         let mut delta_energy = Num::ZERO;
@@ -235,8 +243,8 @@ where
                 }
             }
             TxType::Withdraw(_, _, amount, _, _) => {
-                delta_energy = -input_energy;
-                delta_value = -amount.to_num();
+                delta_energy -= input_energy;
+                delta_value -= amount.to_num();
 
                 if input_value.to_uint() >= amount.to_num().to_uint() {
                     input_value + delta_value
@@ -248,7 +256,7 @@ where
                 }
             }
             TxType::Deposit(_, _, amount) => {
-                delta_value = amount.to_num();
+                delta_value += amount.to_num();
                 input_value + delta_value
             }
         };
@@ -317,11 +325,6 @@ where
         let tree = &state.tree;
         let root: Num<P::Fr> = tree.get_root();
 
-        let data: &Vec<u8> = match &tx {
-            TxType::Deposit(_, data, _) => data,
-            TxType::Transfer(_, data, _) => data,
-            TxType::Withdraw(_, data, _, _, _) => data,
-        };
         let mut memo_data = {
             let ciphertext_size = ciphertext.len();
             let data_size = data.len();
