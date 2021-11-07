@@ -24,6 +24,7 @@ pub struct TxBaseFields {
 #[wasm_bindgen]
 #[derive(Deserialize)]
 pub struct DepositData {
+    #[serde(flatten)]
     base_fields: TxBaseFields,
     amount: TokenAmount<Fr>,
 }
@@ -52,6 +53,7 @@ struct Output {
 #[wasm_bindgen]
 #[derive(Deserialize)]
 pub struct TransferData {
+    #[serde(flatten)]
     base_fields: TxBaseFields,
     outputs: Vec<Output>,
 }
@@ -82,6 +84,7 @@ impl JsTxType for ITransferData {
 #[wasm_bindgen]
 #[derive(Deserialize)]
 pub struct WithdrawData {
+    #[serde(flatten)]
     base_fields: TxBaseFields,
     amount: TokenAmount<Fr>,
     to: Vec<u8>,

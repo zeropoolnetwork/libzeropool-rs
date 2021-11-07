@@ -101,21 +101,18 @@ export interface VK {
 
 export interface ITxBaseFields {
     fee: string;
-    data: Uint8Array;
+    data?: Uint8Array;
 }
 
-export interface IDepositData {
-    base_fields: ITxBaseFields;
+export interface IDepositData extends ITxBaseFields {
     amount: string;
 }
 
-export interface ITransferData {
-    base_fields: ITxBaseFields;
+export interface ITransferData extends ITxBaseFields {
     outputs: Output[];
 }
 
-export interface IWithdrawData {
-    base_fields: ITxBaseFields;
+export interface IWithdrawData extends ITxBaseFields {
     amount: string;
     to: Uint8Array;
     native_amount: string;
