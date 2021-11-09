@@ -1,4 +1,4 @@
-use std::convert::TryInto;
+use std::{convert::TryInto, marker::PhantomData};
 
 use kvdb::KeyValueDB;
 use kvdb_memorydb::InMemory as MemoryDatabase;
@@ -24,7 +24,6 @@ pub enum Transaction<Fr: PrimeField> {
 }
 
 pub struct State<D: KeyValueDB, P: PoolParams> {
-    params: P,
     pub tree: MerkleTree<D, P>,
     /// Stores only usable (own) accounts and notes
     pub(crate) txs: TxStorage<D, P::Fr>,
@@ -35,6 +34,7 @@ pub struct State<D: KeyValueDB, P: PoolParams> {
     pub(crate) total_balance: BoundedNum<P::Fr, { constants::BALANCE_SIZE_BITS }>,
     account_balance: BoundedNum<P::Fr, { constants::BALANCE_SIZE_BITS }>,
     note_balance: BoundedNum<P::Fr, { constants::BALANCE_SIZE_BITS }>,
+    _params: PhantomData<P>,
 }
 
 #[cfg(feature = "web")]
@@ -49,7 +49,7 @@ where
         let tree = MerkleTree::new_web(&merkle_db_name, params.clone()).await;
         let txs = TxStorage::new_web(&tx_db_name).await;
 
-        Self::new(tree, txs, params)
+        Self::new(tree, txs)
     }
 }
 
@@ -62,7 +62,7 @@ where
         let tree = MerkleTree::new_test(params.clone());
         let txs = TxStorage::new_test();
 
-        Self::new(tree, txs, params)
+        Self::new(tree, txs)
     }
 }
 
@@ -72,7 +72,7 @@ where
     P: PoolParams,
     P::Fr: 'static,
 {
-    pub fn new(tree: MerkleTree<D, P>, txs: TxStorage<D, P::Fr>, params: P) -> Self {
+    pub fn new(tree: MerkleTree<D, P>, txs: TxStorage<D, P::Fr>) -> Self {
         // TODO: Cache
         let mut latest_account_index = None;
         let mut latest_note_index = 0;
@@ -112,7 +112,6 @@ where
         }
 
         State {
-            params,
             tree,
             txs,
             latest_account_index,
@@ -121,6 +120,7 @@ where
             total_balance: BoundedNum::new(total_balance),
             account_balance: BoundedNum::new(account_balance),
             note_balance: BoundedNum::new(note_balance),
+            _params: Default::default(),
         }
     }
 
