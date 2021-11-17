@@ -185,6 +185,11 @@ impl UserAccount {
         Ok(self.construct_tx_data(withdraw.to_native()?))
     }
 
+    #[wasm_bindgen(js_name = "isOwnAddress")]
+    pub fn is_own_address(&self, address: &str) -> bool {
+        self.inner.borrow().is_own_address(address)
+    }
+
     #[wasm_bindgen(js_name = "addCommitment")]
     /// Add out commitment hash to the tree.
     pub fn add_commitment(&mut self, index: u64, commitment: Vec<u8>) -> Result<(), JsValue> {

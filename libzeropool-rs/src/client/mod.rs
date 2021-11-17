@@ -134,6 +134,16 @@ where
         cipher::decrypt_out(self.keys.eta, &data, &self.params)
     }
 
+    pub fn is_own_address(&self, address: &str) -> bool {
+        let mut result = false;
+        if let Ok((d, p_d)) = parse_address::<P>(address) {
+            let own_p_d = derive_key_p_d(d.to_num(), self.keys.eta, &self.params).x;
+            result = own_p_d == p_d;
+        }
+
+        result
+    }
+
     /// Constructs a transaction.
     pub fn create_tx(
         &self,
@@ -497,5 +507,28 @@ mod tests {
             None,
         )
         .unwrap();
+    }
+
+    #[test]
+    fn test_user_account_is_own_address() {
+        let acc_1 = UserAccount::new(
+            Num::ZERO,
+            State::init_test(POOL_PARAMS.clone()),
+            POOL_PARAMS.clone(),
+        );
+        let acc_2 = UserAccount::new(
+            Num::ONE,
+            State::init_test(POOL_PARAMS.clone()),
+            POOL_PARAMS.clone(),
+        );
+
+        let address_1 = acc_1.generate_address();
+        let address_2 = acc_2.generate_address();
+
+        assert!(acc_1.is_own_address(&address_1));
+        assert!(acc_2.is_own_address(&address_2));
+
+        assert!(!acc_1.is_own_address(&address_2));
+        assert!(!acc_2.is_own_address(&address_1));
     }
 }
