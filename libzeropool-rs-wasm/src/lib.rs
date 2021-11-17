@@ -22,11 +22,11 @@ static ALLOC: wee_alloc::WeeAlloc = wee_alloc::WeeAlloc::INIT;
 #[macro_use]
 mod utils;
 mod client;
+mod helpers;
 mod keys;
 mod params;
 mod proof;
 mod state;
-mod helpers;
 mod ts_types;
 
 pub type PoolParams = PoolBN256;
