@@ -1,5 +1,5 @@
 # libzeropool-rs-wasm
-Wasm/JavaScript version of [libzeropool](https://github.com/zeropoolnetwork/libzeropool).
+Wasm/JavaScript version of libzeropool-rs.
 
 ## Install
 Bundler version:
@@ -40,6 +40,7 @@ const proof = Proof.tx(params, mergeTx.public, mergeTx.secret);
 ## Development
 
 ### Build
+Build both bundler and nodejs versions:
 ```
 scripts/build
 ```

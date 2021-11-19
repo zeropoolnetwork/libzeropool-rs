@@ -4,7 +4,6 @@ use std::{cell::RefCell, convert::TryInto};
 
 use borsh::BorshDeserialize;
 use js_sys::{Array, Promise};
-use kvdb_web::Database;
 use libzeropool::{
     constants,
     fawkes_crypto::{
@@ -26,12 +25,12 @@ use serde::Serialize;
 use wasm_bindgen::{prelude::*, JsCast};
 use wasm_bindgen_futures::future_to_promise;
 
+use crate::database::Database;
 use crate::ts_types::Hash as JsHash;
 use crate::{
     keys::reduce_sk, Account, Fr, Fs, Hashes, IDepositData, ITransferData, IWithdrawData,
-    IndexedNotes, MerkleProof, Pair, PoolParams, UserState, POOL_PARAMS,
+    IndexedNote, IndexedNotes, MerkleProof, Pair, PoolParams, Transaction, UserState, POOL_PARAMS,
 };
-use crate::{IndexedNote, Transaction};
 
 mod tx_types;
 use tx_types::JsTxType;

@@ -1,4 +1,3 @@
-use kvdb_web::Database;
 use libzeropool::{
     fawkes_crypto::{BorshDeserialize, BorshSerialize},
     native::{account::Account as NativeAccount, note::Note as NativeNote},
@@ -7,9 +6,8 @@ use libzeropool_rs::client::state::{State, Transaction as InnerTransaction};
 use serde::{Deserialize, Serialize};
 use wasm_bindgen::prelude::*;
 
-use crate::{
-    utils, Fr, PoolParams, POOL_PARAMS,
-};
+use crate::database::Database;
+use crate::{utils, Fr, PoolParams, POOL_PARAMS};
 
 #[derive(Debug, PartialEq, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
 pub enum Transaction {
@@ -38,7 +36,11 @@ impl UserState {
     pub async fn init(db_id: String) -> Self {
         utils::set_panic_hook();
 
+        #[cfg(feature = "bundler")]
         let state = State::init_web(db_id, POOL_PARAMS.clone()).await;
+
+        #[cfg(not(feature = "bundler"))]
+        let state = State::init_test(POOL_PARAMS.clone());
 
         UserState { inner: state }
     }

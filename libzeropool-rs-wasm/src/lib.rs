@@ -22,6 +22,7 @@ static ALLOC: wee_alloc::WeeAlloc = wee_alloc::WeeAlloc::INIT;
 #[macro_use]
 mod utils;
 mod client;
+mod database;
 mod helpers;
 mod keys;
 mod params;
