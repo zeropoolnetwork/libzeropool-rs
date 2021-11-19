@@ -102,8 +102,9 @@ impl<D: KeyValueDB, P: PoolParams> MerkleTree<D, P> {
 
         self.db.write(batch).unwrap();
 
-        if index >= self.next_index {
-            self.next_index = index + 1;
+        let next_leaf_index = u64::pow(2, height) * (index + 1);
+        if next_leaf_index >= self.next_index {
+            self.next_index = next_leaf_index;
         }
     }
 
