@@ -36,10 +36,10 @@ impl UserState {
     pub async fn init(db_id: String) -> Self {
         utils::set_panic_hook();
 
-        #[cfg(feature = "bundler")]
+        #[cfg(any(feature = "bundler", feature = "web"))]
         let state = State::init_web(db_id, POOL_PARAMS.clone()).await;
 
-        #[cfg(not(feature = "bundler"))]
+        #[cfg(not(any(feature = "bundler", feature = "web")))]
         let state = State::init_test(POOL_PARAMS.clone());
 
         UserState { inner: state }

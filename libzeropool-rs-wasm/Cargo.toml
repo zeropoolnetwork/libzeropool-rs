@@ -1,7 +1,7 @@
 [package]
 name = "libzeropool-rs-wasm"
 description = "A higher level zeropool API for Wasm"
-version = "0.3.0-alpha.27"
+version = "0.3.0-alpha.28"
 authors = ["Dmitry Vdovin <voidxnull@gmail.com>"]
 repository = "https://github.com/zeropoolnetwork/libzeropool-rs/"
 license = "MIT OR Apache-2.0"
@@ -13,6 +13,7 @@ crate-type = ["cdylib", "rlib"]
 [features]
 default = ["console_error_panic_hook"]
 bundler = ["libzeropool-rs/web"]
+web = ["libzeropool-rs/web"]
 nodejs = ["libzeropool-rs/node"]
 
 [dependencies]

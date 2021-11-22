@@ -10,9 +10,13 @@ function build () {
   sed -i.bak -E 's/(createDeposit\(.*\)):.*$/\1: Promise<TransactionData>;/g' $PARENT_DIR/$1/libzeropool_rs_wasm.d.ts
   sed -i.bak -E 's/(createTransfer\(.*\)):.*$/\1: Promise<TransactionData>;/g' $PARENT_DIR/$1/libzeropool_rs_wasm.d.ts
   sed -i.bak -E 's/(createWithdraw\(.*\)):.*$/\1: Promise<TransactionData>;/g' $PARENT_DIR/$1/libzeropool_rs_wasm.d.ts
+  # Remove invalid typings
+  sed -i.bak -E '/BroccoliDestroyInstance/d' $PARENT_DIR/$1/libzeropool_rs_wasm.d.ts
+  sed -i.bak -E '/BroccoliDestroyInstance/d' $PARENT_DIR/$1/libzeropool_rs_wasm_bg.wasm.d.ts
   # Patch package.json, since wasm-pack doesn't allow renaming packages
   sed -i.bak -E "s/\"name\": \"libzeropool-rs-wasm\"/\"name\": \"libzeropool-rs-wasm-$1\"/g" $PARENT_DIR/$1/package.json
 }
 
+build web
 build bundler
 build nodejs

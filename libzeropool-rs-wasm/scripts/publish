@@ -2,5 +2,6 @@
 
 PARENT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )/.." &> /dev/null && pwd )"
 
+npm publish $PARENT_DIR/web
 npm publish $PARENT_DIR/bundler
 npm publish $PARENT_DIR/nodejs
