@@ -43,15 +43,18 @@ pub fn parse_delta_string(mut cx: FunctionContext) -> JsResult<JsObject> {
     let value_int: i64 = delta_params.0.try_into().unwrap();
     let energy_int: i64 = delta_params.1.try_into().unwrap();
     let index_uint: u64 = delta_params.2.try_into().unwrap();
+    let pool_id_uint: u64 = delta_params.3.try_into().unwrap();
 
     let v = neon_serde::to_value(&mut cx, &value_int).unwrap();
     let e = neon_serde::to_value(&mut cx, &energy_int).unwrap();
     let index = neon_serde::to_value(&mut cx, &index_uint).unwrap();
+    let pool_id = neon_serde::to_value(&mut cx, &pool_id_uint).unwrap();
 
     let js_object = JsObject::new(&mut cx);
     js_object.set(&mut cx, "v", v)?;
     js_object.set(&mut cx, "e", e)?;
     js_object.set(&mut cx, "index", index)?;
+    js_object.set(&mut cx, "poolId", pool_id)?;
 
     Ok(js_object)
 }
