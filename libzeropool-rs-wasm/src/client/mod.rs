@@ -148,7 +148,7 @@ impl UserAccount {
                 .create_tx(native_tx, None)
                 .map_err(|err| js_err!("{}", err))?;
 
-            let (v, e, index) = parse_delta(tx.public.delta);
+            let (v, e, index, _) = parse_delta(tx.public.delta);
             let parsed_delta = ParsedDelta {
                 v: v.try_into().unwrap(),
                 e: e.try_into().unwrap(),

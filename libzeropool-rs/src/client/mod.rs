@@ -85,6 +85,7 @@ pub enum TxType<Fr: PrimeField> {
 }
 
 pub struct UserAccount<D: KeyValueDB, P: PoolParams> {
+    pub pool_id: BoundedNum<P::Fr, { constants::DIVERSIFIER_SIZE_BITS }>,
     pub keys: Keys<P>,
     pub params: P,
     pub state: State<D, P>,
@@ -102,6 +103,8 @@ where
         let keys = Keys::derive(sk, &params);
 
         UserAccount {
+            // For now it is constant, but later should be provided by user
+            pool_id: BoundedNum::new(Num::ZERO),
             keys,
             state,
             params,
@@ -115,13 +118,24 @@ where
         Self::new(sk, state, params)
     }
 
-    /// Generates a new private address.
-    pub fn generate_address(&self) -> String {
+    fn generate_address_components(
+        &self,
+    ) -> (
+        BoundedNum<P::Fr, { constants::DIVERSIFIER_SIZE_BITS }>,
+        Num<P::Fr>,
+    ) {
         let mut rng = CustomRng;
 
         let d: BoundedNum<_, { constants::DIVERSIFIER_SIZE_BITS }> = rng.gen();
         let pk_d = derive_key_p_d(d.to_num(), self.keys.eta, &self.params);
-        format_address::<P>(d, pk_d.x)
+        (d, pk_d.x)
+    }
+
+    /// Generates a new private address.
+    pub fn generate_address(&self) -> String {
+        let (d, p_d) = self.generate_address_components();
+
+        format_address::<P>(d, p_d)
     }
 
     /// Attempts to decrypt notes.
@@ -180,12 +194,17 @@ where
             }
         };
 
-        let in_account = state.latest_account.unwrap_or_else(|| Account {
-            eta: keys.eta,
-            i: BoundedNum::new(Num::ZERO),
-            b: BoundedNum::new(Num::ZERO),
-            e: BoundedNum::new(Num::ZERO),
-            t: BoundedNum::new(Num::ZERO),
+        let in_account = state.latest_account.unwrap_or_else(|| {
+            // Initial account should have d = pool_id to protect from reply attacks
+            let d = self.pool_id;
+            let p_d = derive_key_p_d(d.to_num(), self.keys.eta, &self.params).x;
+            Account {
+                d: self.pool_id,
+                p_d,
+                i: BoundedNum::new(Num::ZERO),
+                b: BoundedNum::new(Num::ZERO),
+                e: BoundedNum::new(Num::ZERO),
+            }
         });
 
         let next_usable_index = state.earliest_usable_index();
@@ -302,12 +321,13 @@ where
             }
         };
 
+        let (d, p_d) = self.generate_address_components();
         let out_account = Account {
-            eta: keys.eta,
+            d,
+            p_d,
             i: BoundedNum::new(Num::from(spend_interval_index)),
             b: BoundedNum::new(new_balance),
             e: BoundedNum::new(delta_energy + input_energy),
-            t: rng.gen(),
         };
 
         let in_account_hash = in_account.hash(&self.params);
@@ -359,7 +379,12 @@ where
         let out_commit = out_commitment_hash(out_hashes.as_slice(), &self.params);
         let tx_hash = tx_hash(input_hashes.as_slice(), out_commit, &self.params);
 
-        let delta = make_delta::<P::Fr>(delta_value, delta_energy, delta_index);
+        let delta = make_delta::<P::Fr>(
+            delta_value,
+            delta_energy,
+            delta_index,
+            *self.pool_id.clone().as_num(),
+        );
 
         let tree = &state.tree;
         let root: Num<P::Fr> = tree.get_root();
