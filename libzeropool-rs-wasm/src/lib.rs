@@ -1,8 +1,8 @@
 use fawkes_crypto::backend::bellman_groth16::engines::Bn256;
+pub use libzeropool::POOL_PARAMS;
 use libzeropool::{
     constants,
     native::params::{PoolBN256, PoolParams as PoolParamsTrait},
-    POOL_PARAMS as NATIVE_POOL_PARAMS,
 };
 use libzeropool_rs::address::parse_address;
 use serde::Serialize;
@@ -36,7 +36,6 @@ pub type Fs = <PoolParams as PoolParamsTrait>::Fs;
 pub type Engine = Bn256;
 
 lazy_static::lazy_static! {
-    pub static ref POOL_PARAMS: PoolParams = NATIVE_POOL_PARAMS.clone();
     static ref CONSTANTS: SerConstants = SerConstants::new();
 }
 
