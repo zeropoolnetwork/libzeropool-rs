@@ -331,7 +331,12 @@ where
         };
 
         let in_account_hash = in_account.hash(&self.params);
-        let nullifier = nullifier(in_account_hash, keys.eta, &self.params);
+        let nullifier = nullifier(
+            in_account_hash,
+            keys.eta,
+            in_account_pos.into(),
+            &self.params,
+        );
 
         let ciphertext = {
             let entropy: [u8; 32] = rng.gen();
