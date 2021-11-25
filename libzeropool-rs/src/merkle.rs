@@ -128,63 +128,8 @@ impl<D: KeyValueDB, P: PoolParams> MerkleTree<D, P> {
         }
     }
 
-    pub fn add_subtree(&mut self, hashes: &[Hash<P::Fr>], start_index: u64) {
-        let size = hashes.len();
-
-        assert_eq!(
-            (size & (size - 1)),
-            0,
-            "subtree size should be a power of 2"
-        );
-        assert_eq!(
-            start_index % hashes.len() as u64,
-            0,
-            "subtree should be on correct position in the tree"
-        );
-
-        let last_add_index = start_index + size as u64 - 1;
-        self.update_next_index(0, last_add_index);
-
-        let mut batch = self.db.transaction();
-
-        // set leaves
-        for (index_shift, &hash) in hashes.iter().enumerate() {
-            // all leaves in subtree are permanent
-            self.set_batched(&mut batch, 0, start_index + index_shift as u64, hash, 0);
-        }
-
-        // build subtree
-        let mut child_hashes = hashes.to_vec();
-        let mut height: u32 = 0;
-        let mut current_start_index = start_index;
-        while child_hashes.len() > 1 {
-            height += 1;
-            current_start_index /= 2;
-
-            let parents_size = child_hashes.len() / 2;
-            let mut parent_hashes = Vec::with_capacity(parents_size);
-
-            for parent_index_shift in 0..parents_size {
-                let hash_left = child_hashes[2 * parent_index_shift];
-                let hash_right = child_hashes[2 * parent_index_shift + 1];
-                let hash_parent =
-                    poseidon([hash_left, hash_right].as_ref(), self.params.compress());
-
-                let parent_index = current_start_index + parent_index_shift as u64;
-                self.set_batched(&mut batch, height, parent_index, hash_parent, 0);
-                parent_hashes.push(hash_parent);
-            }
-
-            child_hashes = parent_hashes;
-        }
-
-        // update path to the root
-        self.update_path_batched(&mut batch, height, current_start_index, child_hashes[0], 0);
-
-        self.db.write(batch).unwrap();
-    }
-
-    pub fn add_subtree_root(&mut self, height: u32, index: u64, hash: Hash<P::Fr>) {
+    // This method is used in tests.
+    fn add_subtree_root(&mut self, height: u32, index: u64, hash: Hash<P::Fr>) {
         self.update_next_index(height, index);
 
         let mut batch = self.db.transaction();
@@ -194,28 +139,6 @@ impl<D: KeyValueDB, P: PoolParams> MerkleTree<D, P> {
 
         // update path
         self.update_path_batched(&mut batch, height, index, hash, 1 << height);
-
-        self.db.write(batch).unwrap();
-    }
-
-    pub fn add_proof<const H: usize>(&mut self, index: u64, nodes: &[Hash<P::Fr>]) {
-        let start_height = constants::HEIGHT - H;
-        self.update_next_index(start_height as u32, index);
-
-        let mut batch = self.db.transaction();
-
-        let mut tree_index = index;
-        for (height, hash) in nodes.iter().enumerate() {
-            // todo: check if it's correct to use temporary_leaves_count = 0
-            self.set_batched(
-                &mut batch,
-                (start_height + height) as u32,
-                tree_index ^ 1,
-                *hash,
-                0,
-            );
-            tree_index /= 2;
-        }
 
         self.db.write(batch).unwrap();
     }
@@ -262,26 +185,6 @@ impl<D: KeyValueDB, P: PoolParams> MerkleTree<D, P> {
         }
     }
 
-    pub fn merkle_proof_root<const H: usize>(
-        &self,
-        leaf: Num<P::Fr>,
-        proof: MerkleProof<P::Fr, { H }>,
-    ) -> Num<P::Fr> {
-        let root = proof
-            .sibling
-            .iter()
-            .zip(proof.path.iter())
-            .fold(leaf, |leaf, (s, p)| {
-                let pair = if *p {
-                    [s.clone(), leaf.clone()]
-                } else {
-                    [leaf.clone(), s.clone()]
-                };
-                poseidon(pair.as_ref(), self.params.compress())
-            });
-        root
-    }
-
     pub fn get_proof_unchecked<const H: usize>(&self, index: u64) -> MerkleProof<P::Fr, { H }> {
         let mut sibling: SizedVec<_, { H }> = (0..H).map(|_| Num::ZERO).collect();
         let mut path: SizedVec<_, { H }> = (0..H).map(|_| false).collect();
@@ -311,19 +214,8 @@ impl<D: KeyValueDB, P: PoolParams> MerkleTree<D, P> {
         Some(self.get_proof_unchecked(index))
     }
 
-    pub fn get_commitment_proof(
-        &self,
-        index: u64,
-    ) -> Option<MerkleProof<P::Fr, { constants::HEIGHT - constants::OUTPLUSONELOG }>> {
-        let key = Self::node_key(constants::OUTPLUSONELOG as u32, index);
-        let node_present = self.db.get(0, &key).map_or(false, |value| value.is_some());
-        if !node_present {
-            return None;
-        }
-        Some(self.get_proof_unchecked(index))
-    }
-
-    pub fn get_proof_after<I>(
+    // This method is used in tests.
+    fn get_proof_after<I>(
         &mut self,
         new_hashes: I,
     ) -> Vec<MerkleProof<P::Fr, { constants::HEIGHT }>>
@@ -910,77 +802,6 @@ mod tests {
     }
 
     #[test]
-    fn test_merkle_proof_correct() {
-        let mut rng = CustomRng;
-        let mut tree = MerkleTree::new(create(3), POOL_PARAMS.clone());
-
-        let leaf1 = rng.gen();
-        tree.add_hash(0, leaf1, false);
-        let leaf2 = rng.gen();
-        tree.add_hash(1, leaf2, false);
-
-        let root = tree.get_root();
-
-        let mp = tree.get_proof_unchecked::<HEIGHT>(0);
-        let mp_root = tree.merkle_proof_root(leaf1, mp);
-
-        assert_eq!(root, mp_root);
-
-        let mp = tree.get_proof_unchecked::<HEIGHT>(1);
-        let mp_root = tree.merkle_proof_root(leaf2, mp);
-
-        assert_eq!(root, mp_root);
-
-        let mp = tree.get_proof_unchecked::<{ HEIGHT - OUTPLUSONELOG }>(0);
-        let mp_root = tree.merkle_proof_root(tree.get(OUTPLUSONELOG as u32, 0), mp);
-
-        assert_eq!(root, mp_root);
-    }
-
-    #[test_case(1, 0)]
-    #[test_case(2, 0)]
-    #[test_case(16, 0)]
-    #[test_case(1, 7)]
-    #[test_case(2, 6)]
-    #[test_case(16, 32)]
-    #[test_case(1, constants::HEIGHT - 1)]
-    #[test_case(2, constants::HEIGHT - 2)]
-    #[test_case(16, constants::HEIGHT - 16)]
-    fn test_add_subtree(subtree_size: usize, start_index: usize) {
-        let mut rng = CustomRng;
-        let mut tree_add_hashes = MerkleTree::new(create(3), POOL_PARAMS.clone());
-        let mut tree_add_subtree = MerkleTree::new(create(3), POOL_PARAMS.clone());
-
-        let hash_values: Vec<_> = (0..subtree_size).map(|_| rng.gen()).collect();
-        let hashes = (0..subtree_size).map(|n| ((start_index + n) as u64, hash_values[n], false));
-
-        tree_add_hashes.add_hashes(hashes);
-        tree_add_subtree.add_subtree(&hash_values, start_index as u64);
-
-        let nodes_add_hashes = tree_add_hashes.get_all_nodes();
-        let nodes_add_subtree = tree_add_subtree.get_all_nodes();
-        assert_eq!(nodes_add_hashes.len(), nodes_add_subtree.len());
-
-        for first_node in &nodes_add_hashes {
-            let mut found = false;
-            for second_note in &nodes_add_subtree {
-                if first_node.height == second_note.height
-                    && first_node.index == second_note.index
-                    && first_node.value == second_note.value
-                {
-                    found = true;
-                    break;
-                }
-            }
-            assert!(
-                found,
-                "node not found height: {}, index: {}",
-                first_node.height, first_node.index
-            );
-        }
-    }
-
-    #[test]
     fn test_temporary_nodes_are_used_to_calculate_hashes_first() {
         let mut rng = CustomRng;
         let mut tree = MerkleTree::new(create(3), POOL_PARAMS.clone());
@@ -1244,50 +1065,6 @@ mod tests {
                 simple_proof.path.iter().zip(virtual_proof.path.iter())
             {
                 assert_eq!(simple_path, virtual_path);
-            }
-        }
-    }
-
-    #[test]
-    fn test_add_proof() {
-        let mut rng = CustomRng;
-        let mut tree = MerkleTree::new(create(3), POOL_PARAMS.clone());
-
-        let tree_size = 6;
-        for index in 0..tree_size {
-            let leaf = rng.gen();
-            tree.add_hash(index, leaf, false);
-        }
-
-        // Leaf proofs
-        let leaf_proofs_count = 3;
-        for index in tree_size..tree_size + leaf_proofs_count {
-            let proof_hashes: Vec<_> = (0..constants::HEIGHT).map(|_| rng.gen()).collect();
-            tree.add_proof::<HEIGHT>(index, &proof_hashes);
-            let tree_proof = tree.get_proof_unchecked::<HEIGHT>(index).sibling;
-
-            assert_eq!(tree_proof.as_slice().len(), proof_hashes.len());
-            for (actual_hash, expected_hash) in tree_proof.iter().zip(proof_hashes.iter()) {
-                assert_eq!(actual_hash, expected_hash);
-            }
-        }
-
-        // Commitment proofs
-        let commitment_proofs_count = 3;
-        for index in
-            tree_size + leaf_proofs_count..tree_size + leaf_proofs_count + commitment_proofs_count
-        {
-            let proof_hashes: Vec<_> = (0..constants::HEIGHT - constants::OUTPLUSONELOG)
-                .map(|_| rng.gen())
-                .collect();
-            tree.add_proof::<{ HEIGHT - OUTPLUSONELOG }>(index, &proof_hashes);
-            let tree_proof = tree
-                .get_proof_unchecked::<{ HEIGHT - OUTPLUSONELOG }>(index)
-                .sibling;
-
-            assert_eq!(tree_proof.as_slice().len(), proof_hashes.len());
-            for (actual_hash, expected_hash) in tree_proof.iter().zip(proof_hashes.iter()) {
-                assert_eq!(actual_hash, expected_hash);
             }
         }
     }
