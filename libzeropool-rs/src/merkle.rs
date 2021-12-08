@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+use crate::utils::zero_note;
 use borsh::{BorshDeserialize, BorshSerialize};
 use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
 use kvdb::{DBTransaction, KeyValueDB};
@@ -94,7 +95,11 @@ impl<D: KeyValueDB, P: PoolParams> MerkleTree<D, P> {
         temporary: bool,
     ) {
         // todo: revert index change if update fails?
-        self.update_next_index(height, index);
+        let next_index_was_updated = self.update_next_index(height, index);
+
+        if hash == self.zero_note_hashes[height as usize] && !next_index_was_updated {
+            return;
+        }
 
         let mut batch = self.db.transaction();
 
@@ -118,14 +123,54 @@ impl<D: KeyValueDB, P: PoolParams> MerkleTree<D, P> {
         index
     }
 
-    /// Add multiple hashes from an array of tuples (index, hash, temporary)
-    pub fn add_hashes<I>(&mut self, hashes: I)
+    pub fn add_hashes<I>(&mut self, start_index: u64, hashes: I)
     where
-        I: IntoIterator<Item = (u64, Hash<P::Fr>, bool)>,
+        I: IntoIterator<Item = Hash<P::Fr>>,
     {
-        for (index, hash, temporary) in hashes.into_iter() {
-            self.add_hash(index, hash, temporary);
+        // check that index is correct
+        assert_eq!(start_index & ((1 << constants::OUTPLUSONELOG) - 1), 0);
+
+        let mut virtual_nodes: HashMap<(u32, u64), Hash<P::Fr>> = hashes
+            .into_iter()
+            // todo: check that there are no zero holes?
+            .filter(|hash| *hash != self.zero_note_hashes[0])
+            .enumerate()
+            .map(|(index, hash)| ((0, start_index + index as u64), hash))
+            .collect();
+        let new_hashes_count = virtual_nodes.len() as u64;
+
+        assert!(new_hashes_count <= (2u64 << constants::OUTPLUSONELOG));
+
+        let original_next_index = self.next_index;
+        self.update_next_index(0, start_index);
+
+        let update_boundaries = UpdateBoundaries {
+            updated_range_left_index: original_next_index,
+            updated_range_right_index: self.next_index,
+            new_hashes_left_index: start_index,
+            new_hashes_right_index: start_index + new_hashes_count,
+        };
+
+        // calculate new hashes
+        self.get_virtual_node_full(
+            constants::HEIGHT as u32,
+            0,
+            &mut virtual_nodes,
+            &update_boundaries,
+        );
+
+        // add new hashes to tree
+        self.put_hashes(virtual_nodes);
+    }
+
+    fn put_hashes(&mut self, virtual_nodes: HashMap<(u32, u64), Hash<<P as PoolParams>::Fr>>) {
+        let mut batch = self.db.transaction();
+
+        for ((height, index), value) in virtual_nodes {
+            self.set_batched(&mut batch, height, index, value, 0);
         }
+
+        self.db.write(batch).unwrap();
     }
 
     // This method is used in tests.
@@ -227,10 +272,7 @@ impl<D: KeyValueDB, P: PoolParams> MerkleTree<D, P> {
 
         // TODO: Optimize, no need to mutate the database.
         let index_offset = self.next_index;
-        self.add_hashes(new_hashes.into_iter().enumerate().map(|(index, hash)| {
-            let new_index = index_offset + index as u64;
-            (new_index, hash, true)
-        }));
+        self.add_hashes(index_offset, new_hashes);
 
         let proofs = (index_offset..index_offset + size)
             .map(|index| {
@@ -265,15 +307,15 @@ impl<D: KeyValueDB, P: PoolParams> MerkleTree<D, P> {
             .collect();
         let new_hashes_count = virtual_nodes.len() as u64;
 
+        let update_boundaries = UpdateBoundaries {
+            updated_range_left_index: index_offset,
+            updated_range_right_index: Self::calc_next_index(index_offset),
+            new_hashes_left_index: index_offset,
+            new_hashes_right_index: index_offset + new_hashes_count,
+        };
+
         (index_offset..index_offset + new_hashes_count)
-            .map(|index| {
-                self.get_proof_virtual(
-                    index,
-                    &mut virtual_nodes,
-                    index_offset,
-                    index_offset + new_hashes_count,
-                )
-            })
+            .map(|index| self.get_proof_virtual(index, &mut virtual_nodes, &update_boundaries))
             .collect()
     }
 
@@ -281,8 +323,7 @@ impl<D: KeyValueDB, P: PoolParams> MerkleTree<D, P> {
         &self,
         index: u64,
         virtual_nodes: &mut HashMap<(u32, u64), Hash<P::Fr>>,
-        new_hashes_left_index: u64,
-        new_hashes_right_index: u64,
+        update_boundaries: &UpdateBoundaries,
     ) -> MerkleProof<P::Fr, { H }> {
         let mut sibling: SizedVec<_, { H }> = (0..H).map(|_| Num::ZERO).collect();
         let mut path: SizedVec<_, { H }> = (0..H).map(|_| false).collect();
@@ -294,13 +335,8 @@ impl<D: KeyValueDB, P: PoolParams> MerkleTree<D, P> {
             |x, (h, (sibling, is_right))| {
                 let cur_height = (start_height + h) as u32;
                 *is_right = x % 2 == 1;
-                *sibling = self.get_virtual_node(
-                    cur_height,
-                    x ^ 1,
-                    virtual_nodes,
-                    new_hashes_left_index,
-                    new_hashes_right_index,
-                );
+                *sibling =
+                    self.get_virtual_node_full(cur_height, x ^ 1, virtual_nodes, update_boundaries);
 
                 x / 2
             },
@@ -317,30 +353,53 @@ impl<D: KeyValueDB, P: PoolParams> MerkleTree<D, P> {
         new_hashes_left_index: u64,
         new_hashes_right_index: u64,
     ) -> Hash<P::Fr> {
+        let update_boundaries = UpdateBoundaries {
+            updated_range_left_index: new_hashes_left_index,
+            updated_range_right_index: new_hashes_right_index,
+            new_hashes_left_index,
+            new_hashes_right_index,
+        };
+
+        self.get_virtual_node_full(height, index, virtual_nodes, &update_boundaries)
+    }
+
+    fn get_virtual_node_full(
+        &self,
+        height: u32,
+        index: u64,
+        virtual_nodes: &mut HashMap<(u32, u64), Hash<P::Fr>>,
+        update_boundaries: &UpdateBoundaries,
+    ) -> Hash<P::Fr> {
         let node_left = index * (1 << height);
         let node_right = (index + 1) * (1 << height);
-        if node_right <= new_hashes_left_index || new_hashes_right_index <= node_left {
-            let updated_next_index = Self::calc_next_index(new_hashes_right_index - 1);
-            return self.get_with_next_index(height, index, updated_next_index);
+        if node_right <= update_boundaries.updated_range_left_index
+            || update_boundaries.updated_range_right_index <= node_left
+        {
+            return self.get(height, index);
+        }
+        if (node_right <= update_boundaries.new_hashes_left_index
+            || update_boundaries.new_hashes_right_index <= node_left)
+            && update_boundaries.updated_range_left_index <= node_left
+            && node_right <= update_boundaries.updated_range_right_index
+        {
+            return self.zero_note_hashes[height as usize];
         }
 
         let key = (height, index);
         match virtual_nodes.get(&key) {
             Some(hash) => *hash,
             None => {
-                let left_child = self.get_virtual_node(
+                let left_child = self.get_virtual_node_full(
                     height - 1,
                     2 * index,
                     virtual_nodes,
-                    new_hashes_left_index,
-                    new_hashes_right_index,
+                    update_boundaries,
                 );
-                let right_child = self.get_virtual_node(
+                let right_child = self.get_virtual_node_full(
                     height - 1,
                     2 * index + 1,
                     virtual_nodes,
-                    new_hashes_left_index,
-                    new_hashes_right_index,
+                    update_boundaries,
                 );
                 let pair = [left_child, right_child];
                 let hash = poseidon(pair.as_ref(), self.params.compress());
@@ -456,10 +515,13 @@ impl<D: KeyValueDB, P: PoolParams> MerkleTree<D, P> {
         self.next_index
     }
 
-    fn update_next_index(&mut self, height: u32, index: u64) {
+    fn update_next_index(&mut self, height: u32, index: u64) -> bool {
         let leaf_index = u64::pow(2, height) * (index + 1) - 1;
         if leaf_index >= self.next_index {
             self.next_index = Self::calc_next_index(leaf_index);
+            true
+        } else {
+            false
         }
     }
 
@@ -642,8 +704,7 @@ impl<D: KeyValueDB, P: PoolParams> MerkleTree<D, P> {
     }
 
     fn gen_empty_note_hashes(params: &P) -> Vec<Hash<P::Fr>> {
-        // todo: what is the best way to get zero note hash?
-        let empty_note_hash = poseidon(&[Num::ZERO; 4], params.note());
+        let empty_note_hash = zero_note().hash(params);
 
         let mut empty_note_hashes = vec![empty_note_hash; constants::HEIGHT + 1];
 
@@ -660,12 +721,19 @@ impl<D: KeyValueDB, P: PoolParams> MerkleTree<D, P> {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Eq, PartialEq)]
 pub struct Node<F: PrimeField> {
     pub index: u64,
     pub height: u32,
     #[serde(bound(serialize = "", deserialize = ""))]
     pub value: Num<F>,
+}
+
+struct UpdateBoundaries {
+    updated_range_left_index: u64,
+    updated_range_right_index: u64,
+    new_hashes_left_index: u64,
+    new_hashes_right_index: u64,
 }
 
 #[cfg(test)]
@@ -686,8 +754,8 @@ mod tests {
     fn test_add_hashes_first_3() {
         let mut rng = CustomRng;
         let mut tree = MerkleTree::new(create(3), POOL_PARAMS.clone());
-        let hashes: Vec<_> = (0..3).map(|n| (n, rng.gen(), false)).collect();
-        tree.add_hashes(hashes.clone());
+        let hashes: Vec<_> = (0..3).map(|_| rng.gen()).collect();
+        tree.add_hashes(0, hashes.clone());
 
         let nodes = tree.get_all_nodes();
         assert_eq!(nodes.len(), constants::HEIGHT + 4);
@@ -696,8 +764,8 @@ mod tests {
             assert!(tree.get_opt(h, 0).is_some()); // TODO: Compare with expected hash
         }
 
-        for (i, tuple) in hashes.iter().enumerate() {
-            assert_eq!(tree.get(0, tuple.0), hashes[i].1);
+        for (i, hash) in hashes.into_iter().enumerate() {
+            assert_eq!(tree.get(0, i as u64), hash);
         }
     }
 
@@ -707,50 +775,120 @@ mod tests {
         let mut tree = MerkleTree::new(create(3), POOL_PARAMS.clone());
 
         let max_index = (1 << constants::HEIGHT) - 1;
-        let hashes: Vec<_> = (max_index - 2..=max_index)
-            .map(|n| (n, rng.gen(), false))
-            .collect();
-        tree.add_hashes(hashes.clone());
+        let hashes: Vec<_> = (0..3).map(|_| rng.gen()).collect();
+        tree.add_hashes(max_index - 127, hashes.clone());
 
         let nodes = tree.get_all_nodes();
         assert_eq!(nodes.len(), constants::HEIGHT + 4);
 
-        for h in 0..constants::HEIGHT as u32 {
+        for h in constants::OUTPLUSONELOG as u32 + 1..constants::HEIGHT as u32 {
             let index = max_index / 2u64.pow(h);
             assert!(tree.get_opt(h, index).is_some()); // TODO: Compare with expected hash
         }
 
-        for (i, tuple) in hashes.iter().enumerate() {
-            assert_eq!(tree.get(0, tuple.0), hashes[i].1);
+        for (i, hash) in hashes.into_iter().enumerate() {
+            assert_eq!(tree.get(0, max_index - 127 + i as u64), hash);
         }
     }
 
     #[test]
-    fn test_unnecessary_temporary_nodes_are_removed() {
-        let mut rng = CustomRng;
-        let mut tree = MerkleTree::new(create(3), POOL_PARAMS.clone());
+    fn test_add_hashes() {
+        let mut tree_expected = MerkleTree::new(create(3), POOL_PARAMS.clone());
+        let mut tree_actual = MerkleTree::new(create(3), POOL_PARAMS.clone());
 
-        let mut hashes: Vec<_> = (0..6).map(|n| (n, rng.gen(), false)).collect();
+        // add first subtree
+        add_hashes_to_test_trees(&mut tree_expected, &mut tree_actual, 0, 3);
+        check_trees_are_equal(&tree_expected, &tree_actual);
 
-        // make some hashes temporary
-        // these two must remain after cleanup
-        hashes[1].2 = true;
-        hashes[3].2 = true;
+        // add second subtree
+        add_hashes_to_test_trees(&mut tree_expected, &mut tree_actual, 128, 8);
+        check_trees_are_equal(&tree_expected, &tree_actual);
 
-        // these two must be removed
-        hashes[4].2 = true;
-        hashes[5].2 = true;
-
-        tree.add_hashes(hashes);
-
-        let next_index = tree.clean();
-        assert_eq!(next_index, tree.next_index);
-
-        let nodes = tree.get_all_nodes();
-        assert_eq!(nodes.len(), constants::HEIGHT + 7);
-        assert_eq!(tree.get_opt(0, 4), None);
-        assert_eq!(tree.get_opt(0, 5), None);
+        // add third subtree
+        add_hashes_to_test_trees(&mut tree_expected, &mut tree_actual, 256, 1);
+        check_trees_are_equal(&tree_expected, &tree_actual);
     }
+
+    #[test]
+    fn test_add_hashes_with_gap() {
+        let mut tree_expected = MerkleTree::new(create(3), POOL_PARAMS.clone());
+        let mut tree_actual = MerkleTree::new(create(3), POOL_PARAMS.clone());
+
+        // add first subtree
+        add_hashes_to_test_trees(&mut tree_expected, &mut tree_actual, 0, 3);
+        check_trees_are_equal(&tree_expected, &tree_actual);
+
+        tree_expected.add_hash_at_height(
+            constants::OUTPLUSONELOG as u32,
+            1,
+            tree_expected.zero_note_hashes[constants::OUTPLUSONELOG].clone(),
+            false,
+        );
+
+        // add third subtree, second subtree contains zero node hashes
+        add_hashes_to_test_trees(&mut tree_expected, &mut tree_actual, 256, 7);
+        check_trees_are_equal(&tree_expected, &tree_actual);
+    }
+
+    fn add_hashes_to_test_trees<D: KeyValueDB, P: PoolParams>(
+        tree_expected: &mut MerkleTree<D, P>,
+        tree_actual: &mut MerkleTree<D, P>,
+        start_index: u64,
+        count: u64,
+    ) {
+        let mut rng = CustomRng;
+
+        let hashes: Vec<_> = (0..count).map(|_| rng.gen()).collect();
+
+        for (i, hash) in hashes.clone().into_iter().enumerate() {
+            tree_expected.add_hash(start_index + i as u64, hash, false);
+        }
+        tree_actual.add_hashes(start_index, hashes);
+    }
+
+    fn check_trees_are_equal<D: KeyValueDB, P: PoolParams>(
+        tree_first: &MerkleTree<D, P>,
+        tree_second: &MerkleTree<D, P>,
+    ) {
+        assert_eq!(tree_first.next_index, tree_second.next_index);
+        assert_eq!(tree_first.get_root(), tree_second.get_root());
+
+        let mut first_nodes = tree_first.get_all_nodes();
+        let mut second_nodes = tree_second.get_all_nodes();
+        assert_eq!(first_nodes.len(), second_nodes.len());
+
+        first_nodes.sort_by_key(|node| (node.height, node.index));
+        second_nodes.sort_by_key(|node| (node.height, node.index));
+
+        assert_eq!(first_nodes, second_nodes);
+    }
+
+    // #[test]
+    // fn test_unnecessary_temporary_nodes_are_removed() {
+    //     let mut rng = CustomRng;
+    //     let mut tree = MerkleTree::new(create(3), POOL_PARAMS.clone());
+    //
+    //     let mut hashes: Vec<_> = (0..6).map(|_| rng.gen()).collect();
+    //
+    //     // make some hashes temporary
+    //     // these two must remain after cleanup
+    //     hashes[1].2 = true;
+    //     hashes[3].2 = true;
+    //
+    //     // these two must be removed
+    //     hashes[4].2 = true;
+    //     hashes[5].2 = true;
+    //
+    //     tree.add_hashes(0, hashes);
+    //
+    //     let next_index = tree.clean();
+    //     assert_eq!(next_index, tree.next_index);
+    //
+    //     let nodes = tree.get_all_nodes();
+    //     assert_eq!(nodes.len(), constants::HEIGHT + 7);
+    //     assert_eq!(tree.get_opt(0, 4), None);
+    //     assert_eq!(tree.get_opt(0, 5), None);
+    // }
 
     #[test]
     fn test_get_leaf_proof() {
@@ -1079,8 +1217,8 @@ mod tests {
         assert_eq!(tree.get(0, 3), tree.default_hashes[0]);
         assert_eq!(tree.get(2, 0), tree.default_hashes[2]);
 
-        let hashes: Vec<_> = (0..3).map(|n| (n, rng.gen(), false)).collect();
-        tree.add_hashes(hashes);
+        let hashes: Vec<_> = (0..3).map(|_| rng.gen()).collect();
+        tree.add_hashes(0, hashes);
 
         // Hashes were added.
         assert_ne!(tree.get(2, 0), tree.zero_note_hashes[2]);
@@ -1093,8 +1231,8 @@ mod tests {
         assert_eq!(tree.get(0, 128), tree.default_hashes[0]);
         assert_eq!(tree.get(7, 1), tree.default_hashes[7]);
 
-        let hashes: Vec<_> = (0..2).map(|n| (128 + n, rng.gen(), false)).collect();
-        tree.add_hashes(hashes);
+        let hashes: Vec<_> = (0..2).map(|_| rng.gen()).collect();
+        tree.add_hashes(128, hashes);
         // Second subtree contains zero note hashes instead of default hashes.
         assert_eq!(tree.get(0, 128 + 4), tree.zero_note_hashes[0]);
         assert_eq!(tree.get(0, 128 + 127), tree.zero_note_hashes[0]);
