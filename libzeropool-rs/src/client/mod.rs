@@ -233,7 +233,7 @@ where
 
         let mut output_value = Num::ZERO;
 
-        let (_num_real_out_notes, out_notes): (_, SizedVec<_, { constants::OUT }>) =
+        let (num_real_out_notes, out_notes): (_, SizedVec<_, { constants::OUT }>) =
             if let TxType::Transfer(_, _, outputs) = &tx {
                 if outputs.len() >= constants::OUT {
                     return Err(CreateTxError::TooManyOutputs {
@@ -342,7 +342,7 @@ where
             let entropy: [u8; 32] = rng.gen();
 
             // No need to include all the zero notes in the encrypted transaction
-            let out_notes = &out_notes.as_slice();
+            let out_notes = &out_notes[0..num_real_out_notes];
 
             cipher::encrypt(&entropy, keys.eta, out_account, out_notes, &self.params)
         };

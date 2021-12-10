@@ -738,12 +738,9 @@ struct UpdateBoundaries {
 
 #[cfg(test)]
 mod tests {
-    use std::str::FromStr;
-
     use super::*;
     use crate::random::CustomRng;
     use kvdb_memorydb::create;
-    use libzeropool::constants::{HEIGHT, OUTPLUSONELOG};
     use libzeropool::fawkes_crypto::ff_uint::rand::Rng;
     use libzeropool::POOL_PARAMS;
     use rand::seq::SliceRandom;

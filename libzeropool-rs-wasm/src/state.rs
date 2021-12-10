@@ -32,6 +32,7 @@ pub struct UserState {
 
 #[wasm_bindgen]
 impl UserState {
+    #[allow(unused_variables)]
     #[wasm_bindgen]
     pub async fn init(db_id: String) -> Self {
         utils::set_panic_hook();
