@@ -13,7 +13,7 @@ use libzeropool::{
     },
 };
 
-use crate::{merkle::MerkleTree, sparse_array::SparseArray};
+use crate::{merkle::MerkleTree, sparse_array::SparseArray, utils::zero_note};
 
 pub type TxStorage<D, Fr> = SparseArray<D, Transaction<Fr>>;
 
@@ -34,7 +34,7 @@ pub struct State<D: KeyValueDB, P: PoolParams> {
     pub(crate) total_balance: BoundedNum<P::Fr, { constants::BALANCE_SIZE_BITS }>,
     account_balance: BoundedNum<P::Fr, { constants::BALANCE_SIZE_BITS }>,
     note_balance: BoundedNum<P::Fr, { constants::BALANCE_SIZE_BITS }>,
-    _params: PhantomData<P>,
+    params: P,
 }
 
 #[cfg(feature = "web")]
@@ -49,7 +49,7 @@ where
         let tree = MerkleTree::new_web(&merkle_db_name, params.clone()).await;
         let txs = TxStorage::new_web(&tx_db_name).await;
 
-        Self::new(tree, txs)
+        Self::new(tree, txs, params)
     }
 }
 
@@ -62,7 +62,7 @@ where
         let tree = MerkleTree::new_test(params.clone());
         let txs = TxStorage::new_test();
 
-        Self::new(tree, txs)
+        Self::new(tree, txs, params)
     }
 }
 
@@ -72,7 +72,7 @@ where
     P: PoolParams,
     P::Fr: 'static,
 {
-    pub fn new(tree: MerkleTree<D, P>, txs: TxStorage<D, P::Fr>) -> Self {
+    pub fn new(tree: MerkleTree<D, P>, txs: TxStorage<D, P::Fr>, params: P) -> Self {
         // TODO: Cache
         let mut latest_account_index = None;
         let mut latest_note_index = 0;
@@ -120,7 +120,7 @@ where
             total_balance: BoundedNum::new(total_balance),
             account_balance: BoundedNum::new(account_balance),
             note_balance: BoundedNum::new(note_balance),
-            _params: Default::default(),
+            params,
         }
     }
 
@@ -134,17 +134,7 @@ where
             constants::OUT + 1
         );
 
-        assert_eq!(
-            hashes.len(),
-            constants::OUT + 1,
-            "Number of hashes must be equal to {} (number of outputs)",
-            constants::OUT + 1
-        );
-
-        // Update the tree
-        for (index, hash) in hashes.iter().cloned().enumerate() {
-            self.tree.add_hash(at_index + index as u64, hash, false);
-        }
+        self.tree.add_hashes(at_index, hashes.iter().copied());
     }
 
     /// Add hashes, account, and notes to state
