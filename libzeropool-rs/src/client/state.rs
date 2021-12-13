@@ -8,12 +8,12 @@ use libzeropool::{
     constants,
     fawkes_crypto::{ff_uint::Num, ff_uint::PrimeField, BorshDeserialize, BorshSerialize},
     native::{
-        account::Account, account::Account as NativeAccount, boundednum::BoundedNum, note::Note,
-        note::Note as NativeNote, params::PoolParams,
+        account::Account, account::Account as NativeAccount, note::Note, note::Note as NativeNote,
+        params::PoolParams,
     },
 };
 
-use crate::{merkle::MerkleTree, sparse_array::SparseArray, utils::zero_note};
+use crate::{merkle::MerkleTree, sparse_array::SparseArray};
 
 pub type TxStorage<D, Fr> = SparseArray<D, Transaction<Fr>>;
 
@@ -31,10 +31,7 @@ pub struct State<D: KeyValueDB, P: PoolParams> {
     pub latest_account_index: Option<u64>,
     /// Latest owned note index
     pub latest_note_index: u64,
-    pub(crate) total_balance: BoundedNum<P::Fr, { constants::BALANCE_SIZE_BITS }>,
-    account_balance: BoundedNum<P::Fr, { constants::BALANCE_SIZE_BITS }>,
-    note_balance: BoundedNum<P::Fr, { constants::BALANCE_SIZE_BITS }>,
-    params: P,
+    _params: PhantomData<P>,
 }
 
 #[cfg(feature = "web")]
@@ -49,7 +46,7 @@ where
         let tree = MerkleTree::new_web(&merkle_db_name, params.clone()).await;
         let txs = TxStorage::new_web(&tx_db_name).await;
 
-        Self::new(tree, txs, params)
+        Self::new(tree, txs)
     }
 }
 
@@ -62,7 +59,7 @@ where
         let tree = MerkleTree::new_test(params.clone());
         let txs = TxStorage::new_test();
 
-        Self::new(tree, txs, params)
+        Self::new(tree, txs)
     }
 }
 
@@ -72,7 +69,7 @@ where
     P: PoolParams,
     P::Fr: 'static,
 {
-    pub fn new(tree: MerkleTree<D, P>, txs: TxStorage<D, P::Fr>, params: P) -> Self {
+    pub fn new(tree: MerkleTree<D, P>, txs: TxStorage<D, P::Fr>) -> Self {
         // TODO: Cache
         let mut latest_account_index = None;
         let mut latest_note_index = 0;
@@ -93,34 +90,13 @@ where
             }
         }
 
-        let mut total_balance = Num::ZERO;
-        let mut account_balance = Num::ZERO;
-        let mut note_balance = Num::ZERO;
-
-        let mut account_i = 0;
-        if let Some(account) = &latest_account {
-            account_i = account.i.to_num().try_into().unwrap();
-            account_balance = account.b.to_num();
-            total_balance = account.b.to_num();
-        }
-
-        for (_, tx) in txs.iter_slice(account_i..=latest_note_index) {
-            if let Transaction::Note(note) = tx {
-                total_balance += note.b.to_num();
-                note_balance += note.b.to_num();
-            }
-        }
-
         State {
             tree,
             txs,
             latest_account_index,
             latest_note_index,
             latest_account,
-            total_balance: BoundedNum::new(total_balance),
-            account_balance: BoundedNum::new(account_balance),
-            note_balance: BoundedNum::new(note_balance),
-            params,
+            _params: Default::default(),
         }
     }
 
@@ -171,14 +147,6 @@ where
             self.latest_account_index = Some(at_index);
             self.latest_account = Some(account);
         }
-
-        // Update balance
-        let account_i: u64 = account.i.to_num().try_into().unwrap();
-        if account_i >= self.latest_note_index {
-            self.total_balance = account.b;
-            self.account_balance = account.b;
-            self.note_balance = BoundedNum::new(Num::ZERO);
-        }
     }
 
     /// Caches a note at specified index.
@@ -188,11 +156,9 @@ where
         }
 
         self.txs.set(at_index, &Transaction::Note(note));
-        self.total_balance = BoundedNum::new(self.total_balance.to_num() + note.b.to_num());
 
         if at_index > self.latest_note_index {
             self.latest_note_index = at_index;
-            self.note_balance = BoundedNum::new(self.note_balance.to_num() + note.b.to_num());
         }
     }
 
@@ -218,13 +184,27 @@ where
 
     /// Returns user's total balance (account + available notes).
     pub fn total_balance(&self) -> Num<P::Fr> {
-        self.total_balance.to_num()
+        self.account_balance() + self.note_balance()
     }
 
     pub fn account_balance(&self) -> Num<P::Fr> {
-        self.account_balance.to_num()
+        self.latest_account
+            .map(|acc| acc.b.to_num())
+            .unwrap_or(Num::ZERO)
     }
+
     pub fn note_balance(&self) -> Num<P::Fr> {
-        self.note_balance.to_num()
+        let starting_index = self
+            .latest_account
+            .map(|acc| acc.i.to_num().try_into().unwrap())
+            .unwrap_or(0);
+        let mut note_balance = Num::ZERO;
+        for (_, tx) in self.txs.iter_slice(starting_index..=self.latest_note_index) {
+            if let Transaction::Note(note) = tx {
+                note_balance += note.b.to_num();
+            }
+        }
+
+        note_balance
     }
 }
