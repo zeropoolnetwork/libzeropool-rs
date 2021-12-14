@@ -125,11 +125,6 @@ where
 
         if let Some(acc) = account {
             self.add_account(at_index, acc);
-
-            if at_index >= self.latest_account_index.unwrap_or(0) {
-                self.latest_account_index = Some(at_index);
-                self.latest_account = Some(acc);
-            }
         }
 
         // Store notes
