@@ -6,7 +6,6 @@
   "types": "index.d.ts",
   "scripts": {
     "build": "cargo-cp-artifact -nc index.node -- cargo build --release --message-format=json-render-diagnostics",
-    "install": "npm run build",
     "test": "cargo test"
   },
   "author": "Dmitry Vdovin <voidxnull@gmail.com>",
