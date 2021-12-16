@@ -1,6 +1,6 @@
-use std::vec::Vec;
-use std::cell::RefCell;
 use std::collections::HashMap;
+use std::sync::RwLock;
+use std::vec::Vec;
 
 use libzeropool_rs::libzeropool::fawkes_crypto::borsh::BorshDeserialize;
 use libzeropool_rs::libzeropool::fawkes_crypto::ff_uint::Num;
@@ -17,7 +17,7 @@ pub struct MerkleTree {
     inner: NativeMerkleTree<PoolParams>,
 }
 
-pub type BoxedMerkleTree = JsBox<RefCell<MerkleTree>>;
+pub type BoxedMerkleTree = JsBox<RwLock<MerkleTree>>;
 
 impl Finalize for MerkleTree {}
 
@@ -27,7 +27,7 @@ pub fn merkle_new(mut cx: FunctionContext) -> JsResult<BoxedMerkleTree> {
     let inner =
         NativeMerkleTree::new_native(&Default::default(), &path, POOL_PARAMS.clone()).unwrap();
 
-    Ok(cx.boxed(RefCell::new(MerkleTree { inner })))
+    Ok(cx.boxed(RwLock::new(MerkleTree { inner })))
 }
 
 pub fn merkle_add_hash(mut cx: FunctionContext) -> JsResult<JsUndefined> {
@@ -44,7 +44,7 @@ pub fn merkle_add_hash(mut cx: FunctionContext) -> JsResult<JsUndefined> {
         })
     };
 
-    tree.borrow_mut().inner.add_hash(index, hash, false);
+    tree.write().unwrap().inner.add_hash(index, hash, false);
 
     Ok(cx.undefined())
 }
@@ -63,7 +63,10 @@ pub fn merkle_add_commitment(mut cx: FunctionContext) -> JsResult<JsUndefined> {
         })
     };
 
-    tree.borrow_mut().inner.add_hash_at_height(OUTPLUSONELOG as u32, index, hash, false);
+    tree.write()
+        .unwrap()
+        .inner
+        .add_hash_at_height(OUTPLUSONELOG as u32, index, hash, false);
 
     Ok(cx.undefined())
 }
@@ -78,7 +81,7 @@ pub fn merkle_append_hash(mut cx: FunctionContext) -> JsResult<JsNumber> {
         })
     };
 
-    let index = tree.borrow_mut().inner.append_hash(hash, false) as f64;
+    let index = tree.write().unwrap().inner.append_hash(hash, false) as f64;
 
     Ok(cx.number(index))
 }
@@ -91,7 +94,8 @@ pub fn merkle_get_leaf_proof(mut cx: FunctionContext) -> JsResult<JsValue> {
     };
 
     let proof = tree
-        .borrow()
+        .read()
+        .unwrap()
         .inner
         .get_leaf_proof(index)
         .map(|proof| neon_serde::to_value(&mut cx, &proof).unwrap())
@@ -108,7 +112,8 @@ pub fn merkle_get_commitment_proof(mut cx: FunctionContext) -> JsResult<JsValue>
     };
 
     let proof = tree
-        .borrow()
+        .read()
+        .unwrap()
         .inner
         .get_proof_unchecked::<{ HEIGHT - OUTPLUSONELOG }>(index);
 
@@ -120,7 +125,7 @@ pub fn merkle_get_commitment_proof(mut cx: FunctionContext) -> JsResult<JsValue>
 pub fn merkle_get_root(mut cx: FunctionContext) -> JsResult<JsValue> {
     let tree = cx.argument::<BoxedMerkleTree>(0)?;
 
-    let root = tree.borrow().inner.get_root();
+    let root = tree.read().unwrap().inner.get_root();
 
     let result = neon_serde::to_value(&mut cx, &root).unwrap();
 
@@ -138,7 +143,7 @@ pub fn merkle_get_node(mut cx: FunctionContext) -> JsResult<JsValue> {
         num.value(&mut cx) as u64
     };
 
-    let hash = tree.borrow().inner.get(height, index);
+    let hash = tree.read().unwrap().inner.get(height, index);
 
     let result = neon_serde::to_value(&mut cx, &hash).unwrap();
 
@@ -148,7 +153,7 @@ pub fn merkle_get_node(mut cx: FunctionContext) -> JsResult<JsValue> {
 pub fn merkle_get_next_index(mut cx: FunctionContext) -> JsResult<JsValue> {
     let tree = cx.argument::<BoxedMerkleTree>(0)?;
 
-    let root = tree.borrow().inner.next_index();
+    let root = tree.read().unwrap().inner.next_index();
 
     let result = neon_serde::to_value(&mut cx, &root).unwrap();
 
@@ -159,7 +164,8 @@ pub fn merkle_get_all_nodes(mut cx: FunctionContext) -> JsResult<JsValue> {
     let tree = cx.argument::<BoxedMerkleTree>(0)?;
 
     let nodes: Vec<(u64, u32)> = tree
-        .borrow()
+        .read()
+        .unwrap()
         .inner
         .get_all_nodes()
         .iter()
@@ -195,7 +201,7 @@ pub fn merkle_get_virtual_node(mut cx: FunctionContext) -> JsResult<JsValue> {
         num.value(&mut cx) as u64
     };
 
-    let node = tree.borrow().inner.get_virtual_node(
+    let node = tree.read().unwrap().inner.get_virtual_node(
         height,
         index,
         &mut virtual_nodes,
