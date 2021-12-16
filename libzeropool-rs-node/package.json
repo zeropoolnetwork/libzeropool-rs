@@ -1,16 +1,19 @@
 {
   "name": "libzeropool-rs-node",
-  "version": "0.1.11",
+  "version": "0.1.19",
   "description": "Neon version of libzeropool-rs",
   "main": "index.js",
   "types": "index.d.ts",
   "scripts": {
-    "build": "cargo-cp-artifact -nc index.node -- cargo build --release --message-format=json-render-diagnostics",
+    "build": "cargo-cp-artifact -nc index.node -- cargo build --message-format=json-render-diagnostics",
+    "build-debug": "npm run build --",
+    "build-release": "npm run build -- --release",
+    "install": "npm run build-release",
     "test": "cargo test"
   },
   "author": "Dmitry Vdovin <voidxnull@gmail.com>",
   "license": "MIT OR Apache-2.0",
-  "devDependencies": {
+  "dependencies": {
     "cargo-cp-artifact": "^0.1"
   }
 }
