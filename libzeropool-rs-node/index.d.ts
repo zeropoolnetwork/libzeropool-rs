@@ -31,6 +31,7 @@ declare class TxStorage {
     add(index: number, data: Buffer): void;
     get(index: number): Buffer | null;
     delete(index: number): void;
+    count(): number;
 }
 
 export interface TransferPub {

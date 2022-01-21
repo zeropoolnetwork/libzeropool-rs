@@ -54,7 +54,10 @@ fn main(mut cx: ModuleContext) -> NeonResult<()> {
     cx.export_function("merkleAddCommitment", merkle::merkle_add_commitment)?;
     cx.export_function("merkleAppendHash", merkle::merkle_append_hash)?;
     cx.export_function("merkleGetProof", merkle::merkle_get_leaf_proof)?;
-    cx.export_function("merkleGetCommitmentProof", merkle::merkle_get_commitment_proof)?;
+    cx.export_function(
+        "merkleGetCommitmentProof",
+        merkle::merkle_get_commitment_proof,
+    )?;
     cx.export_function("merkleGetAllNodes", merkle::merkle_get_all_nodes)?;
     cx.export_function("merkleGetVirtualNode", merkle::merkle_get_virtual_node)?;
 
@@ -62,6 +65,7 @@ fn main(mut cx: ModuleContext) -> NeonResult<()> {
     cx.export_function("txStorageAdd", storage::tx_storage_add)?;
     cx.export_function("txStorageDelete", storage::tx_storage_delete)?;
     cx.export_function("txStorageGet", storage::tx_storage_get)?;
+    cx.export_function("txStorageCount", storage::tx_storage_count)?;
 
     cx.export_function("helpersOutCommitment", helpers::out_commitment)?;
     cx.export_function("helpersParseDelta", helpers::parse_delta_string)?;

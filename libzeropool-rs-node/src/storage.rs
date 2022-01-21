@@ -66,3 +66,10 @@ pub fn tx_storage_get(mut cx: FunctionContext) -> JsResult<JsValue> {
 
     Ok(result)
 }
+
+pub fn tx_storage_count(mut cx: FunctionContext) -> JsResult<JsValue> {
+    let this = cx.argument::<BoxedTxStorage>(0)?;
+    let len = JsNumber::new(&mut cx, this.inner.count()).upcast();
+
+    Ok(result)
+}

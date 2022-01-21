@@ -112,6 +112,11 @@ where
         self.db.write(batch).unwrap();
     }
 
+    // FIXME: Crazy inefficient, replace or improve kvdb
+    pub fn count(&self) -> usize {
+        self.db.iter(0).count()
+    }
+
     pub fn set_multiple<'a, I>(&self, items: I)
     where
         I: IntoIterator<Item = &'a (u64, T)>,
@@ -164,7 +169,7 @@ mod tests {
         a.set(412345, &3);
 
         assert_eq!(a.db.iter(0).count(), 3, "inner");
-        assert_eq!(a.iter().collect::<Vec<_>>().len(), 3, "iter");
+        assert_eq!(a.iter().collect::<Vec<_>>().count(), 3, "iter");
 
         assert_eq!(a.iter_slice(0..=412345).count(), 3, "all");
         assert_eq!(a.iter_slice(1..=412345).count(), 3, "from 1");

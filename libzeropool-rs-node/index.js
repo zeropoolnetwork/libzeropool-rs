@@ -75,6 +75,10 @@ class TxStorage {
     delete(index) {
         return zp.txStorageDelete(this.inner, index);
     }
+
+    count() {
+        return zp.txStorageCount(this.inner);
+    }
 }
 
 const Params = {
