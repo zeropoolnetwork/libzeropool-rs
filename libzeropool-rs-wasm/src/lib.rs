@@ -1,10 +1,15 @@
-use fawkes_crypto::backend::bellman_groth16::engines::Bn256;
-pub use libzeropool::POOL_PARAMS;
+use std::str::FromStr;
+
 use libzeropool::{
     constants,
-    native::params::{PoolBN256, PoolParams as PoolParamsTrait},
+    fawkes_crypto::{backend::bellman_groth16::engines::Bn256, ff_uint::Num},
+    native::{
+        boundednum::BoundedNum,
+        params::{PoolBN256, PoolParams as PoolParamsTrait},
+    },
+    POOL_PARAMS,
 };
-use libzeropool_rs::address::parse_address;
+use libzeropool_rs::address::{format_address, parse_address};
 use serde::Serialize;
 use wasm_bindgen::{prelude::*, JsCast};
 
@@ -69,4 +74,13 @@ pub fn get_constants() -> Constants {
 #[wasm_bindgen(js_name = "validateAddress")]
 pub fn validate_address(address: &str) -> bool {
     parse_address::<PoolParams>(address).is_ok()
+}
+
+#[wasm_bindgen(js_name = "assembleAddress")]
+pub fn assemble_address(d: &str, p_d: &str) -> String {
+    let d = Num::from_str(d).unwrap();
+    let d = BoundedNum::new(d);
+    let p_d = Num::from_str(p_d).unwrap();
+
+    format_address::<PoolParams>(d, p_d)
 }
