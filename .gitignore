@@ -4,3 +4,4 @@ Cargo.lock
 bin/
 wasm-pack.log
 /lib
+yarn-error.log
