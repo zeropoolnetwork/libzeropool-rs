@@ -1,5 +1,5 @@
 use libzeropool::{
-    fawkes_crypto::{BorshDeserialize, BorshSerialize},
+    fawkes_crypto::{borsh, BorshDeserialize, BorshSerialize},
     native::{account::Account as NativeAccount, note::Note as NativeNote},
 };
 use libzeropool_rs::client::state::{State, Transaction as InnerTransaction};

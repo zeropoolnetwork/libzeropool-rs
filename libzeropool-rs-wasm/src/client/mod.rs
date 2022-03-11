@@ -2,7 +2,6 @@ use std::collections::HashMap;
 use std::rc::Rc;
 use std::{cell::RefCell, convert::TryInto};
 
-use borsh::BorshDeserialize;
 use js_sys::{Array, Promise};
 use libzeropool::{
     constants,
@@ -10,6 +9,7 @@ use libzeropool::{
         core::sizedvec::SizedVec,
         ff_uint::Num,
         ff_uint::{NumRepr, Uint},
+        borsh::BorshDeserialize,
     },
     native::{
         account::Account as NativeAccount,

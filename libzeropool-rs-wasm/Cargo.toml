@@ -1,7 +1,7 @@
 [package]
 name = "libzeropool-rs-wasm"
 description = "A higher level zeropool API for Wasm"
-version = "0.3.6"
+version = "0.3.7"
 authors = ["Dmitry Vdovin <voidxnull@gmail.com>"]
 repository = "https://github.com/zeropoolnetwork/libzeropool-rs/"
 license = "MIT OR Apache-2.0"
@@ -40,7 +40,6 @@ bs58 = "0.4.0"
 kvdb-web = "0.9.0"
 kvdb = "0.9.0"
 kvdb-memorydb = "0.9.0"
-borsh = "0.8.1"
 byteorder = "1.4.3"
 wasm-bindgen-futures = "0.4.24"
 serde = "1.0.126"
