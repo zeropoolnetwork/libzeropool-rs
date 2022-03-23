@@ -11,7 +11,7 @@ exclude = ["index.node"]
 crate-type = ["cdylib"]
 
 [dependencies]
-libzeropool-rs = { version = "0.3.7", features = ["native"] }
+libzeropool-rs = { version = "0.3.8", features = ["native"] }
 neon = { version = "0.9.0", default-features = false, features = ["napi-6"] }
 # FIXME: Using a random fork for now
 neon-serde = { git = "https://github.com/brokad/neon-serde.git", rev = "0a168baf9e52b1ebe6bd4661d95efc1318d788d8" }

@@ -174,7 +174,7 @@ where
             .iter_slice(latest_account_index..=self.latest_note_index)
             .map(|(index, _)| index)
             .next()
-            .unwrap_or(0)
+            .unwrap_or(latest_account_index)
     }
 
     /// Returns user's total balance (account + available notes).
