@@ -73,6 +73,8 @@ pub enum TxType<Fr: PrimeField> {
     Transfer(TokenAmount<Fr>, Vec<u8>, Vec<TxOutput<Fr>>),
     // fee, data, deposit_amount, tx_outputs
     Deposit(TokenAmount<Fr>, Vec<u8>, TokenAmount<Fr>, Vec<TxOutput<Fr>>),
+    // fee, data, deposit_amount, deadline, holder
+    DepositPermittable(TokenAmount<Fr>, Vec<u8>, TokenAmount<Fr>, u64, Vec<u8>),
     // fee, data, withdraw_amount, to, native_amount, energy_amount
     Withdraw(
         TokenAmount<Fr>,
@@ -174,6 +176,15 @@ where
                 TxType::Deposit(fee, user_data, _, _) => {
                     let raw_fee: u64 = fee.to_num().try_into().unwrap();
                     tx_data.write_all(&raw_fee.to_be_bytes()).unwrap();
+                    (fee, tx_data, user_data)
+                }
+                TxType::DepositPermittable(fee, user_data, _, deadline, holder) => {
+                    let raw_fee: u64 = fee.to_num().try_into().unwrap();
+
+                    tx_data.write_all(&raw_fee.to_be_bytes()).unwrap();
+                    tx_data.write_all(&deadline.to_be_bytes()).unwrap();
+                    tx_data.append(&mut holder.clone());
+
                     (fee, tx_data, user_data)
                 }
                 TxType::Transfer(fee, user_data, _) => {
@@ -319,7 +330,7 @@ where
                     ));
                 }
             }
-            TxType::Deposit(_, _, amount, _) => {
+            TxType::Deposit(_, _, amount, _) | TxType::DepositPermittable(_, _, amount, _, _) => {
                 delta_value += amount.to_num();
                 let new_total_balance = input_value + delta_value;
                 if new_total_balance.to_uint() >= output_value.to_uint() {
