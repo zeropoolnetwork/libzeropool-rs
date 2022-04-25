@@ -1,4 +1,4 @@
-use crate::{Fr, IDepositData, ITransferData, IWithdrawData};
+use crate::{Fr, IDepositData, IDepositPermittableData, ITransferData, IWithdrawData};
 use libzeropool_rs::client::{TokenAmount, TxOutput, TxType as NativeTxType};
 use serde::Deserialize;
 use wasm_bindgen::prelude::*;
@@ -7,6 +7,7 @@ use wasm_bindgen::prelude::*;
 pub enum TxType {
     Transfer = "transfer",
     Deposit = "deposit",
+    DepositPermittable = "deposit_permittable",
     Withdraw = "withdraw",
 }
 
@@ -40,6 +41,35 @@ impl JsTxType for IDepositData {
             base_fields.fee,
             base_fields.data.unwrap_or(vec![]),
             amount,
+        ))
+    }
+}
+
+#[wasm_bindgen]
+#[derive(Deserialize)]
+pub struct DepositPermittableData {
+    #[serde(flatten)]
+    base_fields: TxBaseFields,
+    amount: TokenAmount<Fr>,
+    deadline: u64,
+    holder: Vec<u8>,
+}
+
+impl JsTxType for IDepositPermittableData {
+    fn to_native(&self) -> Result<NativeTxType<Fr>, JsValue> {
+        let DepositPermittableData {
+            base_fields,
+            amount,
+            deadline,
+            holder,
+        } = serde_wasm_bindgen::from_value(self.into())?;
+
+        Ok(NativeTxType::DepositPermittable(
+            base_fields.fee,
+            base_fields.data.unwrap_or(vec![]),
+            amount,
+            deadline,
+            holder
         ))
     }
 }

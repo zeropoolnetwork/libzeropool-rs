@@ -108,6 +108,12 @@ export interface IDepositData extends ITxBaseFields {
     amount: string;
 }
 
+export interface IDepositPermittableData extends ITxBaseFields {
+    amount: string;
+    deadline: string;
+    holder: Uint8Array;
+}
+
 export interface ITransferData extends ITxBaseFields {
     outputs: Output[];
 }
@@ -191,6 +197,9 @@ extern "C" {
 
     #[wasm_bindgen(typescript_type = "IDepositData")]
     pub type IDepositData;
+
+    #[wasm_bindgen(typescript_type = "IDepositPermittableData")]
+    pub type IDepositPermittableData;
 
     #[wasm_bindgen(typescript_type = "ITransferData")]
     pub type ITransferData;

@@ -28,7 +28,7 @@ use wasm_bindgen_futures::future_to_promise;
 use crate::database::Database;
 use crate::ts_types::Hash as JsHash;
 use crate::{
-    keys::reduce_sk, Account, Fr, Fs, Hashes, IDepositData, ITransferData, IWithdrawData,
+    keys::reduce_sk, Account, Fr, Fs, Hashes, IDepositData, IDepositPermittableData, ITransferData, IWithdrawData,
     IndexedNote, IndexedNotes, MerkleProof, Pair, PoolParams, Transaction, UserState, POOL_PARAMS,
 };
 
@@ -171,6 +171,11 @@ impl UserAccount {
 
     #[wasm_bindgen(js_name = "createDeposit")]
     pub fn create_deposit(&self, deposit: IDepositData) -> Result<Promise, JsValue> {
+        Ok(self.construct_tx_data(deposit.to_native()?))
+    }
+
+    #[wasm_bindgen(js_name = "createDepositPermittable")]
+    pub fn create_deposit_permittable(&self, deposit: IDepositPermittableData) -> Result<Promise, JsValue> {
         Ok(self.construct_tx_data(deposit.to_native()?))
     }
 
