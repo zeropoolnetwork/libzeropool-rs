@@ -112,6 +112,12 @@ where
         self.db.write(batch).unwrap();
     }
 
+    pub fn clean(&self) {
+        let mut batch = self.db.transaction();
+        batch.delete_prefix(0, &[]);
+        self.db.write(batch).unwrap();
+    }
+
     // FIXME: Crazy inefficient, replace or improve kvdb
     pub fn count(&self) -> usize {
         self.db.iter(0).count()

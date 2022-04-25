@@ -202,4 +202,13 @@ where
 
         note_balance
     }
+
+    pub fn clean(&mut self) {
+        self.txs.clean();
+        self.tree.clean();
+
+        self.latest_account_index = None;
+        self.latest_note_index = 0;
+        self.latest_account = None;
+    }
 }
