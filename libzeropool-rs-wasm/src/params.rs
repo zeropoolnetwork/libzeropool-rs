@@ -24,9 +24,9 @@ impl From<Params> for Parameters<Engine> {
 #[wasm_bindgen]
 impl Params {
     #[wasm_bindgen(js_name = "fromBinary")]
-    pub fn from_binary(input: &[u8], disallow_points_at_infinity: bool, checked: bool) -> Result<Params, JsValue> {
+    pub fn from_binary(input: &[u8]) -> Result<Params, JsValue> {
         let mut input = input;
-        let inner = Parameters::read(&mut input, disallow_points_at_infinity, checked).map_err(|err| js_err!("{}", err))?;
+        let inner = Parameters::read(&mut input, true, true).map_err(|err| js_err!("{}", err))?;
 
         Ok(Params { inner })
     }
