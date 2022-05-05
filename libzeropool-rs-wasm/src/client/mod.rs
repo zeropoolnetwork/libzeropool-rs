@@ -402,11 +402,4 @@ impl UserAccount {
 
         serde_wasm_bindgen::to_value(&data).unwrap()
     }
-
-    #[wasm_bindgen(js_name = "cleanState")]
-    pub fn clear_state(&mut self) -> Result<(), JsValue>  {
-        self.inner.borrow_mut().state.clean();
-
-        Ok(())
-    }
 }
