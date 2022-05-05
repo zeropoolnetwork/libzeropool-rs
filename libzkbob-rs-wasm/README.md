@@ -1,11 +1,11 @@
-# libzeropool-rs-wasm
-Wasm/JavaScript version of libzeropool-rs.
+# libzkbob-rs-wasm
+Wasm/JavaScript version of libzkbob-rs.
 
 ## Install
 Bundler version:
-`npm i -S libzeropool-rs-wasm-bundler`
+`npm i -S libzkbob-rs-wasm-bundler`
 or nodejs version:
-`npm i -S libzeropool-rs-wasm-nodejs`
+`npm i -S libzkbob-rs-wasm-nodejs`
 
 ## Configuration
 
@@ -24,7 +24,7 @@ For example, in your `tsconfig.json` set this option so that the typescript comp
 
 ## Usage
 ```js
-import { UserAccount, State } from 'libzeropool-rs-wasm-bundler';
+import { UserAccount, State } from 'libzkbob-rs-wasm-bundler';
 
 const state = await State.init("any user identifier");
 const account = new UserAccount(spendingKey, state);

@@ -1,10 +1,10 @@
-# libzeropool-rs-node
+# libzkbob-rs-node
 
 This project was bootstrapped by [create-neon](https://www.npmjs.com/package/create-neon).
 
-## Installing libzeropool-rs-node
+## Installing libzkbob-rs-node
 
-Installing libzeropool-rs-node requires a [supported version of Node and Rust](https://github.com/neon-bindings/neon#platform-support).
+Installing libzkbob-rs-node requires a [supported version of Node and Rust](https://github.com/neon-bindings/neon#platform-support).
 
 You can install the project with npm. In the project directory, run:
 
@@ -14,7 +14,7 @@ $ npm install
 
 This fully installs the project, including installing any dependencies and running the build.
 
-## Building libzeropool-rs-node
+## Building libzkbob-rs-node
 
 If you have already installed the project and only want to run the build, run:
 
@@ -26,7 +26,7 @@ This command uses the [cargo-cp-artifact](https://github.com/neon-bindings/cargo
 
 ## Example
 ```javascript
-const zp = require('libzeropool-rs-node');
+const zp = require('libzkbob-rs-node');
 
 const tree = new zp.MerkleTree('./treedb');
 const storage = new zp.TxStorage('./txdb');

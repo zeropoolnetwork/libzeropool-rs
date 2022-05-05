@@ -1,7 +1,7 @@
 {
-  "name": "libzeropool-rs-node",
+  "name": "libzkbob-rs-node",
   "version": "0.1.23",
-  "description": "Neon version of libzeropool-rs",
+  "description": "Neon version of libzkbob-rs",
   "main": "index.js",
   "types": "index.d.ts",
   "scripts": {

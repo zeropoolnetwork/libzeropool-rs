@@ -1,1 +1,1 @@
-# libzeropool-rs
+# libzkbob-rs
