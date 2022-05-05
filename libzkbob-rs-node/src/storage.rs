@@ -1,4 +1,4 @@
-use libzeropool_rs::sparse_array::NativeSparseArray;
+use libzkbob_rs::sparse_array::NativeSparseArray;
 use neon::prelude::*;
 
 /// Stores encrypted accounts and notes.

@@ -2,13 +2,13 @@ use std::collections::HashMap;
 use std::sync::RwLock;
 use std::vec::Vec;
 
-use libzeropool_rs::libzeropool::fawkes_crypto::borsh::BorshDeserialize;
-use libzeropool_rs::libzeropool::fawkes_crypto::ff_uint::Num;
-use libzeropool_rs::libzeropool::{
+use libzkbob_rs::libzeropool::fawkes_crypto::borsh::BorshDeserialize;
+use libzkbob_rs::libzeropool::fawkes_crypto::ff_uint::Num;
+use libzkbob_rs::libzeropool::{
     constants::{HEIGHT, OUTPLUSONELOG},
     POOL_PARAMS,
 };
-use libzeropool_rs::merkle::NativeMerkleTree;
+use libzkbob_rs::merkle::NativeMerkleTree;
 use neon::prelude::*;
 
 use crate::PoolParams;

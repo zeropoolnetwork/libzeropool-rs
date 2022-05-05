@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use libzeropool_rs::libzeropool::fawkes_crypto::backend::bellman_groth16::Parameters;
+use libzkbob_rs::libzeropool::fawkes_crypto::backend::bellman_groth16::Parameters;
 use neon::prelude::*;
 
 use crate::Engine;
