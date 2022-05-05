@@ -9,7 +9,7 @@ use libzeropool::{
     },
     POOL_PARAMS,
 };
-use libzeropool_rs::address::{format_address, parse_address};
+use libzkbob_rs::address::{format_address, parse_address};
 use serde::Serialize;
 use wasm_bindgen::{prelude::*, JsCast};
 

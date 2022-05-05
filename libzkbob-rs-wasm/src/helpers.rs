@@ -4,7 +4,7 @@ use wasm_bindgen::prelude::*;
 use libzeropool::{fawkes_crypto::{
       ff_uint::Num,
   }, native::tx::out_commitment_hash};
-use libzeropool_rs::{
+use libzkbob_rs::{
   libzeropool::fawkes_crypto::borsh::{BorshSerialize, BorshDeserialize},
   libzeropool::POOL_PARAMS
 };

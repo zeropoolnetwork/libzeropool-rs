@@ -1,5 +1,5 @@
 use crate::{Fr, IDepositData, IDepositPermittableData, ITransferData, IWithdrawData};
-use libzeropool_rs::client::{TokenAmount, TxOutput, TxType as NativeTxType};
+use libzkbob_rs::client::{TokenAmount, TxOutput, TxType as NativeTxType};
 use serde::Deserialize;
 use wasm_bindgen::prelude::*;
 

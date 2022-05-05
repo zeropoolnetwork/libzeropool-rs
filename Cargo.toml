@@ -1,8 +1,8 @@
 [workspace]
 members = [
-    "libzeropool-rs-wasm",
-    "libzeropool-rs",
-    "libzeropool-rs-node",
+    "libzkbob-rs-wasm",
+    "libzkbob-rs",
+    "libzkbob-rs-node",
 ]
 
 [patch.crates-io]

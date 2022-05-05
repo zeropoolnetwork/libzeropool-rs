@@ -2,14 +2,14 @@
 
 #![cfg(target_arch = "wasm32")]
 
-extern crate libzeropool_rs_wasm;
+extern crate libzkbob_rs_wasm;
 extern crate wasm_bindgen_test;
 
 use fawkes_crypto::ff_uint::Num;
 use libzeropool::native::params::PoolBN256;
 use libzeropool::POOL_PARAMS;
-use libzeropool_rs::sparse_array::SparseArray;
-use libzeropool_rs_wasm::{TxType, UserAccount, UserState};
+use libzkbob_rs::sparse_array::SparseArray;
+use libzkbob_rs_wasm::{TxType, UserAccount, UserState};
 use serde_json::{json, Value as JsonValue};
 use wasm_bindgen::{JsCast, JsValue};
 use wasm_bindgen_futures::JsFuture;

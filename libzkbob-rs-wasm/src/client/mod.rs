@@ -17,7 +17,7 @@ use libzeropool::{
         tx::{parse_delta, TransferPub as NativeTransferPub, TransferSec as NativeTransferSec},
     },
 };
-use libzeropool_rs::{
+use libzkbob_rs::{
     client::{TxType as NativeTxType, UserAccount as NativeUserAccount},
     merkle::{Hash, Node},
 };
