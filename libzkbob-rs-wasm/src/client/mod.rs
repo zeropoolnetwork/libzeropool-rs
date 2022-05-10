@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::rc::Rc;
 use std::{cell::RefCell, convert::TryInto};
 
+use byteorder::{LittleEndian, ReadBytesExt};
 use js_sys::{Array, Promise};
 use libzeropool::{
     constants,
@@ -17,6 +18,7 @@ use libzeropool::{
         tx::{parse_delta, TransferPub as NativeTransferPub, TransferSec as NativeTransferSec},
     },
 };
+use libzkbob_rs::address::format_address;
 use libzkbob_rs::{
     client::{TxType as NativeTxType, UserAccount as NativeUserAccount},
     merkle::{Hash, Node},
@@ -25,6 +27,7 @@ use serde::Serialize;
 use wasm_bindgen::{prelude::*, JsCast};
 use wasm_bindgen_futures::future_to_promise;
 
+use crate::{IndexedTx, IndexedTxs, DecryptedMemos};
 use crate::database::Database;
 use crate::ts_types::Hash as JsHash;
 use crate::{
@@ -263,6 +266,138 @@ impl UserAccount {
             .add_full_tx(at_index, &hashes, None, &notes);
 
         Ok(())
+    }
+
+    #[wasm_bindgen(js_name = "cacheTxs")]
+    pub fn cache_txs(&mut self, txs: IndexedTxs) -> Result<DecryptedMemos, JsValue> {
+        #[derive(Serialize)]
+        struct DecMemo {
+            index: u64,
+            acc: Option<NativeAccount<Fr>>,
+            inNotes: Vec<IndexedNote>,
+            outNotes: Vec<IndexedNote>,
+            txHash: Option<String>,
+        }
+
+        let txs: Vec<IndexedTx> = serde_wasm_bindgen::from_value(txs.unchecked_into())?;
+
+        let mut other_tx_commitments: Vec<(u64, Num<Fr>)> = Vec::new();
+        let mut decrypted_memos: Vec<DecMemo> = Vec::new();
+        txs.into_iter().for_each(|tx| {
+            let index = tx.index;
+            let data = tx.memo;
+            
+            let num_hashes = (&data[0..4]).read_u32::<LittleEndian>().unwrap();
+            let hashes: Vec<_> = (&data[4..])
+                .chunks(32)
+                .take(num_hashes as usize)
+                .map(|bytes| Num::from_uint_reduced(NumRepr(Uint::from_little_endian(bytes))))
+                .collect();
+            //let hashes: Vec<_> = serde_wasm_bindgen::from_value(hashes.unchecked_into())?;
+            
+            let pair = self
+                .inner
+                .borrow()
+                .decrypt_pair(data.clone());
+
+            match pair {
+                Some((account, notes)) => {        
+                    if other_tx_commitments.len() > 0 {
+                        let start_index = other_tx_commitments[0].0;
+                        let commitments = other_tx_commitments.iter().map(|(_, commitment)| commitment.clone());
+                        self.inner.borrow_mut().state.tree.add_tx_commitments(start_index, commitments);
+                        other_tx_commitments.clear();
+                    }
+                    
+
+                    let mut in_notes = Vec::new();
+                    let mut out_notes = Vec::new();
+
+                    notes.into_iter()
+                        .enumerate()
+                        .map(|(i, note)| {
+                            (index + 1 + (i as u64), note)
+                        }).for_each(|(i, note)| {
+                            let address = format_address::<PoolParams>(note.d, note.p_d);
+                            if self.is_own_address(&address) {
+                                in_notes.push((i, note));
+                            } else {
+                                out_notes.push((i, note));
+                            }
+                        });
+
+                    self.inner
+                        .borrow_mut()
+                        .state
+                        .add_full_tx(index, &hashes, Some(account), &in_notes);
+
+                    // return { index: index, acc: pair.account, inNotes: in_notes, outNotes: out_notes, txHash: undefined };
+                    let decrypted_memo = DecMemo {
+                        index, 
+                        acc: Some(account), 
+                        inNotes: in_notes.into_iter().map(|(index, note)| IndexedNote{index, note}).collect(), 
+                        outNotes: out_notes.into_iter().map(|(index, note)| IndexedNote{index, note}).collect(), 
+                        txHash: None,
+                    };
+                    decrypted_memos.push(decrypted_memo);
+                },
+                None => {
+                    let notes = self
+                        .inner
+                        .borrow()
+                        .decrypt_notes(data);
+                    
+                    if notes.len() > 0 {
+                        if other_tx_commitments.len() > 0 {
+                            let start_index = other_tx_commitments[0].0;
+                            let commitments = other_tx_commitments.iter().map(|(_, commitment)| commitment.clone());
+                            self.inner.borrow_mut().state.tree.add_tx_commitments(start_index, commitments);
+                            other_tx_commitments.clear();
+                        }
+
+                        let in_notes: Vec<(_, _)> = notes.into_iter()
+                            .enumerate()
+                            .map(|(i, note)| {
+                                (index + 1 + (i as u64), note)
+                            })
+                            .filter(|(_, note)| note.is_some())
+                            .map(|(i, note)| (i, note.unwrap()))
+                            .collect();
+
+                        self.inner
+                            .borrow_mut()
+                            .state
+                            .add_full_tx(index, &hashes, None, &in_notes);
+
+                        // return { index: index, acc: undefined, inNotes: notes, outNotes: [], txHash: undefined };
+                        let decrypted_memo = DecMemo{
+                            index, 
+                            acc: None, 
+                            inNotes: in_notes.into_iter().map(|(index, note)| IndexedNote{index, note}).collect(), 
+                            outNotes: Vec::new(), 
+                            txHash: None,
+                        };
+                        decrypted_memos.push(decrypted_memo);
+                    } else {
+                        let tx_commitment = Num::from_uint_reduced(NumRepr(Uint::from_big_endian(&tx.commitment)));
+                        other_tx_commitments.push((index, tx_commitment));
+                        //self.inner.borrow_mut().state.add_hashes(index, &hashes);
+                    }
+                }
+            }
+        });
+
+        if other_tx_commitments.len() > 0 {
+            let start_index = other_tx_commitments[0].0;
+            let commitments = other_tx_commitments.iter().map(|(_, commitment)| commitment.clone());
+            self.inner.borrow_mut().state.tree.add_tx_commitments(start_index, commitments);
+            other_tx_commitments.clear();
+        }
+
+        let decrypted_memos = serde_wasm_bindgen::to_value(&decrypted_memos)
+             .unwrap()
+             .unchecked_into::<DecryptedMemos>();
+        Ok(decrypted_memos)
     }
 
     #[wasm_bindgen(js_name = "getRoot")]
