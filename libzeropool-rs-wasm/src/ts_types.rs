@@ -1,3 +1,4 @@
+use fawkes_crypto::ff_uint::Num;
 use libzeropool::native::note::Note as NativeNote;
 use serde::{Deserialize, Serialize};
 use wasm_bindgen::prelude::*;
@@ -126,6 +127,20 @@ export interface IWithdrawData extends ITxBaseFields {
     energy_amount: string;
 }
 
+export interface DecryptedMemo {
+    index: number;
+    acc: Account | undefined;
+    inNotes:  { note: Note, index: number }[];
+    outNotes: { note: Note, index: number }[];
+    txHash: string | undefined;
+}
+
+export interface IndexedTx {
+    index: number;
+    memo: Uint8Array;
+    commitment: Uint8Array;
+}
+
 "#;
 
 #[wasm_bindgen]
@@ -207,10 +222,23 @@ extern "C" {
 
     #[wasm_bindgen(typescript_type = "IWithdrawData")]
     pub type IWithdrawData;
+
+    #[wasm_bindgen(typescript_type = "DecryptedMemo[]")]
+    pub type DecryptedMemos;
+
+    #[wasm_bindgen(typescript_type = "IndexedTx[]")]
+    pub type IndexedTxs;
 }
 
 #[derive(Serialize, Deserialize)]
 pub struct IndexedNote {
     pub index: u64,
     pub note: NativeNote<Fr>,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct IndexedTx {
+    pub index: u64,
+    pub memo: Vec<u8>,
+    pub commitment: Vec<u8>,
 }
