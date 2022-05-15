@@ -297,7 +297,6 @@ impl UserAccount {
                 .take(num_hashes as usize)
                 .map(|bytes| Num::from_uint_reduced(NumRepr(Uint::from_little_endian(bytes))))
                 .collect();
-            //let hashes: Vec<_> = serde_wasm_bindgen::from_value(hashes.unchecked_into())?;
 
             let pair = self.inner.borrow().decrypt_pair(data.clone());
 
@@ -339,7 +338,6 @@ impl UserAccount {
                         &in_notes,
                     );
 
-                    // return { index: index, acc: pair.account, inNotes: in_notes, outNotes: out_notes, txHash: undefined };
                     let decrypted_memo = DecMemo {
                         index,
                         acc: Some(account),
@@ -385,7 +383,6 @@ impl UserAccount {
                             .state
                             .add_full_tx(index, &hashes, None, &in_notes);
 
-                        // return { index: index, acc: undefined, inNotes: notes, outNotes: [], txHash: undefined };
                         let decrypted_memo = DecMemo {
                             index,
                             acc: None,
@@ -401,7 +398,6 @@ impl UserAccount {
                         let tx_commitment =
                             Num::from_uint_reduced(NumRepr(Uint::from_big_endian(&tx.commitment)));
                         other_tx_commitments.push((index, tx_commitment));
-                        //self.inner.borrow_mut().state.add_hashes(index, &hashes);
                     }
                 }
             }
