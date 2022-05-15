@@ -128,7 +128,6 @@ impl<D: KeyValueDB, P: PoolParams> MerkleTree<D, P> {
         I: IntoIterator<Item = Hash<P::Fr>>
     {
         // check that index is correct
-        // TODO: fix assert or not
         assert_eq!(start_index & ((1 << constants::OUTPLUSONELOG) - 1), 0);
 
         let mut virtual_nodes: HashMap<(u32, u64), Hash<P::Fr>> = commitments
@@ -142,13 +141,8 @@ impl<D: KeyValueDB, P: PoolParams> MerkleTree<D, P> {
             .collect();
         let new_commitments_count = virtual_nodes.len() as u64;
 
-        // TODO: is it not neccessary?
-        //assert!(new_hashes_count <= (2u64 << constants::OUTPLUSONELOG));
-
         let original_next_index = self.next_index;
 
-        // TODO: Check it
-        //self.update_next_index(0, start_index + new_commitments_count * (constants::OUT as u64 + 1));
         self.update_next_index(constants::OUTPLUSONELOG as u32, (start_index >> constants::OUTPLUSONELOG) + new_commitments_count - 1);
 
         let update_boundaries = UpdateBoundaries {
@@ -157,7 +151,6 @@ impl<D: KeyValueDB, P: PoolParams> MerkleTree<D, P> {
             new_hashes_left_index: start_index,
             new_hashes_right_index: start_index + (new_commitments_count) * (constants::OUT as u64 + 1),
         };
-
 
         // calculate new hashes
         self.get_virtual_node_full(
