@@ -274,9 +274,12 @@ impl UserAccount {
         struct DecMemo {
             index: u64,
             acc: Option<NativeAccount<Fr>>,
-            inNotes: Vec<IndexedNote>,
-            outNotes: Vec<IndexedNote>,
-            txHash: Option<String>,
+            #[serde(rename = "inNotes")]
+            in_notes: Vec<IndexedNote>,
+            #[serde(rename = "outNotes")]
+            out_notes: Vec<IndexedNote>,
+            #[serde(rename = "txHash")]
+            tx_hash: Option<String>,
         }
 
         let txs: Vec<IndexedTx> = serde_wasm_bindgen::from_value(txs.unchecked_into())?;
@@ -333,9 +336,9 @@ impl UserAccount {
                     let decrypted_memo = DecMemo {
                         index, 
                         acc: Some(account), 
-                        inNotes: in_notes.into_iter().map(|(index, note)| IndexedNote{index, note}).collect(), 
-                        outNotes: out_notes.into_iter().map(|(index, note)| IndexedNote{index, note}).collect(), 
-                        txHash: None,
+                        in_notes: in_notes.into_iter().map(|(index, note)| IndexedNote{index, note}).collect(), 
+                        out_notes: out_notes.into_iter().map(|(index, note)| IndexedNote{index, note}).collect(), 
+                        tx_hash: None,
                     };
                     decrypted_memos.push(decrypted_memo);
                 },
@@ -370,9 +373,9 @@ impl UserAccount {
                         let decrypted_memo = DecMemo{
                             index, 
                             acc: None, 
-                            inNotes: in_notes.into_iter().map(|(index, note)| IndexedNote{index, note}).collect(), 
-                            outNotes: Vec::new(), 
-                            txHash: None,
+                            in_notes: in_notes.into_iter().map(|(index, note)| IndexedNote{index, note}).collect(), 
+                            out_notes: Vec::new(), 
+                            tx_hash: None,
                         };
                         decrypted_memos.push(decrypted_memo);
                     } else {

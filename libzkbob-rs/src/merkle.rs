@@ -149,7 +149,7 @@ impl<D: KeyValueDB, P: PoolParams> MerkleTree<D, P> {
             updated_range_left_index: original_next_index,
             updated_range_right_index: self.next_index,
             new_hashes_left_index: start_index,
-            new_hashes_right_index: start_index + (new_commitments_count) * (constants::OUT as u64 + 1),
+            new_hashes_right_index: start_index + (new_commitments_count - 1) * (constants::OUT as u64 + 1) + 1,
         };
 
         // calculate new hashes
@@ -1280,12 +1280,15 @@ mod tests {
         assert_eq!(tree.get(7, 2), tree.default_hashes[7]);
     }
 
-    #[test]
-    fn test_add_tx_commitments() {
+    #[test_case(1)]
+    #[test_case(2)]
+    #[test_case(3)]
+    #[test_case(4)]
+    #[test_case(100)]
+    fn test_add_tx_commitments(tree_size: usize) {
         let mut rng = CustomRng;
         let mut first_tree = MerkleTree::new(create(3), POOL_PARAMS.clone());
         let mut second_tree = MerkleTree::new(create(3), POOL_PARAMS.clone());
-        let tree_size = 6;
 
         let leafs: Vec<Num<_>> = (0..tree_size).map(|_| rng.gen()).collect();
         let tx_commitments: Vec<Num<_>> = leafs.iter().map(|leaf| {

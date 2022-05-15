@@ -1,4 +1,3 @@
-use fawkes_crypto::ff_uint::Num;
 use libzeropool::native::note::Note as NativeNote;
 use serde::{Deserialize, Serialize};
 use wasm_bindgen::prelude::*;
