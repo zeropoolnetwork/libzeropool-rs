@@ -329,6 +329,7 @@ impl UserAccount {
                             let address = format_address::<PoolParams>(note.d, note.p_d);
                             if self.is_own_address(&address) {
                                 in_notes.push((i, note));
+                                out_notes.push((i, note));
                             } else {
                                 out_notes.push((i, note));
                             }
