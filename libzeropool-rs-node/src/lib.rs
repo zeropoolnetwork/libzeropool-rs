@@ -44,6 +44,8 @@ fn main(mut cx: ModuleContext) -> NeonResult<()> {
 
     cx.export_function("proveTx", proof::prove_tx)?;
     cx.export_function("proveTree", proof::prove_tree)?;
+    cx.export_function("proveTxAsync", proof::prove_tx_async)?;
+    cx.export_function("proveTreeAsync", proof::prove_tree_async)?;
     cx.export_function("verify", proof::verify_proof)?;
 
     cx.export_function("merkleNew", merkle::merkle_new)?;

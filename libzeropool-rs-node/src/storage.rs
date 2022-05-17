@@ -1,5 +1,5 @@
 use libzeropool_rs::sparse_array::NativeSparseArray;
-use neon::prelude::*;
+use neon::{prelude::*, types::buffer::TypedArray};
 
 /// Stores encrypted accounts and notes.
 pub struct TxStorage {
@@ -30,9 +30,7 @@ pub fn tx_storage_add(mut cx: FunctionContext) -> JsResult<JsUndefined> {
     };
 
     let buffer = cx.argument::<JsBuffer>(2)?;
-    cx.borrow(&buffer, |data| {
-        this.inner.set(index, &data.as_slice().to_vec());
-    });
+    this.inner.set(index, &buffer.as_slice(&cx).to_vec());
 
     Ok(cx.undefined())
 }
