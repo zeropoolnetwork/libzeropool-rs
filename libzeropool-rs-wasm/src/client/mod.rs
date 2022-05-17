@@ -380,6 +380,10 @@ impl UserAccount {
                             .map(|(i, note)| (index + 1 + (i as u64), note))
                             .filter(|(_, note)| note.is_some())
                             .map(|(i, note)| (i, note.unwrap()))
+                            .filter(|(_, note)| {
+                                let address = format_address::<PoolParams>(note.d, note.p_d);
+                                self.is_own_address(&address)
+                            })
                             .collect();
 
                         self.inner
@@ -397,7 +401,10 @@ impl UserAccount {
                             out_notes: Vec::new(),
                             tx_hash: None,
                         };
-                        decrypted_memos.push(decrypted_memo);
+
+                        if decrypted_memo.in_notes.len() > 0 {
+                            decrypted_memos.push(decrypted_memo);
+                        }
                     } else {
                         let tx_commitment =
                             Num::from_uint_reduced(NumRepr(Uint::from_big_endian(&tx.commitment)));
