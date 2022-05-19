@@ -163,6 +163,50 @@ impl<D: KeyValueDB, P: PoolParams> MerkleTree<D, P> {
         self.put_hashes(virtual_nodes);
     }
 
+    pub fn add_subtree_roots<I>(&mut self, start_index: u64, hashes: I)
+        where
+            I: IntoIterator<Item = Hash<P::Fr>>,
+    {
+        self.add_hashes_at_height(start_index, constants::OUTPLUSONELOG as u32, hashes);
+    }
+
+    fn add_hashes_at_height<I>(&mut self, start_index: u64, height: u32, hashes: I)
+        where
+            I: IntoIterator<Item = Hash<P::Fr>>,
+    {
+        let mut virtual_nodes: HashMap<(u32, u64), Hash<P::Fr>> = hashes
+            .into_iter()
+            // todo: check that there are no zero holes?
+            .filter(|hash| *hash != self.zero_note_hashes[height as usize])
+            .enumerate()
+            .map(|(index, hash)| ((height, start_index + index as u64), hash))
+            .collect();
+        let new_hashes_count = virtual_nodes.len() as u64;
+
+        assert!(new_hashes_count <= (2u64 << (constants::OUTPLUSONELOG + 1 - height as usize)));
+
+        let original_next_index = self.next_index;
+        self.update_next_index(height, start_index);
+
+        let update_boundaries = UpdateBoundaries {
+            updated_range_left_index: original_next_index,
+            updated_range_right_index: self.next_index,
+            new_hashes_left_index: start_index << height,
+            new_hashes_right_index: (start_index + new_hashes_count) << height,
+        };
+
+        // calculate new hashes
+        self.get_virtual_node_full(
+            constants::HEIGHT as u32,
+            0,
+            &mut virtual_nodes,
+            &update_boundaries,
+        );
+
+        // add new hashes to tree
+        self.put_hashes(virtual_nodes);
+    }
+
     fn put_hashes(&mut self, virtual_nodes: HashMap<(u32, u64), Hash<<P as PoolParams>::Fr>>) {
         let mut batch = self.db.transaction();
 
@@ -986,6 +1030,27 @@ mod tests {
             constants::HEIGHT - full_height + 1,
             "Some temporary subtree nodes were not removed."
         );
+    }
+
+    #[test]
+    fn test_add_subtree_roots_works_correctly() {
+        let mut rng = CustomRng;
+
+        let mut tree_expected = MerkleTree::new(create(3), POOL_PARAMS.clone());
+        let mut tree_actual = MerkleTree::new(create(3), POOL_PARAMS.clone());
+
+        let subtree_height = 5;
+        let subtrees_count = 3;
+        let start_index = 0u64;
+
+        let roots: Vec<_> = (0..subtrees_count).map(|_| rng.gen()).collect();
+
+        for (i, root) in roots.clone().into_iter().enumerate() {
+            tree_expected.add_subtree_root(subtree_height, start_index + i as u64, root);
+        }
+        tree_actual.add_hashes_at_height(start_index, subtree_height, roots);
+
+        assert_eq!(tree_expected.get_root(), tree_actual.get_root());
     }
 
     #[test]
