@@ -288,50 +288,37 @@ impl UserAccount {
 
         let txs: Vec<IndexedTx> = serde_wasm_bindgen::from_value(txs.unchecked_into())?;
 
-        let mut other_tx_commitments: Vec<(u64, Num<Fr>)> = Vec::new();
-        let mut decrypted_memos: Vec<DecMemo> = Vec::new();
-        txs.into_iter().for_each(|tx| {
-            let index = tx.index;
-            let data = tx.memo;
-
-            let num_hashes = (&data[0..4]).read_u32::<LittleEndian>().unwrap();
-            let hashes: Vec<_> = (&data[4..])
+        let mut other_tx_start_index: Option<u64> = None;
+        let mut other_tx_commitments: Vec<Num<Fr>> = Vec::new();
+        let mut decrypted_memos: Vec<DecMemo> = Vec::new();     
+        for IndexedTx{index, memo, commitment} in txs {    
+            let num_hashes = (&memo[0..4]).read_u32::<LittleEndian>().unwrap();
+            let hashes: Vec<_> = (&memo[4..])
                 .chunks(32)
                 .take(num_hashes as usize)
                 .map(|bytes| Num::from_uint_reduced(NumRepr(Uint::from_little_endian(bytes))))
                 .collect();
-
-            let pair = self.inner.borrow().decrypt_pair(data.clone());
+            
+            let pair = self.inner
+                .borrow()
+                .decrypt_pair(memo.clone());
 
             match pair {
                 Some((account, notes)) => {
                     if other_tx_commitments.len() > 0 {
-                        let start_index = other_tx_commitments[0].0;
-                        let commitments = other_tx_commitments
-                            .iter()
-                            .map(|(_, commitment)| commitment.clone());
-                        self.inner
-                            .borrow_mut()
-                            .state
-                            .tree
-                            .add_tx_commitments(start_index, commitments);
-                        other_tx_commitments.clear();
+                        let commitments = other_tx_commitments.drain(..);
+                        self.inner.borrow_mut().state.tree.add_tx_commitments(other_tx_start_index.unwrap(), commitments);
                     }
-
+                    
                     let mut in_notes = Vec::new();
                     let mut out_notes = Vec::new();
-
-                    notes
-                        .into_iter()
+                    notes.into_iter()
                         .enumerate()
-                        .map(|(i, note)| (index + 1 + (i as u64), note))
                         .for_each(|(i, note)| {
                             let address = format_address::<PoolParams>(note.d, note.p_d);
+                            out_notes.push((index + 1 + (i as u64), note));
                             if self.is_own_address(&address) {
-                                in_notes.push((i, note));
-                                out_notes.push((i, note));
-                            } else {
-                                out_notes.push((i, note));
+                                in_notes.push((index + 1 + (i as u64), note));   
                             }
                         });
 
@@ -342,89 +329,65 @@ impl UserAccount {
                         &in_notes,
                     );
 
-                    let decrypted_memo = DecMemo {
-                        index,
-                        acc: Some(account),
-                        in_notes: in_notes
-                            .into_iter()
-                            .map(|(index, note)| IndexedNote { index, note })
-                            .collect(),
-                        out_notes: out_notes
-                            .into_iter()
-                            .map(|(index, note)| IndexedNote { index, note })
-                            .collect(),
-                        tx_hash: None,
-                    };
-                    decrypted_memos.push(decrypted_memo);
-                }
-                None => {
-                    let notes = self.inner.borrow().decrypt_notes(data);
-
-                    if notes.len() > 0 {
-                        if other_tx_commitments.len() > 0 {
-                            let start_index = other_tx_commitments[0].0;
-                            let commitments = other_tx_commitments
-                                .iter()
-                                .map(|(_, commitment)| commitment.clone());
-                            self.inner
-                                .borrow_mut()
-                                .state
-                                .tree
-                                .add_tx_commitments(start_index, commitments);
-                            other_tx_commitments.clear();
+                    decrypted_memos.push(
+                        DecMemo {
+                            index, 
+                            acc: Some(account), 
+                            in_notes: in_notes.into_iter().map(|(index, note)| IndexedNote{index, note}).collect(), 
+                            out_notes: out_notes.into_iter().map(|(index, note)| IndexedNote{index, note}).collect(), 
+                            tx_hash: None,
                         }
-
-                        let in_notes: Vec<(_, _)> = notes
-                            .into_iter()
-                            .enumerate()
-                            .map(|(i, note)| (index + 1 + (i as u64), note))
-                            .filter(|(_, note)| note.is_some())
-                            .map(|(i, note)| (i, note.unwrap()))
-                            .filter(|(_, note)| {
-                                let address = format_address::<PoolParams>(note.d, note.p_d);
-                                self.is_own_address(&address)
-                            })
-                            .collect();
+                    );
+                },
+                None => {
+                    let in_notes: Vec<(_, _)> = self.inner
+                        .borrow()
+                        .decrypt_notes(memo)
+                        .into_iter()
+                        .enumerate()
+                        .filter_map(|(i, note)| {
+                            match note {
+                                Some(note) if self.is_own_address(&format_address::<PoolParams>(note.d, note.p_d)) => {
+                                    Some((index + 1 + (i as u64), note))
+                                }
+                                _ => None,
+                            }
+                        })
+                        .collect();
+                    
+                    if in_notes.len() > 0 {
+                        if other_tx_commitments.len() > 0 {
+                            let commitments = other_tx_commitments.drain(..);
+                            self.inner.borrow_mut().state.tree.add_tx_commitments(other_tx_start_index.unwrap(), commitments);
+                        }
 
                         self.inner
                             .borrow_mut()
                             .state
                             .add_full_tx(index, &hashes, None, &in_notes);
 
-                        let decrypted_memo = DecMemo {
-                            index,
-                            acc: None,
-                            in_notes: in_notes
-                                .into_iter()
-                                .map(|(index, note)| IndexedNote { index, note })
-                                .collect(),
-                            out_notes: Vec::new(),
-                            tx_hash: None,
-                        };
-
-                        if decrypted_memo.in_notes.len() > 0 {
-                            decrypted_memos.push(decrypted_memo);
-                        }
+                        decrypted_memos.push(
+                            DecMemo{
+                                index, 
+                                acc: None, 
+                                in_notes: in_notes.into_iter().map(|(index, note)| IndexedNote{index, note}).collect(), 
+                                out_notes: Vec::new(), 
+                                tx_hash: None,
+                            }
+                        );
                     } else {
-                        let tx_commitment =
-                            Num::from_uint_reduced(NumRepr(Uint::from_big_endian(&tx.commitment)));
-                        other_tx_commitments.push((index, tx_commitment));
+                        other_tx_commitments.push(
+                            Num::from_uint_reduced(NumRepr(Uint::from_big_endian(&commitment)))
+                        );
+                        other_tx_start_index = other_tx_start_index.or(Some(index));
                     }
                 }
             }
-        });
+        }
 
         if other_tx_commitments.len() > 0 {
-            let start_index = other_tx_commitments[0].0;
-            let commitments = other_tx_commitments
-                .iter()
-                .map(|(_, commitment)| commitment.clone());
-            self.inner
-                .borrow_mut()
-                .state
-                .tree
-                .add_tx_commitments(start_index, commitments);
-            other_tx_commitments.clear();
+            let commitments = other_tx_commitments.drain(..);
+            self.inner.borrow_mut().state.tree.add_tx_commitments(other_tx_start_index.unwrap(), commitments);
         }
 
         let decrypted_memos = serde_wasm_bindgen::to_value(&decrypted_memos)
