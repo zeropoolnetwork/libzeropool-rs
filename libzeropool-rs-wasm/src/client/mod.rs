@@ -308,6 +308,7 @@ impl UserAccount {
                     if other_tx_commitments.len() > 0 {
                         let commitments = other_tx_commitments.drain(..);
                         self.inner.borrow_mut().state.tree.add_tx_commitments(other_tx_start_index.unwrap(), commitments);
+                        other_tx_start_index = None;
                     }
                     
                     let mut in_notes = Vec::new();
@@ -359,6 +360,7 @@ impl UserAccount {
                         if other_tx_commitments.len() > 0 {
                             let commitments = other_tx_commitments.drain(..);
                             self.inner.borrow_mut().state.tree.add_tx_commitments(other_tx_start_index.unwrap(), commitments);
+                            other_tx_start_index = None;
                         }
 
                         self.inner
