@@ -62,7 +62,7 @@ pub struct DepositPermittableData {
     #[serde(flatten)]
     base_fields: TxBaseFields,
     amount: TokenAmount<Fr>,
-    deadline: u64,
+    deadline: String,
     holder: Vec<u8>,
 }
 
@@ -79,7 +79,7 @@ impl JsTxType for IDepositPermittableData {
             base_fields.fee,
             base_fields.data.unwrap_or(vec![]),
             amount,
-            deadline,
+            u64::from_str_radix(&deadline, 10).unwrap_or(0),
             holder
         ))
     }
