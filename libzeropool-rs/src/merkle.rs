@@ -37,7 +37,7 @@ pub type WebMerkleTree<P> = MerkleTree<WebDatabase, P>;
 #[cfg(feature = "web")]
 impl<P: PoolParams> MerkleTree<WebDatabase, P> {
     pub async fn new_web(name: &str, params: P) -> MerkleTree<WebDatabase, P> {
-        let db = WebDatabase::open(name.to_owned(), 2).await.unwrap();
+        let db = WebDatabase::open(name.to_owned(), 3).await.unwrap();
 
         Self::new(db, params)
     }
@@ -62,18 +62,36 @@ impl<P: PoolParams> MerkleTree<MemoryDatabase, P> {
     }
 }
 
+const NEXT_INDEX_KEY: &[u8] = br"next_index";
+enum DbCols {
+    Leaves = 0,
+    TempLeaves = 1,
+    NamedIndex = 2,
+    NextIndex = 3,
+}
+
 // TODO: Proper error handling.
 impl<D: KeyValueDB, P: PoolParams> MerkleTree<D, P> {
     pub fn new(db: D, params: P) -> Self {
-        // TODO: Optimize, this is extremely inefficient. Cache the number of leaves or ditch kvdb?
-        let mut next_index = 0;
-        for (k, _v) in db.iter(0) {
-            let (height, index) = Self::parse_node_key(&k);
-
-            if height == 0 && index >= next_index {
-                next_index = Self::calc_next_index(index);
+        let db_next_index = db.get(DbCols::NextIndex as u32, NEXT_INDEX_KEY);
+        let next_index = match db_next_index {
+            Ok(Some(next_index)) => next_index
+                .as_slice()
+                .read_u64::<BigEndian>()
+                .unwrap(),
+            _ => {
+                let mut cur_next_index = 0;
+                for (k, _v) in db.iter(0) {
+                    let (height, index) = Self::parse_node_key(&k);
+        
+                    if height == 0 && index >= cur_next_index {
+                        cur_next_index = Self::calc_next_index(index);
+                    }
+                }
+                cur_next_index
             }
-        }
+        };
+
 
         MerkleTree {
             db,
@@ -95,7 +113,7 @@ impl<D: KeyValueDB, P: PoolParams> MerkleTree<D, P> {
         temporary: bool,
     ) {
         // todo: revert index change if update fails?
-        let next_index_was_updated = self.update_next_index(height, index);
+        let next_index_was_updated = self.update_next_index_from_node(height, index);
 
         if hash == self.zero_note_hashes[height as usize] && !next_index_was_updated {
             return;
@@ -143,7 +161,7 @@ impl<D: KeyValueDB, P: PoolParams> MerkleTree<D, P> {
 
         let original_next_index = self.next_index;
 
-        self.update_next_index(constants::OUTPLUSONELOG as u32, (start_index >> constants::OUTPLUSONELOG) + new_commitments_count - 1);
+        self.update_next_index_from_node(constants::OUTPLUSONELOG as u32, (start_index >> constants::OUTPLUSONELOG) + new_commitments_count - 1);
 
         let update_boundaries = UpdateBoundaries {
             updated_range_left_index: original_next_index,
@@ -183,7 +201,7 @@ impl<D: KeyValueDB, P: PoolParams> MerkleTree<D, P> {
         assert!(new_hashes_count <= (2u64 << constants::OUTPLUSONELOG));
 
         let original_next_index = self.next_index;
-        self.update_next_index(0, start_index);
+        self.update_next_index_from_node(0, start_index);
 
         let update_boundaries = UpdateBoundaries {
             updated_range_left_index: original_next_index,
@@ -216,7 +234,7 @@ impl<D: KeyValueDB, P: PoolParams> MerkleTree<D, P> {
 
     // This method is used in tests.
     fn add_subtree_root(&mut self, height: u32, index: u64, hash: Hash<P::Fr>) {
-        self.update_next_index(height, index);
+        self.update_next_index_from_node(height, index);
 
         let mut batch = self.db.transaction();
 
@@ -556,14 +574,24 @@ impl<D: KeyValueDB, P: PoolParams> MerkleTree<D, P> {
         self.next_index
     }
 
-    fn update_next_index(&mut self, height: u32, index: u64) -> bool {
-        let leaf_index = u64::pow(2, height) * (index + 1) - 1;
-        if leaf_index >= self.next_index {
-            self.next_index = Self::calc_next_index(leaf_index);
+    fn update_next_index(&mut self, next_index: u64) -> bool {
+        if next_index >= self.next_index {
+            let mut transaction = self.db.transaction();
+            let mut data = &mut [0u8; 8][..];
+            let _ = data.write_u64::<BigEndian>(next_index);
+            transaction.put(DbCols::NextIndex as u32, NEXT_INDEX_KEY, &data);
+            self.db.write(transaction).unwrap();
+
+            self.next_index = next_index;
             true
         } else {
             false
         }
+    }
+
+    fn update_next_index_from_node(&mut self, height: u32, index: u64) -> bool {
+        let leaf_index = u64::pow(2, height) * (index + 1) - 1;
+        self.update_next_index(Self::calc_next_index(leaf_index))
     }
 
     #[inline]
@@ -633,21 +661,21 @@ impl<D: KeyValueDB, P: PoolParams> MerkleTree<D, P> {
     ) {
         let key = Self::node_key(height, index);
         if hash != self.zero_note_hashes[height as usize] {
-            batch.put(0, &key, &hash.try_to_vec().unwrap());
+            batch.put(DbCols::Leaves as u32, &key, &hash.try_to_vec().unwrap());
         } else {
-            batch.delete(0, &key);
+            batch.delete(DbCols::Leaves as u32, &key);
         }
         if temporary_leaves_count > 0 {
-            batch.put(1, &key, &temporary_leaves_count.to_be_bytes());
-        } else if self.db.has_key(1, &key).unwrap_or(false) {
-            batch.delete(1, &key);
+            batch.put(DbCols::TempLeaves as u32, &key, &temporary_leaves_count.to_be_bytes());
+        } else if self.db.has_key(DbCols::TempLeaves as u32, &key).unwrap_or(false) {
+            batch.delete(DbCols::TempLeaves as u32, &key);
         }
     }
 
     fn remove_batched(&mut self, batch: &mut DBTransaction, height: u32, index: u64) {
         let key = Self::node_key(height, index);
-        batch.delete(0, &key);
-        batch.delete(1, &key);
+        batch.delete(DbCols::Leaves as u32, &key);
+        batch.delete(DbCols::TempLeaves as u32, &key);
     }
 
     fn remove_leaf(&mut self, index: u64) {
@@ -679,7 +707,7 @@ impl<D: KeyValueDB, P: PoolParams> MerkleTree<D, P> {
     }
 
     fn set_named_index_batched(&mut self, batch: &mut DBTransaction, key: &str, value: u64) {
-        batch.put(2, key.as_bytes(), &value.to_be_bytes());
+        batch.put(DbCols::NamedIndex as u32, key.as_bytes(), &value.to_be_bytes());
     }
 
     fn get_temporary_count(&self, height: u32, index: u64) -> u64 {
