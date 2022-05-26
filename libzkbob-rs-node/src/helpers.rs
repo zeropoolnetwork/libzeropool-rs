@@ -8,6 +8,7 @@ use libzkbob_rs::libzeropool::native::tx::{out_commitment_hash, parse_delta};
 use libzkbob_rs::libzeropool::POOL_PARAMS;
 
 use neon::prelude::*;
+use neon::types::buffer::TypedArray;
 
 use crate::Fr;
 
@@ -22,7 +23,7 @@ pub fn out_commitment(mut cx: FunctionContext) -> JsResult<JsValue> {
         .iter()
         .map(|&val| {
             let buf = val.downcast::<JsBuffer, FunctionContext>(&mut cx).unwrap();
-            cx.borrow(&buf, |data| Num::try_from_slice(data.as_slice()).unwrap())
+            Num::try_from_slice(buf.as_slice(&cx)).unwrap()
         })
         .collect();
 
@@ -62,9 +63,7 @@ pub fn parse_delta_string(mut cx: FunctionContext) -> JsResult<JsObject> {
 pub fn num_to_str(mut cx: FunctionContext) -> JsResult<JsString> {
     let hash: Num<Fr> = {
         let buffer = cx.argument::<JsBuffer>(0)?;
-        cx.borrow(&buffer, |data| {
-            Num::try_from_slice(data.as_slice()).unwrap()
-        })
+        Num::try_from_slice(buffer.as_slice(&cx)).unwrap()
     };
     Ok(cx.string(hash.to_string()))
 }

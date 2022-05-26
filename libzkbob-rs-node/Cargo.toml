@@ -13,8 +13,9 @@ crate-type = ["cdylib"]
 [dependencies]
 #libzkbob-rs = { version = "0.3.9", features = ["native"] }
 libzkbob-rs =  { path = "../libzkbob-rs", features = ["native"] }
-neon = { version = "0.9.0", default-features = false, features = ["napi-6"] }
+neon = { version = "0.10.0", default-features = false, features = ["channel-api", "napi-6", "promise-api"] }
 # FIXME: Using a random fork for now
-neon-serde = { git = "https://github.com/brokad/neon-serde.git", rev = "0a168baf9e52b1ebe6bd4661d95efc1318d788d8" }
+neon-serde = { git = "https://github.com/NZXTCorp/neon-serde.git", branch = "refactor/update-neon-0.10" }
+rayon = "1.5.3"
 serde = "1.0.136"
 

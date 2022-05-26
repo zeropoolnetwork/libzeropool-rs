@@ -89,6 +89,8 @@ const Params = {
 const Proof = {
     tx: zp.proveTx,
     tree: zp.proveTree,
+    txAsync: zp.proveTxAsync,
+    treeAsync: zp.proveTreeAsync,
     verify: zp.verify,
 };
 

@@ -10,6 +10,7 @@ use libzkbob_rs::libzeropool::{
 };
 use libzkbob_rs::merkle::NativeMerkleTree;
 use neon::prelude::*;
+use neon::types::buffer::TypedArray;
 
 use crate::PoolParams;
 
@@ -39,9 +40,7 @@ pub fn merkle_add_hash(mut cx: FunctionContext) -> JsResult<JsUndefined> {
 
     let hash = {
         let buffer = cx.argument::<JsBuffer>(2)?;
-        cx.borrow(&buffer, |data| {
-            Num::try_from_slice(data.as_slice()).unwrap()
-        })
+        Num::try_from_slice(buffer.as_slice(&cx)).unwrap()
     };
 
     tree.write().unwrap().inner.add_hash(index, hash, false);
@@ -58,9 +57,7 @@ pub fn merkle_add_commitment(mut cx: FunctionContext) -> JsResult<JsUndefined> {
 
     let hash = {
         let buffer = cx.argument::<JsBuffer>(2)?;
-        cx.borrow(&buffer, |data| {
-            Num::try_from_slice(data.as_slice()).unwrap()
-        })
+        Num::try_from_slice(buffer.as_slice(&cx)).unwrap()
     };
 
     tree.write()
@@ -76,9 +73,7 @@ pub fn merkle_append_hash(mut cx: FunctionContext) -> JsResult<JsNumber> {
 
     let hash = {
         let buffer = cx.argument::<JsBuffer>(1)?;
-        cx.borrow(&buffer, |data| {
-            Num::try_from_slice(data.as_slice()).unwrap()
-        })
+        Num::try_from_slice(buffer.as_slice(&cx)).unwrap()
     };
 
     let index = tree.write().unwrap().inner.append_hash(hash, false) as f64;

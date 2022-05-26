@@ -1,11 +1,12 @@
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use libzkbob_rs::libzeropool::fawkes_crypto::backend::bellman_groth16::Parameters;
-use neon::prelude::*;
+use neon::{prelude::*, types::buffer::TypedArray};
 
 use crate::Engine;
 
-pub type BoxedParams = JsBox<Params>;
+pub type BoxedParams = JsBox<Arc<Params>>;
 pub struct Params {
     pub inner: Parameters<Engine>,
 }
@@ -13,12 +14,10 @@ pub struct Params {
 pub fn from_binary(mut cx: FunctionContext) -> JsResult<BoxedParams> {
     let input = cx.argument::<JsBuffer>(0)?;
 
-    let inner = cx.borrow(&input, |data| {
-        let mut data = data.as_slice();
-        Parameters::read(&mut data, true, true).unwrap()
-    });
+    let mut data = input.as_slice(&cx);
+    let inner = Parameters::read(&mut data, true, true).unwrap();
 
-    Ok(cx.boxed(Params { inner }))
+    Ok(cx.boxed(Arc::new(Params { inner })))
 }
 
 pub fn from_file(mut cx: FunctionContext) -> JsResult<BoxedParams> {
@@ -30,7 +29,7 @@ pub fn from_file(mut cx: FunctionContext) -> JsResult<BoxedParams> {
     let data = std::fs::read(path).unwrap();
     let inner = Parameters::read(&mut data.as_slice(), true, true).unwrap();
 
-    Ok(cx.boxed(Params { inner }))
+    Ok(cx.boxed(Arc::new(Params { inner })))
 }
 
 impl Finalize for Params {}
