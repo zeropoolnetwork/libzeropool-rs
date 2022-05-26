@@ -1,6 +1,6 @@
 [package]
 name = "libzkbob-rs-node"
-version = "0.1.23"
+version = "0.1.25"
 authors = ["Dmitry Vdovin <voidxnull@gmail.com>"]
 repository = "https://github.com/zkBob/libzkbob-rs/"
 license = "MIT OR Apache-2.0"
@@ -11,8 +11,8 @@ exclude = ["index.node"]
 crate-type = ["cdylib"]
 
 [dependencies]
-#libzkbob-rs = { version = "0.3.9", features = ["native"] }
-libzkbob-rs =  { path = "../libzkbob-rs", features = ["native"] }
+libzkbob-rs = { version = "0.3.12", features = ["native"] }
+#libzkbob-rs =  { path = "../libzkbob-rs", features = ["native"] }
 neon = { version = "0.10.0", default-features = false, features = ["channel-api", "napi-6", "promise-api"] }
 # FIXME: Using a random fork for now
 neon-serde = { git = "https://github.com/NZXTCorp/neon-serde.git", branch = "refactor/update-neon-0.10" }

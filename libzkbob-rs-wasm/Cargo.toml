@@ -1,7 +1,7 @@
 [package]
 name = "libzkbob-rs-wasm"
 description = "A higher level zkBob API for Wasm"
-version = "0.3.10"
+version = "0.3.12"
 authors = ["Dmitry Vdovin <voidxnull@gmail.com>"]
 repository = "https://github.com/zkBob/libzkbob-rs/"
 license = "MIT OR Apache-2.0"
@@ -33,7 +33,7 @@ console_error_panic_hook = { version = "0.1.6", optional = true }
 wee_alloc = { version = "0.4.5", optional = true }
 
 libzkbob-rs = { path = "../libzkbob-rs" }
-libzeropool = { version = "0.5.1", default-features = false }
+libzeropool = { version = "0.5.6", default-features = false }
 getrandom = { version = "0.2.3", features = ["js"] }
 fawkes-crypto = { version = "4.2.4", features = ["wasm", "serde_support"] }
 bs58 = "0.4.0"
