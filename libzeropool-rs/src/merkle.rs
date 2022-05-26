@@ -46,11 +46,14 @@ impl<P: PoolParams> MerkleTree<WebDatabase, P> {
 #[cfg(feature = "native")]
 impl<P: PoolParams> MerkleTree<NativeDatabase, P> {
     pub fn new_native(
-        config: &DatabaseConfig,
+        config: DatabaseConfig,
         path: &str,
         params: P,
     ) -> std::io::Result<MerkleTree<NativeDatabase, P>> {
-        let db = NativeDatabase::open(config, path)?;
+        let db = NativeDatabase::open(&DatabaseConfig{
+            columns: 4,
+            ..config
+        } , path)?;
 
         Ok(Self::new(db, params))
     }
@@ -58,7 +61,7 @@ impl<P: PoolParams> MerkleTree<NativeDatabase, P> {
 
 impl<P: PoolParams> MerkleTree<MemoryDatabase, P> {
     pub fn new_test(params: P) -> MerkleTree<MemoryDatabase, P> {
-        Self::new(kvdb_memorydb::create(3), params)
+        Self::new(kvdb_memorydb::create(4), params)
     }
 }
 
@@ -577,8 +580,11 @@ impl<D: KeyValueDB, P: PoolParams> MerkleTree<D, P> {
     fn update_next_index(&mut self, next_index: u64) -> bool {
         if next_index >= self.next_index {
             let mut transaction = self.db.transaction();
-            let mut data = &mut [0u8; 8][..];
-            let _ = data.write_u64::<BigEndian>(next_index);
+            let mut data = [0u8; 8];
+            {
+                let mut bytes = &mut data[..];
+                let _ = bytes.write_u64::<BigEndian>(next_index);
+            }
             transaction.put(DbCols::NextIndex as u32, NEXT_INDEX_KEY, &data);
             self.db.write(transaction).unwrap();
 
