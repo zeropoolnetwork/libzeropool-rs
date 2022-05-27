@@ -20,6 +20,15 @@ use serde::{Deserialize, Serialize};
 
 pub type Hash<F> = Num<F>;
 
+const NUM_COLUMNS: u32 = 4;
+const NEXT_INDEX_KEY: &[u8] = br"next_index";
+enum DbCols {
+    Leaves = 0,
+    TempLeaves = 1,
+    NamedIndex = 2,
+    NextIndex = 3,
+}
+
 pub struct MerkleTree<D: KeyValueDB, P: PoolParams> {
     db: D,
     params: P,
@@ -37,7 +46,7 @@ pub type WebMerkleTree<P> = MerkleTree<WebDatabase, P>;
 #[cfg(feature = "web")]
 impl<P: PoolParams> MerkleTree<WebDatabase, P> {
     pub async fn new_web(name: &str, params: P) -> MerkleTree<WebDatabase, P> {
-        let db = WebDatabase::open(name.to_owned(), 3).await.unwrap();
+        let db = WebDatabase::open(name.to_owned(), NUM_COLUMNS).await.unwrap();
 
         Self::new(db, params)
     }
@@ -51,7 +60,7 @@ impl<P: PoolParams> MerkleTree<NativeDatabase, P> {
         params: P,
     ) -> std::io::Result<MerkleTree<NativeDatabase, P>> {
         let db = NativeDatabase::open(&DatabaseConfig{
-            columns: 4,
+            columns: NUM_COLUMNS,
             ..config
         } , path)?;
 
@@ -61,16 +70,8 @@ impl<P: PoolParams> MerkleTree<NativeDatabase, P> {
 
 impl<P: PoolParams> MerkleTree<MemoryDatabase, P> {
     pub fn new_test(params: P) -> MerkleTree<MemoryDatabase, P> {
-        Self::new(kvdb_memorydb::create(4), params)
+        Self::new(kvdb_memorydb::create(NUM_COLUMNS), params)
     }
-}
-
-const NEXT_INDEX_KEY: &[u8] = br"next_index";
-enum DbCols {
-    Leaves = 0,
-    TempLeaves = 1,
-    NamedIndex = 2,
-    NextIndex = 3,
 }
 
 // TODO: Proper error handling.
