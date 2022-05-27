@@ -15,6 +15,7 @@ use libzeropool::{
     fawkes_crypto::ff_uint::{Num, PrimeField},
     fawkes_crypto::native::poseidon::{poseidon, MerkleProof},
     native::params::PoolParams,
+    native::tx,
 };
 use serde::{Deserialize, Serialize};
 
@@ -143,6 +144,54 @@ impl<D: KeyValueDB, P: PoolParams> MerkleTree<D, P> {
         let index = self.next_index;
         self.add_hash(index, hash, temporary);
         index
+    }
+
+    pub fn add_leafs_and_commitments(&mut self, leafs: Vec<(u64, Vec<Hash<P::Fr>>)>, commitments: Vec<(u64, Hash<P::Fr>)>) {
+        let mut next_index: u64 = 0;
+        let mut start_index: u64 = u64::MAX;
+        let mut virtual_nodes: HashMap<(u32, u64), Hash<P::Fr>> = commitments
+            .into_iter()
+            .map(|(index, hash)| {
+                assert_eq!(index & ((1 << constants::OUTPLUSONELOG) - 1), 0);
+                start_index = start_index.min(index);
+                next_index = next_index.max(index + 1);
+                ((constants::OUTPLUSONELOG as u32, index  >> constants::OUTPLUSONELOG), hash)
+            })
+            .collect();
+        
+        leafs.into_iter().for_each(|(index, leafs)| {
+            assert_eq!(index & ((1 << constants::OUTPLUSONELOG) - 1), 0);
+            start_index = start_index.min(index);
+            next_index = next_index.max(index + leafs.len() as u64);
+            (0..constants::OUTPLUSONELOG)
+                .for_each(|height| {
+                    virtual_nodes.insert((height as u32, ((index + leafs.len() as u64 - 1) >> height) + 1), self.zero_note_hashes[height]);
+                });
+            leafs.into_iter().enumerate().for_each(|(i, leaf)| {
+                virtual_nodes.insert((0 as u32, index + i as u64), leaf);
+            });
+        });
+
+        let original_next_index = self.next_index;
+        self.update_next_index_from_node(0, next_index);
+
+        let update_boundaries = UpdateBoundaries {
+            updated_range_left_index: original_next_index,
+            updated_range_right_index: self.next_index,
+            new_hashes_left_index: start_index,
+            new_hashes_right_index: next_index,
+        };
+
+        // calculate new hashes
+        self.get_virtual_node_full(
+            constants::HEIGHT as u32,
+            0,
+            &mut virtual_nodes,
+            &update_boundaries,
+        );
+
+        // add new hashes to tree
+        self.put_hashes(virtual_nodes);
     }
 
     pub fn add_tx_commitments<I>(&mut self, start_index: u64, commitments: I) 
@@ -1373,6 +1422,58 @@ mod tests {
         first_tree.add_hashes((tree_size as u64 * 2 + 1) * (constants::OUT as u64 + 1), [new_leaf]);
         second_tree.add_hashes((tree_size as u64 * 2 + 1) * (constants::OUT as u64 + 1), [new_leaf]);
         
+        assert_eq!(first_tree.get_root(), second_tree.get_root());
+        assert_eq!(first_tree.next_index(), second_tree.next_index());
+    }
+
+    #[test_case(1, 1)]
+    #[test_case(4, 2)]
+    #[test_case(15, 1)]
+    #[test_case(15 ,2)]
+    #[test_case(15, 7)]
+    fn test_add_leafs_and_commitments(tx_count: u64, max_leafs_count: u32) {
+        let mut rng = CustomRng;
+        let mut first_tree = MerkleTree::new(create(3), POOL_PARAMS.clone());
+        let mut second_tree = MerkleTree::new(create(3), POOL_PARAMS.clone());
+
+        let leafs: Vec<(u64, Vec<_>)> = (0..tx_count)
+            .map(|i| {
+                let leafs_count: u32 =  1 + (rng.gen::<u32>() % max_leafs_count);
+                (i * (constants::OUT + 1) as u64, (0..leafs_count).map(|_| rng.gen()).collect())
+            })
+            .collect();
+
+        let now = std::time::Instant::now();
+        for (index, leafs) in leafs.clone().into_iter() {
+            first_tree.add_hashes(index, leafs)
+        }
+        println!("({}, {}) add_hashes elapsed: {}", tx_count, max_leafs_count, now.elapsed().as_millis());
+        
+        let commitments: Vec<(u64, _)> = leafs.clone().into_iter().map(|(index, leafs)| {
+            let mut out_hashes = leafs.clone();
+            out_hashes.resize(constants::OUT+1, first_tree.zero_note_hashes[0]);
+            let commitment = tx::out_commitment_hash(out_hashes.as_slice(), &POOL_PARAMS.clone());
+            (index, commitment)
+        }).collect();
+
+        commitments.iter().for_each(|(index, commitment)| {
+            assert_eq!(first_tree.get(constants::OUTPLUSONELOG as u32, *index >> constants::OUTPLUSONELOG), *commitment);
+        });
+        
+        let mut sub_leafs: Vec<(u64, Vec<_>)> = Vec::new();
+        let mut sub_commitments: Vec<(u64, _)> = Vec::new();
+        (0..tx_count).for_each(|i| {
+            if rng.gen_bool(0.5) {
+                sub_leafs.push((leafs[i as usize].0, leafs[i as usize].1.clone()));
+            } else {
+                sub_commitments.push(commitments[i as usize]);
+            }
+        });
+        
+        let now = std::time::Instant::now();
+        second_tree.add_leafs_and_commitments(sub_leafs, sub_commitments);
+        println!("({}, {}) add_leafs_and_commitments elapsed: {}", tx_count, max_leafs_count, now.elapsed().as_millis());
+
         assert_eq!(first_tree.get_root(), second_tree.get_root());
         assert_eq!(first_tree.next_index(), second_tree.next_index());
     }
