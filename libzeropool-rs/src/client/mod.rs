@@ -224,11 +224,11 @@ where
         let in_notes_original: Vec<(u64, Note<P::Fr>)> = state
             .txs
             .iter_slice(next_usable_index..=state.latest_note_index)
-            .take(constants::IN)
             .filter_map(|(index, tx)| match tx {
                 Transaction::Note(note) => Some((index, note)),
                 _ => None,
             })
+            .take(constants::IN)
             .collect();
 
         let spend_interval_index = in_notes_original

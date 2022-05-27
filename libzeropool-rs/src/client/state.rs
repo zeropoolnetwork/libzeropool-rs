@@ -155,7 +155,10 @@ where
 
         self.txs
             .iter_slice(latest_account_index..=self.latest_note_index)
-            .map(|(index, _)| index)
+            .filter_map(|(index, tx)| match tx {
+                Transaction::Note(_) => Some(index),
+                _ => None,
+            })
             .next()
             .unwrap_or(latest_account_index)
     }
