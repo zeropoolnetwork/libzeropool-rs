@@ -418,6 +418,8 @@ where
             let user_data_size = user_data.len();
             Vec::with_capacity(tx_data_size + ciphertext_size + user_data_size)
         };
+
+        #[allow(clippy::redundant_clone)]
         memo_data.append(&mut tx_data.clone());
         memo_data.extend(&ciphertext);
         memo_data.append(&mut user_data.clone());
@@ -444,7 +446,7 @@ where
             || Ok(zero_proof()),
             |i| {
                 tree.get_leaf_proof(i)
-                    .ok_or_else(|| CreateTxError::ProofNotFound(i))
+                    .ok_or(CreateTxError::ProofNotFound(i))
             },
         )?;
         let note_proofs = in_notes_original
@@ -452,7 +454,7 @@ where
             .copied()
             .map(|(index, _note)| {
                 tree.get_leaf_proof(index)
-                    .ok_or_else(|| CreateTxError::ProofNotFound(index))
+                    .ok_or(CreateTxError::ProofNotFound(index))
             })
             .chain((0..).map(|_| Ok(zero_proof())))
             .take(constants::IN)
