@@ -3,6 +3,7 @@ use libzeropool_rs::client::{TokenAmount, TxOutput, TxType as NativeTxType};
 use serde::Deserialize;
 use wasm_bindgen::prelude::*;
 
+#[allow(clippy::manual_non_exhaustive)]
 #[wasm_bindgen]
 pub enum TxType {
     Transfer = "transfer",
@@ -49,7 +50,7 @@ impl JsTxType for IDepositData {
 
         Ok(NativeTxType::Deposit(
             base_fields.fee,
-            base_fields.data.unwrap_or(vec![]),
+            base_fields.data.unwrap_or_default(),
             amount,
             outputs,
         ))
@@ -77,9 +78,9 @@ impl JsTxType for IDepositPermittableData {
 
         Ok(NativeTxType::DepositPermittable(
             base_fields.fee,
-            base_fields.data.unwrap_or(vec![]),
+            base_fields.data.unwrap_or_default(),
             amount,
-            u64::from_str_radix(&deadline, 10).unwrap_or(0),
+            deadline.parse::<u64>().unwrap_or(0),
             holder
         ))
     }
@@ -116,7 +117,7 @@ impl JsTxType for ITransferData {
 
         Ok(NativeTxType::Transfer(
             base_fields.fee,
-            base_fields.data.unwrap_or(vec![]),
+            base_fields.data.unwrap_or_default(),
             outputs,
         ))
     }
@@ -145,7 +146,7 @@ impl JsTxType for IWithdrawData {
 
         Ok(NativeTxType::Withdraw(
             base_fields.fee,
-            base_fields.data.unwrap_or(vec![]),
+            base_fields.data.unwrap_or_default(),
             amount,
             to,
             native_amount,

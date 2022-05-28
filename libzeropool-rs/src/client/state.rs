@@ -56,7 +56,7 @@ where
     P::Fr: 'static,
 {
     pub fn init_test(params: P) -> Self {
-        let tree = MerkleTree::new_test(params.clone());
+        let tree = MerkleTree::new_test(params);
         let txs = TxStorage::new_test();
 
         Self::new(tree, txs)
