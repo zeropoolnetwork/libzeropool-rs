@@ -301,7 +301,7 @@ impl UserAccount {
 
             match pair {
                 Some((account, notes)) => {        
-                    if other_tx_commitments.len() > 0 {
+                    if !other_tx_commitments.is_empty() {
                         let commitments = other_tx_commitments.drain(..);
                         self.inner.borrow_mut().state.tree.add_tx_commitments(other_tx_start_index.unwrap(), commitments);
                         other_tx_start_index = None;
@@ -350,8 +350,8 @@ impl UserAccount {
                         })
                         .collect();
                     
-                    if in_notes.len() > 0 {
-                        if other_tx_commitments.len() > 0 {
+                    if !in_notes.is_empty() {
+                        if !other_tx_commitments.is_empty() {
                             let commitments = other_tx_commitments.drain(..);
                             self.inner.borrow_mut().state.tree.add_tx_commitments(other_tx_start_index.unwrap(), commitments);
                             other_tx_start_index = None;
@@ -381,7 +381,7 @@ impl UserAccount {
             }
         }
 
-        if other_tx_commitments.len() > 0 {
+        if !other_tx_commitments.is_empty() {
             let commitments = other_tx_commitments.drain(..);
             self.inner.borrow_mut().state.tree.add_tx_commitments(other_tx_start_index.unwrap(), commitments);
         }

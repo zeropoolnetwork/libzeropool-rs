@@ -37,7 +37,7 @@ pub fn prove_tx_async(mut cx: FunctionContext) -> JsResult<JsPromise> {
         };
 
         deferred.settle_with(&channel, move |mut cx| {
-            Ok(neon_serde::to_value(&mut cx, &proof).or_else(|err| cx.throw_error(err.to_string()))?)
+            neon_serde::to_value(&mut cx, &proof).or_else(|err| cx.throw_error(err.to_string()))
         });
     });
 
@@ -63,7 +63,7 @@ pub fn prove_tree_async(mut cx: FunctionContext) -> JsResult<JsPromise> {
         };
 
         deferred.settle_with(&channel, move |mut cx| {
-            Ok(neon_serde::to_value(&mut cx, &proof).or_else(|err| cx.throw_error(err.to_string()))?)
+            neon_serde::to_value(&mut cx, &proof).or_else(|err| cx.throw_error(err.to_string()))
         });
     });
 

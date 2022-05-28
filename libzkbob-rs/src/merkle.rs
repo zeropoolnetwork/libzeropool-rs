@@ -237,6 +237,7 @@ impl<D: KeyValueDB, P: PoolParams> MerkleTree<D, P> {
     }
 
     // This method is used in tests.
+    #[cfg(test)]
     fn add_subtree_root(&mut self, height: u32, index: u64, hash: Hash<P::Fr>) {
         self.update_next_index_from_node(height, index);
 
@@ -323,6 +324,7 @@ impl<D: KeyValueDB, P: PoolParams> MerkleTree<D, P> {
     }
 
     // This method is used in tests.
+    #[cfg(test)]
     fn get_proof_after<I>(
         &mut self,
         new_hashes: I,
@@ -894,7 +896,7 @@ mod tests {
         tree_expected.add_hash_at_height(
             constants::OUTPLUSONELOG as u32,
             1,
-            tree_expected.zero_note_hashes[constants::OUTPLUSONELOG].clone(),
+            tree_expected.zero_note_hashes[constants::OUTPLUSONELOG],
             false,
         );
 
@@ -1004,7 +1006,7 @@ mod tests {
         );
 
         // But if we add leaf to the left branch, then left child of the root should change
-        tree.add_hash(1 << 47 - 1, rng.gen(), false);
+        tree.add_hash((1 << 47) - 1, rng.gen(), false);
         let proof = tree.get_proof_unchecked::<SUBROOT_HEIGHT>(1);
         assert_ne!(
             proof.sibling[SUBROOT_HEIGHT - 1],
@@ -1021,10 +1023,10 @@ mod tests {
         let hash1: Hash<_> = rng.gen();
 
         // add hash for index 0
-        tree.add_hash(0, hash0.clone(), true);
+        tree.add_hash(0, hash0, true);
 
         // add hash for index 1
-        tree.add_hash(1, hash1.clone(), false);
+        tree.add_hash(1, hash1, false);
 
         let parent_hash = tree.get(1, 0);
         let expected_parent_hash = poseidon([hash0, hash1].as_ref(), POOL_PARAMS.compress());
@@ -1258,7 +1260,7 @@ mod tests {
         let root_before_call = tree.get_root();
 
         let proofs_virtual = tree.get_proof_after_virtual(new_hashes.clone());
-        let proofs_simple = tree.get_proof_after(new_hashes.clone());
+        let proofs_simple = tree.get_proof_after(new_hashes);
 
         let root_after_call = tree.get_root();
 
@@ -1327,7 +1329,7 @@ mod tests {
 
         let leafs: Vec<Num<_>> = (0..tree_size).map(|_| rng.gen()).collect();
         let tx_commitments: Vec<Num<_>> = leafs.iter().map(|leaf| {
-            let mut commitment = leaf.clone();
+            let mut commitment = *leaf;
             for height in 0..(constants::OUTPLUSONELOG) {
                 commitment = poseidon([commitment, first_tree.zero_note_hashes[height]].as_ref(), POOL_PARAMS.compress());
             }
@@ -1352,7 +1354,7 @@ mod tests {
 
         let leafs: Vec<Num<_>> = (0..tree_size).map(|_| rng.gen()).collect();
         let tx_commitments: Vec<Num<_>> = leafs.iter().map(|leaf| {
-            let mut commitment = leaf.clone();
+            let mut commitment = *leaf;
             for height in 0..(constants::OUTPLUSONELOG) {
                 commitment = poseidon([commitment, first_tree.zero_note_hashes[height]].as_ref(), POOL_PARAMS.compress());
             }
