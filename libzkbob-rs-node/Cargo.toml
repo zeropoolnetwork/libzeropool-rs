@@ -1,6 +1,6 @@
 [package]
 name = "libzkbob-rs-node"
-version = "0.1.25"
+version = "0.1.26"
 authors = ["Dmitry Vdovin <voidxnull@gmail.com>"]
 repository = "https://github.com/zkBob/libzkbob-rs/"
 license = "MIT OR Apache-2.0"
@@ -11,7 +11,7 @@ exclude = ["index.node"]
 crate-type = ["cdylib"]
 
 [dependencies]
-libzkbob-rs = { version = "0.3.12", features = ["native"] }
+libzkbob-rs = { version = "0.3.14", features = ["native"] }
 #libzkbob-rs =  { path = "../libzkbob-rs", features = ["native"] }
 neon = { version = "0.10.0", default-features = false, features = ["channel-api", "napi-6", "promise-api"] }
 # FIXME: Using a random fork for now
