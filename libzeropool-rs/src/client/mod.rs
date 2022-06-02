@@ -49,7 +49,7 @@ pub enum CreateTxError {
     InsufficientEnergy(String, String),
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct TransactionData<Fr: PrimeField> {
     pub public: TransferPub<Fr>,
     pub secret: TransferSec<Fr>,
@@ -219,11 +219,15 @@ where
                 _ => None,
             })
             .collect();
-        
+
         let spend_interval_index = in_notes_original
             .last()
             .map(|(index, _)| *index + 1)
-            .unwrap_or(if state.latest_note_index > 0 { state.latest_note_index + 1 } else { 0 });
+            .unwrap_or(if state.latest_note_index > 0 {
+                state.latest_note_index + 1
+            } else {
+                0
+            });
 
         // Calculate total balance (account + constants::IN notes).
         let mut input_value = in_account.b.to_num();
