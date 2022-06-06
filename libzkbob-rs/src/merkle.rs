@@ -1426,12 +1426,15 @@ mod tests {
         assert_eq!(first_tree.next_index(), second_tree.next_index());
     }
 
-    #[test_case(1, 1)]
-    #[test_case(4, 2)]
-    #[test_case(15, 1)]
-    #[test_case(15 ,2)]
-    #[test_case(15, 7)]
-    fn test_add_leafs_and_commitments(tx_count: u64, max_leafs_count: u32) {
+    #[test_case(1, 1, 0.0)]
+    #[test_case(1, 1, 1.0)]
+    #[test_case(4, 2, 0.0)]
+    #[test_case(4, 2, 0.5)]
+    #[test_case(4, 2, 1.0)]
+    #[test_case(15, 7, 0.0)]
+    #[test_case(15, 7, 0.5)]
+    #[test_case(15, 7, 1.0)]
+    fn test_add_leafs_and_commitments(tx_count: u64, max_leafs_count: u32, commitments_probability: f64) {
         let mut rng = CustomRng;
         let mut first_tree = MerkleTree::new(create(3), POOL_PARAMS.clone());
         let mut second_tree = MerkleTree::new(create(3), POOL_PARAMS.clone());
@@ -1447,7 +1450,7 @@ mod tests {
         for (index, leafs) in leafs.clone().into_iter() {
             first_tree.add_hashes(index, leafs)
         }
-        println!("({}, {}) add_hashes elapsed: {}", tx_count, max_leafs_count, now.elapsed().as_millis());
+        println!("({}, {}, {}) add_hashes elapsed: {}", tx_count, max_leafs_count, commitments_probability, now.elapsed().as_millis());
         
         let commitments: Vec<(u64, _)> = leafs.clone().into_iter().map(|(index, leafs)| {
             let mut out_hashes = leafs.clone();
@@ -1463,16 +1466,16 @@ mod tests {
         let mut sub_leafs: Vec<(u64, Vec<_>)> = Vec::new();
         let mut sub_commitments: Vec<(u64, _)> = Vec::new();
         (0..tx_count).for_each(|i| {
-            if rng.gen_bool(0.5) {
-                sub_leafs.push((leafs[i as usize].0, leafs[i as usize].1.clone()));
-            } else {
+            if rng.gen_bool(commitments_probability) {
                 sub_commitments.push(commitments[i as usize]);
+            } else {
+                sub_leafs.push((leafs[i as usize].0, leafs[i as usize].1.clone()));
             }
         });
         
         let now = std::time::Instant::now();
         second_tree.add_leafs_and_commitments(sub_leafs, sub_commitments);
-        println!("({}, {}) add_leafs_and_commitments elapsed: {}", tx_count, max_leafs_count, now.elapsed().as_millis());
+        println!("({}, {}, {}) add_leafs_and_commitments elapsed: {}", tx_count, max_leafs_count, commitments_probability, now.elapsed().as_millis());
 
         assert_eq!(first_tree.get_root(), second_tree.get_root());
         assert_eq!(first_tree.next_index(), second_tree.next_index());
