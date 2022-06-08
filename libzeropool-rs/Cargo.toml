@@ -25,11 +25,13 @@ kvdb-memorydb = "0.9.0"
 [dependencies.bellman]
 version = "0.3.4"
 package = "fawkes-crypto-bellman_ce"
+default-features = false
 
 [dev-dependencies]
 test-case = "1.2.0"
 rand = "0.8.4"
 serde_json = "1.0.64"
+criterion = "0.3"
 
 [features]
 web = ["getrandom/js", "kvdb-web"]
@@ -37,9 +39,9 @@ node = ["getrandom/js"]
 native = ["kvdb-rocksdb", "bellman/multicore"]
 multicore = ["bellman/multicore"]
 
-[[bench]]
-name = "generate_proof"
-harness = false
-
 [profile.bench]
 debug = true
+
+[[bench]]
+name = "prove"
+harness = false
