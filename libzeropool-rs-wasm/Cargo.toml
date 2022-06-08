@@ -32,7 +32,7 @@ console_error_panic_hook = { version = "0.1.6", optional = true }
 # Unfortunately, `wee_alloc` requires nightly Rust when targeting wasm for now.
 wee_alloc = { version = "0.4.5", optional = true }
 
-libzeropool-rs = { path = "../libzeropool-rs" }
+libzeropool-rs = { path = "../libzeropool-rs", features = ["multicore"] }
 libzeropool = { version = "0.5.1", default-features = false }
 getrandom = { version = "0.2.3", features = ["js"] }
 fawkes-crypto = { version = "4.2.4", features = ["wasm", "serde_support"] }
@@ -49,6 +49,8 @@ serde-wasm-bindgen = "0.3.0"
 lazy_static = "1.4.0"
 hex = { version = "0.4.3", features = ["serde"] }
 js-sys = "0.3.55"
+rayon = "1.5.3"
+wasm-bindgen-rayon = "1.0.3"
 
 [dev-dependencies]
 wasm-bindgen-test = "0.3.24"
@@ -70,3 +72,4 @@ wasm-opt = false
 
 [package.metadata.wasm-pack.profile.release]
 wasm-opt = false
+
