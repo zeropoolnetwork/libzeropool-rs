@@ -4,6 +4,3 @@ members = [
     "libzkbob-rs",
     "libzkbob-rs-node",
 ]
-
-[patch.crates-io]
-fawkes-crypto-bellman_ce = { git = "https://github.com/voidxnull/phase2-bn254" }

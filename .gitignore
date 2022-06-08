@@ -5,3 +5,4 @@ bin/
 wasm-pack.log
 /lib
 yarn-error.log
+.idea/*

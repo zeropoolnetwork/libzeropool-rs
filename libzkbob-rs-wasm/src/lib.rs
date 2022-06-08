@@ -64,6 +64,8 @@ impl SerConstants {
     }
 }
 
+pub use wasm_bindgen_rayon::init_thread_pool;
+
 #[wasm_bindgen(js_name = "getConstants")]
 pub fn get_constants() -> Constants {
     serde_wasm_bindgen::to_value(&*CONSTANTS)
