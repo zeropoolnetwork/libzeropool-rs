@@ -270,6 +270,15 @@ impl UserAccount {
 
     #[wasm_bindgen(js_name = "cacheTxs")]
     pub fn cache_txs(&mut self, txs: IndexedTxs) -> Result<DecryptedMemos, JsValue> {
+        self.process_txs(txs, true)
+    }
+
+    #[wasm_bindgen(js_name = "decodeTxs")]
+    pub fn decode_txs(&mut self, txs: IndexedTxs) -> Result<DecryptedMemos, JsValue> {
+        self.process_txs(txs, false)
+    }
+
+    fn process_txs(&mut self, txs: IndexedTxs, save: bool) -> Result<DecryptedMemos, JsValue> {
         #[derive(Serialize)]
         struct DecMemo {
             index: u64,
@@ -303,7 +312,9 @@ impl UserAccount {
                 Some((account, notes)) => {        
                     if !other_tx_commitments.is_empty() {
                         let commitments = other_tx_commitments.drain(..);
-                        self.inner.borrow_mut().state.tree.add_tx_commitments(other_tx_start_index.unwrap(), commitments);
+                        if save {
+                            self.inner.borrow_mut().state.tree.add_tx_commitments(other_tx_start_index.unwrap(), commitments);
+                        }
                         other_tx_start_index = None;
                     }
                     
@@ -318,11 +329,13 @@ impl UserAccount {
                                 in_notes.push((index + 1 + (i as u64), note));   
                             }
                         });
-
-                    self.inner
-                        .borrow_mut()
-                        .state
-                        .add_full_tx(index, &hashes, Some(account), &in_notes);
+                    
+                    if save {
+                        self.inner
+                            .borrow_mut()
+                            .state
+                            .add_full_tx(index, &hashes, Some(account), &in_notes);
+                    }
 
                     decrypted_memos.push(
                         DecMemo {
@@ -353,14 +366,18 @@ impl UserAccount {
                     if !in_notes.is_empty() {
                         if !other_tx_commitments.is_empty() {
                             let commitments = other_tx_commitments.drain(..);
-                            self.inner.borrow_mut().state.tree.add_tx_commitments(other_tx_start_index.unwrap(), commitments);
+                            if save {
+                                self.inner.borrow_mut().state.tree.add_tx_commitments(other_tx_start_index.unwrap(), commitments);
+                            }
                             other_tx_start_index = None;
                         }
 
-                        self.inner
-                            .borrow_mut()
-                            .state
-                            .add_full_tx(index, &hashes, None, &in_notes);
+                        if save {
+                            self.inner
+                                .borrow_mut()
+                                .state
+                                .add_full_tx(index, &hashes, None, &in_notes);
+                        }
 
                         decrypted_memos.push(
                             DecMemo{
@@ -383,7 +400,9 @@ impl UserAccount {
 
         if !other_tx_commitments.is_empty() {
             let commitments = other_tx_commitments.drain(..);
-            self.inner.borrow_mut().state.tree.add_tx_commitments(other_tx_start_index.unwrap(), commitments);
+            if save {
+                self.inner.borrow_mut().state.tree.add_tx_commitments(other_tx_start_index.unwrap(), commitments);
+            }
         }
 
         let decrypted_memos = serde_wasm_bindgen::to_value(&decrypted_memos)
