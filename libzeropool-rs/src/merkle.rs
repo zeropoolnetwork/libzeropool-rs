@@ -167,7 +167,7 @@ impl<D: KeyValueDB, P: PoolParams> MerkleTree<D, P> {
                     virtual_nodes.insert((height as u32, ((index + leafs.len() as u64 - 1) >> height) + 1), self.zero_note_hashes[height]);
                 });
             leafs.into_iter().enumerate().for_each(|(i, leaf)| {
-                virtual_nodes.insert((0 as u32, index + i as u64), leaf);
+                virtual_nodes.insert((0_u32, index + i as u64), leaf);
             });
         });
 

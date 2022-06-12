@@ -366,8 +366,8 @@ impl UserAccount {
                             _ => None,
                         })
                         .collect();
-
-                    if in_notes.len() > 0 {
+                    
+                    if !in_notes.is_empty() {
                         if save {
                             new_notes.push(in_notes.clone());
                             new_leafs.push((index, hashes));
