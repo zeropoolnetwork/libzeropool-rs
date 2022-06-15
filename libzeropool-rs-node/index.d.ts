@@ -24,6 +24,7 @@ declare class MerkleTree {
         new_hashes_left_index: number,
         new_hashes_right_index: number,
     ): any;
+    rollback(index: number): void;
 }
 
 declare class TxStorage {
