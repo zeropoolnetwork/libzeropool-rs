@@ -101,7 +101,7 @@ pub fn merkle_get_leaf_proof(mut cx: FunctionContext) -> JsResult<JsValue> {
 
 pub fn merkle_get_commitment_proof(mut cx: FunctionContext) -> JsResult<JsValue> {
     let tree = cx.argument::<BoxedMerkleTree>(0)?;
-    let index: u64 = {
+    let index = {
         let num = cx.argument::<JsNumber>(1)?;
         num.value(&mut cx) as u64
     };
@@ -129,11 +129,11 @@ pub fn merkle_get_root(mut cx: FunctionContext) -> JsResult<JsValue> {
 
 pub fn merkle_get_node(mut cx: FunctionContext) -> JsResult<JsValue> {
     let tree = cx.argument::<BoxedMerkleTree>(0)?;
-    let height: u32 = {
+    let height = {
         let num = cx.argument::<JsNumber>(1)?;
         num.value(&mut cx) as u32
     };
-    let index: u64 = {
+    let index = {
         let num = cx.argument::<JsNumber>(2)?;
         num.value(&mut cx) as u64
     };
@@ -207,4 +207,17 @@ pub fn merkle_get_virtual_node(mut cx: FunctionContext) -> JsResult<JsValue> {
     let result = neon_serde::to_value(&mut cx, &node).unwrap();
 
     Ok(result)
+}
+
+pub fn merkle_rollback(mut cx: FunctionContext) -> JsResult<JsUndefined> {
+    let tree = cx.argument::<BoxedMerkleTree>(0)?;
+    let rollback_index = {
+        let num = cx.argument::<JsNumber>(1)?;
+        num.value(&mut cx) as u64
+    };
+
+    let mut a = tree.write().unwrap();
+    a.inner.rollback(rollback_index);
+
+    Ok(cx.undefined())
 }
