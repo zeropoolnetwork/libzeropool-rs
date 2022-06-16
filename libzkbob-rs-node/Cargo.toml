@@ -1,6 +1,6 @@
 [package]
 name = "libzkbob-rs-node"
-version = "0.1.26"
+version = "0.1.27"
 authors = ["Dmitry Vdovin <voidxnull@gmail.com>"]
 repository = "https://github.com/zkBob/libzkbob-rs/"
 license = "MIT OR Apache-2.0"

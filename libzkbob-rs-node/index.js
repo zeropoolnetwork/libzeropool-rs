@@ -57,6 +57,10 @@ class MerkleTree {
             new_hashes_right_index,
         )
     }
+
+    rollback(index) {
+        return zp.merkleRollback(this.inner, index)
+    }
 }
 
 class TxStorage {
