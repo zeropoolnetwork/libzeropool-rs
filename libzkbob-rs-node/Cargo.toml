@@ -11,7 +11,7 @@ exclude = ["index.node"]
 crate-type = ["cdylib"]
 
 [dependencies]
-libzkbob-rs = { version = "0.3.14", features = ["native"] }
+libzkbob-rs = { version = "0.3.16", features = ["native"] }
 #libzkbob-rs =  { path = "../libzkbob-rs", features = ["native"] }
 neon = { version = "0.10.0", default-features = false, features = ["channel-api", "napi-6", "promise-api"] }
 # FIXME: Using a random fork for now
