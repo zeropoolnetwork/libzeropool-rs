@@ -4,3 +4,8 @@ members = [
     "libzkbob-rs",
     "libzkbob-rs-node",
 ]
+
+default-members = [
+    "libzkbob-rs",
+    "libzkbob-rs-node",
+]
