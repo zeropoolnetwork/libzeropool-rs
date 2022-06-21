@@ -33,9 +33,9 @@ console_error_panic_hook = { version = "0.1.6", optional = true }
 wee_alloc = { version = "0.4.5", optional = true }
 
 libzkbob-rs = { path = "../libzkbob-rs" }
-libzeropool = { version = "0.5.6", default-features = false }
+libzeropool = { git = "https://github.com/zkBob/libzeropool", branch = "multicore-wasm", version = "0.5.6", default-features = false }
 getrandom = { version = "0.2.3", features = ["js"] }
-fawkes-crypto = { version = "4.2.4", features = ["wasm", "serde_support"] }
+fawkes-crypto = { git = "https://github.com/zkBob/fawkes-crypto", branch = "multicore-wasm", version = "4.2.4", features = ["wasm", "multicore", "serde_support"] }
 bs58 = "0.4.0"
 kvdb-web = "0.9.0"
 kvdb = "0.9.0"
@@ -49,6 +49,7 @@ serde-wasm-bindgen = "0.3.0"
 lazy_static = "1.4.0"
 hex = { version = "0.4.3", features = ["serde"] }
 js-sys = "0.3.55"
+wasm-bindgen-rayon = "1.0"
 
 [dev-dependencies]
 wasm-bindgen-test = "0.3.24"
