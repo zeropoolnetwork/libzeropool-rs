@@ -17,7 +17,7 @@ function build () {
   sed -i.bak -E "s/\"name\": \"libzkbob-rs-wasm\"/\"name\": \"libzkbob-rs-wasm-$1\"/g" $PARENT_DIR/$1/package.json
   # Add workerHelpers.js in package.json
   pushd $PARENT_DIR/$1 > /dev/null
-    echo "`jq --arg WORKER_JS $(find . -name "workerHelpers.js") '.files[.files| length] |= . + $WORKER_JS' package.json`" > package.json
+    echo "`jq --arg WORKER_JS $(find . -name "workerHelpers.js" | sed -e "s/^.\///") '.files[.files| length] |= . + $WORKER_JS' package.json`" > package.json
   popd > /dev/null
 }
 
