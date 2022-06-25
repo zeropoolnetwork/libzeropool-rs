@@ -16,18 +16,22 @@ use libzeropool::{
         account::Account as NativeAccount,
         note::Note as NativeNote,
         tx::{parse_delta, TransferPub as NativeTransferPub, TransferSec as NativeTransferSec},
+        cipher, 
+        key
     },
 };
 use libzkbob_rs::address::format_address;
 use libzkbob_rs::{
     client::{TxType as NativeTxType, UserAccount as NativeUserAccount},
     merkle::{Hash, Node},
+    keys::Keys
 };
-use serde::Serialize;
+use serde::{Serialize, Deserialize};
 use wasm_bindgen::{prelude::*, JsCast};
 use wasm_bindgen_futures::future_to_promise;
+use rayon::prelude::*;
 
-use crate::{IndexedTx, IndexedTxs, DecryptedMemos};
+use crate::{IndexedTx, IndexedTxs, DecryptedMemos, ParseTxsResult};
 use crate::database::Database;
 use crate::ts_types::Hash as JsHash;
 use crate::{
@@ -39,6 +43,35 @@ mod tx_types;
 use tx_types::JsTxType;
 
 // TODO: Find a way to expose MerkleTree,
+
+#[derive(Serialize, Deserialize, Clone, Default)]
+struct DecMemo {
+    index: u64,
+    acc: Option<NativeAccount<Fr>>,
+    #[serde(rename = "inNotes")]
+    in_notes: Vec<IndexedNote>,
+    #[serde(rename = "outNotes")]
+    out_notes: Vec<IndexedNote>,
+    #[serde(rename = "txHash")]
+    tx_hash: Option<String>,
+}
+
+
+#[derive(Serialize, Deserialize, Default)]
+struct StateUpdate {
+    new_leafs: Vec<(u64, Vec<Hash<Fr>>)>,
+    new_commitments: Vec<(u64, Hash<Fr>)>,
+    new_accounts: Vec<(u64, NativeAccount<Fr>)>,
+    new_notes: Vec<Vec<(u64, NativeNote<Fr>)>>
+}
+
+#[derive(Serialize, Default)]
+struct ParseResult {
+    #[serde(rename = "decryptedMemos")]
+    decrypted_memos: Vec<DecMemo>,
+    #[serde(rename = "stateUpdate")]
+    state_update: StateUpdate
+}
 
 #[wasm_bindgen]
 pub struct UserAccount {
@@ -279,18 +312,6 @@ impl UserAccount {
     }
 
     fn process_txs(&mut self, txs: IndexedTxs, save: bool) -> Result<DecryptedMemos, JsValue> {
-        #[derive(Serialize)]
-        struct DecMemo {
-            index: u64,
-            acc: Option<NativeAccount<Fr>>,
-            #[serde(rename = "inNotes")]
-            in_notes: Vec<IndexedNote>,
-            #[serde(rename = "outNotes")]
-            out_notes: Vec<IndexedNote>,
-            #[serde(rename = "txHash")]
-            tx_hash: Option<String>,
-        }
-
         let txs: Vec<IndexedTx> = serde_wasm_bindgen::from_value(txs.unchecked_into())?;
 
         let mut decrypted_memos: Vec<DecMemo> = Vec::new(); 
@@ -396,6 +417,141 @@ impl UserAccount {
              .unwrap()
              .unchecked_into::<DecryptedMemos>();
         Ok(decrypted_memos)
+    }
+    
+    #[wasm_bindgen(js_name = "parseTxs")]
+    pub fn parse_txs(sk: &[u8], txs: IndexedTxs) -> Result<ParseTxsResult, JsValue> {
+        let txs: Vec<IndexedTx> = serde_wasm_bindgen::from_value(txs.unchecked_into())?;
+        
+        let sk = Num::<Fs>::from_uint(NumRepr(Uint::from_little_endian(sk)))
+            .ok_or_else(|| js_err!("Invalid spending key"))?;
+        let params = POOL_PARAMS.clone();
+        let keys = Keys::derive(sk, &params);
+        let eta = keys.eta;
+
+        let parse_results: Vec<_> = txs.into_par_iter().map(|tx| -> ParseResult {
+            let IndexedTx{index, memo, commitment} = tx;
+            let num_hashes = (&memo[0..4]).read_u32::<LittleEndian>().unwrap();
+            let hashes: Vec<_> = (&memo[4..])
+                .chunks(32)
+                .take(num_hashes as usize)
+                .map(|bytes| Num::from_uint_reduced(NumRepr(Uint::from_little_endian(bytes))))
+                .collect();
+            
+            let pair = cipher::decrypt_out(eta, &memo.clone(), &params);
+
+            match pair {
+                Some((account, notes)) => {        
+                    let mut in_notes = Vec::new();
+                    let mut out_notes = Vec::new();
+                    notes.into_iter()
+                        .enumerate()
+                        .for_each(|(i, note)| {
+                            out_notes.push((index + 1 + (i as u64), note));
+
+                            if note.p_d == key::derive_key_p_d(note.d.to_num(), eta, &params).x {
+                                in_notes.push((index + 1 + (i as u64), note));   
+                            }
+                        });
+
+                    ParseResult {
+                        decrypted_memos: vec![ DecMemo {
+                            index, 
+                            acc: Some(account), 
+                            in_notes: in_notes.clone().into_iter().map(|(index, note)| IndexedNote{index, note}).collect(), 
+                            out_notes: out_notes.into_iter().map(|(index, note)| IndexedNote{index, note}).collect(), 
+                            ..Default::default()
+                        }],
+                        state_update: StateUpdate {
+                            new_leafs: vec![(index, hashes)],
+                            new_accounts: vec![(index, account)],
+                            new_notes: vec![in_notes],
+                            ..Default::default()
+                        }
+                    }
+                },
+                None => {
+                    let in_notes: Vec<(_, _)> = cipher::decrypt_in(eta, &memo, &params)
+                        .into_iter()
+                        .enumerate()
+                        .filter_map(|(i, note)| {
+                            match note {
+                                Some(note) if note.p_d == key::derive_key_p_d(note.d.to_num(), eta, &params).x => {
+                                    Some((index + 1 + (i as u64), note))
+                                }
+                                _ => None,
+                            }
+                        })
+                        .collect();
+                    
+
+                    if !in_notes.is_empty() {
+                        ParseResult {
+                            decrypted_memos: vec![ DecMemo{
+                                index, 
+                                in_notes: in_notes.clone().into_iter().map(|(index, note)| IndexedNote{index, note}).collect(), 
+                                ..Default::default()
+                            }],
+                            state_update: StateUpdate {
+                                new_leafs: vec![(index, hashes)],
+                                new_notes: vec![in_notes],
+                                ..Default::default()
+                            }
+                        }
+                    } else {
+                        ParseResult {
+                            state_update: StateUpdate {
+                                new_commitments: vec![(index, Num::from_uint_reduced(NumRepr(Uint::from_big_endian(&commitment))))],
+                                ..Default::default()
+                            },
+                            ..Default::default()
+                        }
+                    }
+                }
+            }
+        }).collect();
+
+        let mut parse_result = parse_results
+            .into_iter()
+            .fold(Default::default(), |acc: ParseResult, parse_result| {
+                ParseResult {
+                    decrypted_memos: vec![acc.decrypted_memos, parse_result.decrypted_memos].concat(),
+                    state_update: StateUpdate {
+                        new_leafs: vec![acc.state_update.new_leafs, parse_result.state_update.new_leafs].concat(),
+                        new_commitments: vec![acc.state_update.new_commitments, parse_result.state_update.new_commitments].concat(),
+                        new_accounts: vec![acc.state_update.new_accounts, parse_result.state_update.new_accounts].concat(),
+                        new_notes: vec![acc.state_update.new_notes, parse_result.state_update.new_notes].concat()
+                    }
+                }
+        });
+
+        parse_result.decrypted_memos.sort_by(|a,b| a.index.cmp(&b.index));
+
+        let parse_result = serde_wasm_bindgen::to_value(&parse_result)
+            .unwrap()
+            .unchecked_into::<ParseTxsResult>();
+        Ok(parse_result)
+    }
+
+    #[wasm_bindgen(js_name = "updateState")]
+    pub fn update_state(&mut self, state_update: &JsValue) -> Result<(), JsValue> {
+        let state_update: StateUpdate = state_update.into_serde().unwrap();
+        
+        if !state_update.new_leafs.is_empty() || !state_update.new_commitments.is_empty() {
+            self.inner.borrow_mut().state.tree.add_leafs_and_commitments(state_update.new_leafs, state_update.new_commitments);
+        }
+
+        state_update.new_accounts.into_iter().for_each(|(at_index, account)| {
+            self.inner.borrow_mut().state.add_account(at_index, account);
+        });
+
+        state_update.new_notes.into_iter().for_each(|notes| {
+            notes.into_iter().for_each(|(at_index, note)| {
+                self.inner.borrow_mut().state.add_note(at_index, note);
+            });
+        });
+
+        Ok(())
     }
 
     #[wasm_bindgen(js_name = "getRoot")]
