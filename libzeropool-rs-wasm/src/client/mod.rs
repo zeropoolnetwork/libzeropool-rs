@@ -21,7 +21,6 @@ use libzeropool::{
     },
 };
 use libzeropool_rs::{
-    address::format_address,
     client::{TxType as NativeTxType, UserAccount as NativeUserAccount},
     merkle::{Hash, Node},
     keys::Keys
@@ -31,7 +30,7 @@ use wasm_bindgen::{prelude::*, JsCast};
 use wasm_bindgen_futures::future_to_promise;
 use rayon::prelude::*;
 
-use crate::{IndexedTx, IndexedTxs, DecryptedMemos, ParseTxsResult};
+use crate::{IndexedTx, IndexedTxs, ParseTxsResult};
 use crate::database::Database;
 use crate::ts_types::Hash as JsHash;
 use crate::{
@@ -46,33 +45,12 @@ use tx_types::JsTxType;
 
 // TODO: Find a way to expose MerkleTree,
 
-#[derive(Serialize, Deserialize, Clone, Default)]
-struct DecMemo {
-    index: u64,
-    acc: Option<NativeAccount<Fr>>,
-    #[serde(rename = "inNotes")]
-    in_notes: Vec<IndexedNote>,
-    #[serde(rename = "outNotes")]
-    out_notes: Vec<IndexedNote>,
-    #[serde(rename = "txHash")]
-    tx_hash: Option<String>,
-}
-
-
 #[derive(Serialize, Deserialize, Default)]
 struct StateUpdate {
     new_leafs: Vec<(u64, Vec<Hash<Fr>>)>,
     new_commitments: Vec<(u64, Hash<Fr>)>,
     new_accounts: Vec<(u64, NativeAccount<Fr>)>,
     new_notes: Vec<Vec<(u64, NativeNote<Fr>)>>
-}
-
-#[derive(Serialize, Default)]
-struct ParseResult {
-    #[serde(rename = "decryptedMemos")]
-    decrypted_memos: Vec<DecMemo>,
-    #[serde(rename = "stateUpdate")]
-    state_update: StateUpdate
 }
 
 #[wasm_bindgen]
@@ -305,142 +283,29 @@ impl UserAccount {
 
         Ok(())
     }
-
-    #[wasm_bindgen(js_name = "cacheTxs")]
-    pub fn cache_txs(&mut self, txs: IndexedTxs) -> Result<DecryptedMemos, JsValue> {
-        self.process_txs(txs, true)
-    }
-
-    #[wasm_bindgen(js_name = "decodeTxs")]
-    pub fn decode_txs(&mut self, txs: IndexedTxs) -> Result<DecryptedMemos, JsValue> {
-        self.process_txs(txs, false)
-    }
-
-    fn process_txs(&mut self, txs: IndexedTxs, save: bool) -> Result<DecryptedMemos, JsValue> {
-        let txs: Vec<IndexedTx> = serde_wasm_bindgen::from_value(txs.unchecked_into())?;
-
-        let mut decrypted_memos: Vec<DecMemo> = Vec::new();
-        let mut new_leafs: Vec<(u64, Vec<Hash<_>>)> = Vec::new();
-        let mut new_commitments: Vec<(u64, Hash<_>)> = Vec::new();
-        let mut new_accounts: Vec<(u64, _)> = Vec::new();
-        let mut new_notes: Vec<Vec<(u64, _)>> = Vec::new();
-        for IndexedTx {
-            index,
-            memo,
-            commitment,
-        } in txs
-        {
-            let num_hashes = (&memo[0..4]).read_u32::<LittleEndian>().unwrap();
-            let hashes: Vec<_> = (&memo[4..])
-                .chunks(32)
-                .take(num_hashes as usize)
-                .map(|bytes| Num::from_uint_reduced(NumRepr(Uint::from_little_endian(bytes))))
-                .collect();
-
-            let pair = self.inner.borrow().decrypt_pair(memo.clone());
-
-            match pair {
-                Some((account, notes)) => {
-                    let mut in_notes = Vec::new();
-                    let mut out_notes = Vec::new();
-                    notes.into_iter().enumerate().for_each(|(i, note)| {
-                        let address = format_address::<PoolParams>(note.d, note.p_d);
-                        out_notes.push((index + 1 + (i as u64), note));
-                        if self.is_own_address(&address) {
-                            in_notes.push((index + 1 + (i as u64), note));
-                        }
-                    });
-
-                    if save {
-                        new_accounts.push((index, account));
-                        new_notes.push(in_notes.clone());
-                        new_leafs.push((index, hashes));
-                    }
-                    decrypted_memos.push(DecMemo {
-                        index,
-                        acc: Some(account),
-                        in_notes: in_notes
-                            .into_iter()
-                            .map(|(index, note)| IndexedNote { index, note })
-                            .collect(),
-                        out_notes: out_notes
-                            .into_iter()
-                            .map(|(index, note)| IndexedNote { index, note })
-                            .collect(),
-                        tx_hash: None,
-                    });
-                }
-                None => {
-                    let in_notes: Vec<(_, _)> = self
-                        .inner
-                        .borrow()
-                        .decrypt_notes(memo)
-                        .into_iter()
-                        .enumerate()
-                        .filter_map(|(i, note)| match note {
-                            Some(note)
-                                if self.is_own_address(&format_address::<PoolParams>(
-                                    note.d, note.p_d,
-                                )) =>
-                            {
-                                Some((index + 1 + (i as u64), note))
-                            }
-                            _ => None,
-                        })
-                        .collect();
-                    
-                    if !in_notes.is_empty() {
-                        if save {
-                            new_notes.push(in_notes.clone());
-                            new_leafs.push((index, hashes));
-                        }
-                        decrypted_memos.push(DecMemo {
-                            index,
-                            acc: None,
-                            in_notes: in_notes
-                                .into_iter()
-                                .map(|(index, note)| IndexedNote { index, note })
-                                .collect(),
-                            out_notes: Vec::new(),
-                            tx_hash: None,
-                        });
-                    } else if save {
-                        new_commitments.push((
-                            index,
-                            Num::from_uint_reduced(NumRepr(Uint::from_big_endian(&commitment))),
-                        ));
-                    }
-                }
-            }
-        }
-
-        if !new_leafs.is_empty() || !new_commitments.is_empty() {
-            self.inner
-                .borrow_mut()
-                .state
-                .tree
-                .add_leafs_and_commitments(new_leafs, new_commitments);
-        }
-
-        new_accounts.into_iter().for_each(|(at_index, account)| {
-            self.inner.borrow_mut().state.add_account(at_index, account);
-        });
-
-        new_notes.into_iter().for_each(|notes| {
-            notes.into_iter().for_each(|(at_index, note)| {
-                self.inner.borrow_mut().state.add_note(at_index, note);
-            });
-        });
-
-        let decrypted_memos = serde_wasm_bindgen::to_value(&decrypted_memos)
-            .unwrap()
-            .unchecked_into::<DecryptedMemos>();
-        Ok(decrypted_memos)
-    }
     
     #[wasm_bindgen(js_name = "parseTxs")]
     pub fn parse_txs(sk: &[u8], txs: IndexedTxs) -> Result<ParseTxsResult, JsValue> {
-        let txs: Vec<IndexedTx> = serde_wasm_bindgen::from_value(txs.unchecked_into())?;
+       
+        #[derive(Serialize, Deserialize, Clone, Default)]
+        struct DecMemo {
+            index: u64,
+            acc: Option<NativeAccount<Fr>>,
+            #[serde(rename = "inNotes")]
+            in_notes: Vec<IndexedNote>,
+            #[serde(rename = "outNotes")]
+            out_notes: Vec<IndexedNote>,
+            #[serde(rename = "txHash")]
+            tx_hash: Option<String>,
+        }
+
+        #[derive(Serialize, Default)]
+        struct ParseResult {
+            #[serde(rename = "decryptedMemos")]
+            decrypted_memos: Vec<DecMemo>,
+            #[serde(rename = "stateUpdate")]
+            state_update: StateUpdate
+        }
         
         let sk = Num::<Fs>::from_uint(NumRepr(Uint::from_little_endian(sk)))
             .ok_or_else(|| js_err!("Invalid spending key"))?;
@@ -448,6 +313,7 @@ impl UserAccount {
         let keys = Keys::derive(sk, &params);
         let eta = keys.eta;
 
+        let txs: Vec<IndexedTx> = serde_wasm_bindgen::from_value(txs.unchecked_into())?;
         let parse_results: Vec<_> = txs.into_par_iter().map(|tx| -> ParseResult {
             let IndexedTx{index, memo, commitment} = tx;
             let num_hashes = (&memo[0..4]).read_u32::<LittleEndian>().unwrap();
