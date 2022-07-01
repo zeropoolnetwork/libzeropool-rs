@@ -135,8 +135,8 @@ export interface DecryptedMemo {
 
 export interface IndexedTx {
     index: number;
-    memo: Uint8Array;
-    commitment: Uint8Array;
+    memo: string;
+    commitment: string;
 }
 
 export interface ParseTxsResult {
@@ -229,9 +229,6 @@ extern "C" {
     #[wasm_bindgen(typescript_type = "DecryptedMemo[]")]
     pub type DecryptedMemos;
 
-    #[wasm_bindgen(typescript_type = "IndexedTx[]")]
-    pub type IndexedTxs;
-
     #[wasm_bindgen(typescript_type = "ParseTxsResult")]
     pub type ParseTxsResult;
 }
@@ -245,6 +242,6 @@ pub struct IndexedNote {
 #[derive(Serialize, Deserialize)]
 pub struct IndexedTx {
     pub index: u64,
-    pub memo: Vec<u8>,
-    pub commitment: Vec<u8>,
+    pub memo: String,
+    pub commitment: String,
 }
