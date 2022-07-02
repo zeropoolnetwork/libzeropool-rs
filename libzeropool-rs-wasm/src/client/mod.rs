@@ -319,6 +319,14 @@ impl UserAccount {
         self.inner.borrow().state.note_balance().to_string()
     }
 
+    #[wasm_bindgen(js_name = "getUsableNotes")]
+    /// Returns all notes available for spending
+    pub fn get_usable_notes(&self) -> JsValue {
+        let data = self.inner.borrow().state.get_usable_notes();
+
+        serde_wasm_bindgen::to_value(&data).unwrap()
+    }
+
     #[wasm_bindgen(js_name = "nextTreeIndex")]
     pub fn next_tree_index(&self) -> u64 {
         self.inner.borrow().state.tree.next_index()
