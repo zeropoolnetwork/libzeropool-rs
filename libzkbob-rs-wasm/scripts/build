@@ -8,7 +8,9 @@ function build () {
   wasm-opt -o $PARENT_DIR/$1/wasm-opt.wasm -O3 $PARENT_DIR/$1/libzkbob_rs_wasm_bg.wasm && mv $PARENT_DIR/$1/wasm-opt.wasm $PARENT_DIR/$1/libzkbob_rs_wasm_bg.wasm
   # Patch typings for async methods
   sed -i.bak -E 's/(createDeposit\(.*\)):.*$/\1: Promise<TransactionData>;/g' $PARENT_DIR/$1/libzkbob_rs_wasm.d.ts
+  sed -i.bak -E 's/(createDepositPermittable\(.*\)):.*$/\1: Promise<TransactionData>;/g' $PARENT_DIR/$1/libzkbob_rs_wasm.d.ts
   sed -i.bak -E 's/(createTransfer\(.*\)):.*$/\1: Promise<TransactionData>;/g' $PARENT_DIR/$1/libzkbob_rs_wasm.d.ts
+  sed -i.bak -E 's/(createMultiTransfer\(.*\)):.*$/\1: Promise<TransactionData[]>;/g' $PARENT_DIR/$1/libzkbob_rs_wasm.d.ts
   sed -i.bak -E 's/(createWithdraw\(.*\)):.*$/\1: Promise<TransactionData>;/g' $PARENT_DIR/$1/libzkbob_rs_wasm.d.ts
   # Remove invalid typings
   sed -i.bak -E '/BroccoliDestroyInstance/d' $PARENT_DIR/$1/libzkbob_rs_wasm.d.ts
