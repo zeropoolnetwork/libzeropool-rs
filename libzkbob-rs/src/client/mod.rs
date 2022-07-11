@@ -218,8 +218,15 @@ where
         // output account index in the Merkle tree (used for multi-tx processing)
         let mut out_account_index = self.state.tree.next_index();
 
-        // virtual proofs used for multi-tx
+        // virtual hashes used for multi-tx
         let mut virtual_proofs: Vec<MerkleProof<P::Fr, { constants::HEIGHT }>> = vec![];
+
+        // virtual commitments used for root calculation
+        let mut virtual_commitments: Vec<Num<P::Fr>> = vec![];
+
+        // Should be provided by relayer together with note proofs, but as a fallback
+        // take the next index of the tree.
+        let mut delta_index = Num::from(delta_index.unwrap_or_else(|| self.state.tree.next_index()));
 
         // Iterate over txs
         for tx in txs.iter() {
@@ -321,9 +328,6 @@ where
             let mut delta_energy = Num::ZERO;
 
             let in_account_pos = in_account_index.unwrap_or(0);
-            // Should be provided by relayer together with note proofs, but as a fallback
-            // take the next index of the tree.
-            let delta_index = Num::from(delta_index.unwrap_or_else(|| self.state.tree.next_index()));
 
             let mut input_energy = in_account.e.to_num();
             input_energy += in_account.b.to_num() * (delta_index - Num::from(in_account_pos));
@@ -441,7 +445,7 @@ where
                 *self.pool_id.clone().as_num(),
             );
 
-            let root: Num<P::Fr> = tree.get_root();
+            let root: Num<P::Fr> = tree.get_root_after_virtual(virtual_commitments.iter().cloned());
 
             // memo = tx_specific_data, ciphertext, user_defined_data
             let mut memo_data = {
@@ -523,6 +527,10 @@ where
 
             let mut new_proofs = tree.get_proof_after_virtual(out_hashes.iter().cloned());
             virtual_proofs.append(new_proofs.as_mut());
+
+            virtual_commitments.push(out_commit);
+
+            delta_index += Num::from((constants::OUT as u64) + 1);
 
 
             result.push(TransactionData {
