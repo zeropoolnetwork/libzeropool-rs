@@ -289,6 +289,41 @@ impl<D: KeyValueDB, P: PoolParams> MerkleTree<D, P> {
         self.get(constants::HEIGHT as u32, 0)
     }
 
+    pub fn get_root_after_virtual<I>(
+        &self,
+        new_commitments: I,
+    ) -> Hash<P::Fr>
+    where
+        I: IntoIterator<Item = Hash<P::Fr>>,
+    {
+        let index_offset = self.next_index;
+        let index_step = constants::OUT as u64 + 1;
+
+        let mut virtual_commitment_nodes: HashMap<(u32, u64), Hash<P::Fr>> = new_commitments
+            .into_iter()
+            .enumerate()
+            .map(|(index, hash)| ((constants::OUTPLUSONELOG as u32, index_offset + index as u64), hash))
+            .collect();
+        let new_commitments_count = virtual_commitment_nodes.len() as u64;
+
+        let update_boundaries = UpdateBoundaries {
+            updated_range_left_index: index_offset,
+            updated_range_right_index: index_offset + new_commitments_count * index_step,
+            new_hashes_left_index: index_offset,
+            new_hashes_right_index: index_offset + new_commitments_count * index_step,
+        };
+
+        let node = self.get_virtual_node(
+            constants::HEIGHT as u32,
+            0,
+            &mut virtual_commitment_nodes,
+            index_offset,
+            index_offset + new_commitments_count * index_step,
+        );
+
+        node
+    }
+
     pub fn get_opt(&self, height: u32, index: u64) -> Option<Hash<P::Fr>> {
         assert!(height <= constants::HEIGHT as u32);
 
