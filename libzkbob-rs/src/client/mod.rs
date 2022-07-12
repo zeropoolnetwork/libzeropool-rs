@@ -219,7 +219,10 @@ where
         let mut out_account_index = self.state.tree.next_index();
 
         // virtual hashes used for multi-tx
-        let mut virtual_proofs: Vec<MerkleProof<P::Fr, { constants::HEIGHT }>> = vec![];
+        //let mut virtual_proofs: Vec<MerkleProof<P::Fr, { constants::HEIGHT }>> = vec![];
+
+        // virtual tree leaves used to compute proofs for the second and next txs
+        let mut virtual_leaves: Vec<Num<P::Fr>> = vec![];
 
         // virtual commitments used for root calculation
         let mut virtual_commitments: Vec<Num<P::Fr>> = vec![];
@@ -482,10 +485,12 @@ where
                 || Ok(zero_proof()),
                 |i| {
                     let first_optimistic_index = tree.next_index();
+                    let virtual_proofs = tree.get_proof_after_virtual(virtual_leaves.iter().cloned());
                     if i < first_optimistic_index {
                         tree.get_leaf_proof(i)
                             .ok_or(CreateTxError::ProofNotFound(i))
                     } else if i - first_optimistic_index < virtual_proofs.len() as u64 {
+                        // account from the previous transaction in batch is in use
                         let virt_idx = (i - first_optimistic_index) as usize;
                         Ok(virtual_proofs[virt_idx].clone())
                     } else {
@@ -497,16 +502,9 @@ where
                 .iter()
                 .copied()
                 .map(|(index, _note)| {
-                    let first_optimistic_index = tree.next_index();
-                    if index < first_optimistic_index {
-                        tree.get_leaf_proof(index)
+                    // The new notes shouldn't be in use for multitransfer
+                    tree.get_leaf_proof(index)
                             .ok_or(CreateTxError::ProofNotFound(index))
-                    } else if index - first_optimistic_index < virtual_proofs.len() as u64 {
-                        let virt_idx = (index - first_optimistic_index) as usize;
-                        Ok(virtual_proofs[virt_idx].clone())
-                    } else {
-                        Err(CreateTxError::ProofNotFound(index))
-                    }
                 })
                 .chain((0..).map(|_| Ok(zero_proof())))
                 .take(constants::IN)
@@ -525,8 +523,9 @@ where
             in_account_index = Some(out_account_index);
             out_account_index += (constants::OUT as u64) + 1;
 
-            let mut new_proofs = tree.get_proof_after_virtual(out_hashes.iter().cloned());
-            virtual_proofs.append(new_proofs.as_mut());
+            //let mut new_proofs = tree.get_proof_after_virtual(out_hashes.iter().cloned());
+            //virtual_proofs.append(new_proofs.as_mut());
+            virtual_leaves.append(&mut out_hashes.clone().as_slice().to_vec());
 
             virtual_commitments.push(out_commit);
 
