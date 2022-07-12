@@ -27,6 +27,7 @@ pub struct DepositData {
     #[serde(flatten)]
     base_fields: TxBaseFields,
     amount: TokenAmount<Fr>,
+    outputs: Vec<Output>,
 }
 
 impl JsTxType for IDepositData {
@@ -34,12 +35,22 @@ impl JsTxType for IDepositData {
         let DepositData {
             base_fields,
             amount,
+            outputs,
         } = serde_wasm_bindgen::from_value(self.into())?;
+
+        let outputs = outputs
+            .into_iter()
+            .map(|out| TxOutput {
+                to: out.to,
+                amount: out.amount,
+            })
+            .collect::<Vec<_>>();
 
         Ok(NativeTxType::Deposit(
             base_fields.fee,
             base_fields.data.unwrap_or(vec![]),
             amount,
+            outputs,
         ))
     }
 }

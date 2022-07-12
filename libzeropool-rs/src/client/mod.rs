@@ -71,8 +71,8 @@ pub struct TxOutput<Fr: PrimeField> {
 pub enum TxType<Fr: PrimeField> {
     // fee, data, tx_outputs
     Transfer(TokenAmount<Fr>, Vec<u8>, Vec<TxOutput<Fr>>),
-    // fee, data, deposit_amount
-    Deposit(TokenAmount<Fr>, Vec<u8>, TokenAmount<Fr>),
+    // fee, data, deposit_amount, tx_outputs
+    Deposit(TokenAmount<Fr>, Vec<u8>, TokenAmount<Fr>, Vec<TxOutput<Fr>>),
     // fee, data, withdraw_amount, to, native_amount, energy_amount
     Withdraw(
         TokenAmount<Fr>,
@@ -171,7 +171,7 @@ where
         let (fee, tx_data, user_data) = {
             let mut tx_data: Vec<u8> = vec![];
             match &tx {
-                TxType::Deposit(fee, user_data, _) => {
+                TxType::Deposit(fee, user_data, _, _) => {
                     let raw_fee: u64 = fee.to_num().try_into().unwrap();
                     tx_data.write_all(&raw_fee.to_be_bytes()).unwrap();
                     (fee, tx_data, user_data)
@@ -237,8 +237,8 @@ where
 
         let mut output_value = Num::ZERO;
 
-        let (num_real_out_notes, out_notes): (_, SizedVec<_, { constants::OUT }>) =
-            if let TxType::Transfer(_, _, outputs) = &tx {
+        let (num_real_out_notes, out_notes): (_, SizedVec<_, { constants::OUT }>) = match &tx {
+            TxType::Deposit(_, _, _, outputs) | TxType::Transfer(_, _, outputs) => {
                 if outputs.len() >= constants::OUT {
                     return Err(CreateTxError::TooManyOutputs {
                         max: constants::OUT,
@@ -266,9 +266,9 @@ where
                     .collect::<Result<SizedVec<_, { constants::OUT }>, AddressParseError>>()?;
 
                 (outputs.len(), out_notes)
-            } else {
-                (0, (0..).map(|_| zero_note()).take(constants::OUT).collect())
-            };
+            }
+            _ => (0, (0..).map(|_| zero_note()).take(constants::OUT).collect()),
+        };
 
         let mut delta_value = -fee.as_num();
         // By default all account energy will be withdrawn on withdraw tx
@@ -319,9 +319,17 @@ where
                     ));
                 }
             }
-            TxType::Deposit(_, _, amount) => {
+            TxType::Deposit(_, _, amount, _) => {
                 delta_value += amount.to_num();
-                input_value + delta_value
+                let new_total_balance = input_value + delta_value;
+                if new_total_balance.to_uint() >= output_value.to_uint() {
+                    new_total_balance - output_value
+                } else {
+                    return Err(CreateTxError::InsufficientBalance(
+                        output_value.to_string(),
+                        new_total_balance.to_string(),
+                    ));
+                }
             }
         };
 
@@ -479,6 +487,7 @@ mod tests {
                 BoundedNum::new(Num::ZERO),
                 vec![],
                 BoundedNum::new(Num::ZERO),
+                vec![],
             ),
             None,
         )
@@ -495,6 +504,7 @@ mod tests {
                 BoundedNum::new(Num::ZERO),
                 vec![],
                 BoundedNum::new(Num::ONE),
+                vec![],
             ),
             None,
         )

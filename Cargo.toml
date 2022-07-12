@@ -6,4 +6,4 @@ members = [
 ]
 
 [patch.crates-io]
-fawkes-crypto-bellman_ce = { git = "https://github.com/voidxnull/phase2-bn254" }
+fawkes-crypto-bellman_ce = { git = "https://github.com/zeropoolnetwork/phase2-bn254.git", branch = "feature/rayon-support" }

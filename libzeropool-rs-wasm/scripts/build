@@ -2,8 +2,14 @@
 
 PARENT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )/.." &> /dev/null && pwd )"
 
+if ! command -v jq &> /dev/null
+then
+    echo "jq is required to run this script: https://stedolan.github.io/jq/"
+    exit
+fi
+
 function build () {
-  wasm-pack build --release --target $1 -d $1 -- --features $1
+  wasm-pack build --release --target web -d $1 -- --features $2
   # Optimize the binary, since wasm-pack refuses to see wasm-opt
   wasm-opt -o $PARENT_DIR/$1/wasm-opt.wasm -O3 $PARENT_DIR/$1/libzeropool_rs_wasm_bg.wasm && mv $PARENT_DIR/$1/wasm-opt.wasm $PARENT_DIR/$1/libzeropool_rs_wasm_bg.wasm
   # Patch typings for async methods
@@ -17,6 +23,8 @@ function build () {
   sed -i.bak -E "s/\"name\": \"libzeropool-rs-wasm\"/\"name\": \"libzeropool-rs-wasm-$1\"/g" $PARENT_DIR/$1/package.json
 }
 
-build web
-build bundler
-build nodejs
+build web "web"
+build web-mt "web","multicore"
+
+jq '.files |= . + ["snippets"]' $PARENT_DIR/web-mt/package.json > $PARENT_DIR/web-mt/tmp.json \
+  && mv $PARENT_DIR/web-mt/tmp.json $PARENT_DIR/web-mt/package.json

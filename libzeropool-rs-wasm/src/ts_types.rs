@@ -106,6 +106,7 @@ export interface ITxBaseFields {
 
 export interface IDepositData extends ITxBaseFields {
     amount: string;
+    outputs: Output[];
 }
 
 export interface ITransferData extends ITxBaseFields {
