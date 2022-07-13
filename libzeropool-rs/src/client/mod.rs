@@ -478,17 +478,13 @@ where
             let account_proof = in_account_index.map_or_else(
                 || Ok(zero_proof()),
                 |i| {
-                    let first_optimistic_index = tree.next_index();
-                    let virtual_proofs = tree.get_proof_after_virtual(virtual_leaves.iter().cloned());
-                    if i < first_optimistic_index {
+                    if virtual_leaves.len() > 0 {
+                        // We will use the account from the virtual tree from the second tx in multi-tx mode
+                        tree.get_proof_virtual_index(i, virtual_leaves.iter().cloned())
+                            .ok_or(CreateTxError::ProofNotFound(i))
+                    } else {
                         tree.get_leaf_proof(i)
                             .ok_or(CreateTxError::ProofNotFound(i))
-                    } else if i - first_optimistic_index < virtual_proofs.len() as u64 {
-                        // account from the previous transaction in batch is in use
-                        let virt_idx = (i - first_optimistic_index) as usize;
-                        Ok(virtual_proofs[virt_idx].clone())
-                    } else {
-                        Err(CreateTxError::ProofNotFound(i))
                     }
                 },
             )?;
@@ -496,8 +492,8 @@ where
                 .iter()
                 .copied()
                 .map(|(index, _note)| {
-                    // The new notes shouldn't be in use for multitransfer
                     if virtual_leaves.len() > 0 {
+                        // The note proofs become changed after adding new virtual hashes
                         tree.get_proof_virtual_index(index, virtual_leaves.iter().cloned())
                             .ok_or(CreateTxError::ProofNotFound(index))
                     } else {

@@ -439,7 +439,7 @@ impl<D: KeyValueDB, P: PoolParams> MerkleTree<D, P> {
 
         let update_boundaries = UpdateBoundaries {
             updated_range_left_index: index_offset,
-            updated_range_right_index: Self::calc_next_index(index_offset),
+            updated_range_right_index: index_offset + new_hashes_count,
             new_hashes_left_index: index_offset,
             new_hashes_right_index: index_offset + new_hashes_count,
         };
@@ -669,6 +669,10 @@ impl<D: KeyValueDB, P: PoolParams> MerkleTree<D, P> {
     #[inline]
     fn calc_next_index(leaf_index: u64) -> u64 {
         ((leaf_index >> constants::OUTPLUSONELOG) + 1) << constants::OUTPLUSONELOG
+    }
+
+    fn calc_cur_first_index(leaf_index: u64) -> u64 {
+        (leaf_index >> constants::OUTPLUSONELOG) << constants::OUTPLUSONELOG
     }
 
     fn update_path_batched(
