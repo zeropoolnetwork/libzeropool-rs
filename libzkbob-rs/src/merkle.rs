@@ -420,6 +420,33 @@ impl<D: KeyValueDB, P: PoolParams> MerkleTree<D, P> {
             .collect()
     }
 
+    pub fn get_proof_virtual_index<I>(
+        &self,
+        index: u64,
+        new_hashes: I,
+    ) -> Option<MerkleProof<P::Fr, { constants::HEIGHT }>>
+    where
+        I: IntoIterator<Item = Hash<P::Fr>>,
+    {
+        let index_offset = self.next_index;
+
+        let mut virtual_nodes: HashMap<(u32, u64), Hash<P::Fr>> = new_hashes
+            .into_iter()
+            .enumerate()
+            .map(|(index, hash)| ((0, index_offset + index as u64), hash))
+            .collect();
+        let new_hashes_count = virtual_nodes.len() as u64;
+
+        let update_boundaries = UpdateBoundaries {
+            updated_range_left_index: index_offset,
+            updated_range_right_index: Self::calc_next_index(index_offset),
+            new_hashes_left_index: index_offset,
+            new_hashes_right_index: index_offset + new_hashes_count,
+        };
+
+        Some(self.get_proof_virtual(index, &mut virtual_nodes, &update_boundaries))
+    }
+
     fn get_proof_virtual<const H: usize>(
         &self,
         index: u64,
