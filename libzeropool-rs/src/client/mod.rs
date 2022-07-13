@@ -497,8 +497,13 @@ where
                 .copied()
                 .map(|(index, _note)| {
                     // The new notes shouldn't be in use for multitransfer
-                    tree.get_leaf_proof(index)
+                    if virtual_leaves.len() > 0 {
+                        tree.get_proof_virtual_index(index, virtual_leaves.iter().cloned())
                             .ok_or(CreateTxError::ProofNotFound(index))
+                    } else {
+                        tree.get_leaf_proof(index)
+                            .ok_or(CreateTxError::ProofNotFound(index))
+                    }
                 })
                 .chain((0..).map(|_| Ok(zero_proof())))
                 .take(constants::IN)
