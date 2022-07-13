@@ -1,4 +1,4 @@
-use crate::{Fr, IDepositData, IDepositPermittableData, ITransferData, IWithdrawData, IMultiTransferData};
+use crate::{Fr, IDepositData, IDepositPermittableData, ITransferData, IWithdrawData, IMultiTransferData, IMultiWithdrawData};
 use libzeropool_rs::client::{TokenAmount, TxOutput, TxType as NativeTxType};
 use serde::Deserialize;
 use wasm_bindgen::prelude::*;
@@ -180,5 +180,24 @@ impl JsTxType for IWithdrawData {
             native_amount,
             energy_amount,
         ))
+    }
+}
+
+impl JsMultiTxType for IMultiWithdrawData {
+    fn to_native_array(&self) -> Result<Vec<NativeTxType<Fr>>, JsValue> {
+        let array: Vec<WithdrawData> = serde_wasm_bindgen::from_value(self.into())?;
+
+        let tx_array = array.into_iter().map(|tx| {
+            NativeTxType::Withdraw(
+                tx.base_fields.fee,
+                tx.base_fields.data.unwrap_or_default(),
+                tx.amount,
+                tx.to,
+                tx.native_amount,
+                tx.energy_amount,
+            )
+        }).collect();
+
+        Ok(tx_array)
     }
 }
