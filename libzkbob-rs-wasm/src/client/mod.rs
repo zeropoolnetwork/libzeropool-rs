@@ -27,7 +27,7 @@ use serde::Serialize;
 use wasm_bindgen::{prelude::*, JsCast};
 use wasm_bindgen_futures::future_to_promise;
 
-use crate::{IndexedTx, IndexedTxs, DecryptedMemos, IMultiTransferData};
+use crate::{IndexedTx, IndexedTxs, DecryptedMemos, IMultiTransferData, IMultiWithdrawData};
 use crate::database::Database;
 use crate::ts_types::Hash as JsHash;
 use crate::{
@@ -248,6 +248,11 @@ impl UserAccount {
     #[wasm_bindgen(js_name = "createWithdraw")]
     pub fn create_withdraw(&self, withdraw: IWithdrawData) -> Result<Promise, JsValue> {
         Ok(self.construct_tx_data(withdraw.to_native()?))
+    }
+
+    #[wasm_bindgen(js_name = "createMultiWithdraw")]
+    pub fn create_multi_withdraw(&self, withdrawals: IMultiWithdrawData) -> Result<Promise, JsValue> {
+        Ok(self.construct_multi_tx_data(withdrawals.to_native_array()?))
     }
 
     #[wasm_bindgen(js_name = "isOwnAddress")]
