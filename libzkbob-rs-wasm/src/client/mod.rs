@@ -26,15 +26,17 @@ use wasm_bindgen::{prelude::*, JsCast};
 use wasm_bindgen_futures::future_to_promise;
 
 use crate::client::tx_parser::StateUpdate;
+
 use crate::database::Database;
 use crate::ts_types::Hash as JsHash;
 use crate::{
-    keys::reduce_sk, Account, Fr, Fs, Hashes, IDepositData, IDepositPermittableData, ITransferData, IWithdrawData,
+    keys::reduce_sk, Account, Fr, Fs, Hashes, IDepositData, IDepositPermittableData,
+    ITransferData, IWithdrawData, IMultiTransferData, IMultiWithdrawData,
     IndexedNote, IndexedNotes, MerkleProof, Pair, PoolParams, Transaction, UserState, POOL_PARAMS,
 };
 
 mod tx_types;
-use tx_types::JsTxType;
+use tx_types::{JsTxType, JsMultiTxType};
 
 mod tx_parser;
 
@@ -172,6 +174,58 @@ impl UserAccount {
         })
     }
 
+    fn construct_multi_tx_data(&self, native_txs: Vec<NativeTxType<Fr>>) -> Promise {
+        #[derive(Serialize)]
+        struct ParsedDelta {
+            v: i64,
+            e: i64,
+            index: u64,
+        }
+
+        #[derive(Serialize)]
+        struct TransactionData {
+            public: NativeTransferPub<Fr>,
+            secret: NativeTransferSec<Fr>,
+            #[serde(with = "hex")]
+            ciphertext: Vec<u8>,
+            #[serde(with = "hex")]
+            memo: Vec<u8>,
+            commitment_root: Num<Fr>,
+            out_hashes: SizedVec<Num<Fr>, { constants::OUT + 1 }>,
+            parsed_delta: ParsedDelta,
+        }
+
+        let account = self.inner.clone();
+
+        future_to_promise(async move {
+            let txs = account
+                .borrow()
+                .create_txs(native_txs, None)
+                .map_err(|err| js_err!("{}", err))?;
+
+            let ready_txs: Vec<TransactionData> = txs.into_iter().map(|tx| {
+                let (v, e, index, _) = parse_delta(tx.public.delta);
+                let parsed_delta = ParsedDelta {
+                    v: v.try_into().unwrap(),
+                    e: e.try_into().unwrap(),
+                    index: index.try_into().unwrap(),
+                };
+
+                TransactionData {
+                    public: tx.public,
+                    secret: tx.secret,
+                    ciphertext: tx.ciphertext,
+                    memo: tx.memo,
+                    out_hashes: tx.out_hashes,
+                    commitment_root: tx.commitment_root,
+                    parsed_delta,
+                }
+            }).collect();
+
+            Ok(serde_wasm_bindgen::to_value(&ready_txs).unwrap())
+        })
+    }
+
     #[wasm_bindgen(js_name = "createDeposit")]
     pub fn create_deposit(&self, deposit: IDepositData) -> Result<Promise, JsValue> {
         Ok(self.construct_tx_data(deposit.to_native()?))
@@ -187,9 +241,19 @@ impl UserAccount {
         Ok(self.construct_tx_data(transfer.to_native()?))
     }
 
+    #[wasm_bindgen(js_name = "createMultiTransfer")]
+    pub fn create_multi_tranfer(&self, transfers: IMultiTransferData) -> Result<Promise, JsValue> {
+        Ok(self.construct_multi_tx_data(transfers.to_native_array()?))
+    }
+
     #[wasm_bindgen(js_name = "createWithdraw")]
     pub fn create_withdraw(&self, withdraw: IWithdrawData) -> Result<Promise, JsValue> {
         Ok(self.construct_tx_data(withdraw.to_native()?))
+    }
+
+    #[wasm_bindgen(js_name = "createMultiWithdraw")]
+    pub fn create_multi_withdraw(&self, withdrawals: IMultiWithdrawData) -> Result<Promise, JsValue> {
+        Ok(self.construct_multi_tx_data(withdrawals.to_native_array()?))
     }
 
     #[wasm_bindgen(js_name = "isOwnAddress")]
@@ -312,6 +376,14 @@ impl UserAccount {
     /// Returns user's total balance (account + available notes).
     pub fn note_balance(&self) -> String {
         self.inner.borrow().state.note_balance().to_string()
+    }
+
+    #[wasm_bindgen(js_name = "getUsableNotes")]
+    /// Returns all notes available for spending
+    pub fn get_usable_notes(&self) -> JsValue {
+        let data = self.inner.borrow().state.get_usable_notes();
+
+        serde_wasm_bindgen::to_value(&data).unwrap()
     }
 
     #[wasm_bindgen(js_name = "nextTreeIndex")]

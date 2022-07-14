@@ -1,4 +1,4 @@
-use crate::{Fr, IDepositData, IDepositPermittableData, ITransferData, IWithdrawData};
+use crate::{Fr, IDepositData, IDepositPermittableData, ITransferData, IWithdrawData, IMultiTransferData, IMultiWithdrawData};
 use libzkbob_rs::client::{TokenAmount, TxOutput, TxType as NativeTxType};
 use serde::Deserialize;
 use wasm_bindgen::prelude::*;
@@ -14,6 +14,10 @@ pub enum TxType {
 
 pub trait JsTxType {
     fn to_native(&self) -> Result<NativeTxType<Fr>, JsValue>;
+}
+
+pub trait JsMultiTxType {
+    fn to_native_array(&self) -> Result<Vec<NativeTxType<Fr>>, JsValue>;
 }
 
 #[wasm_bindgen]
@@ -76,7 +80,7 @@ impl JsTxType for IDepositPermittableData {
 }
 
 #[derive(Deserialize)]
-struct Output {
+pub struct Output {
     to: String,
     amount: TokenAmount<Fr>,
 }
@@ -112,6 +116,30 @@ impl JsTxType for ITransferData {
     }
 }
 
+impl JsMultiTxType for IMultiTransferData {
+    fn to_native_array(&self) -> Result<Vec<NativeTxType<Fr>>, JsValue> {
+        let array: Vec<TransferData> = serde_wasm_bindgen::from_value(self.into())?;
+
+        let tx_array = array.into_iter().map(|tx| {
+            let outputs = tx.outputs
+            .into_iter()
+            .map(|out| TxOutput {
+                to: out.to,
+                amount: out.amount,
+            })
+            .collect::<Vec<_>>();
+
+            NativeTxType::Transfer(
+                tx.base_fields.fee,
+                tx.base_fields.data.unwrap_or_default(),
+                outputs,
+            )
+        }).collect();
+
+        Ok(tx_array)
+    }
+}
+
 #[wasm_bindgen]
 #[derive(Deserialize)]
 pub struct WithdrawData {
@@ -141,5 +169,24 @@ impl JsTxType for IWithdrawData {
             native_amount,
             energy_amount,
         ))
+    }
+}
+
+impl JsMultiTxType for IMultiWithdrawData {
+    fn to_native_array(&self) -> Result<Vec<NativeTxType<Fr>>, JsValue> {
+        let array: Vec<WithdrawData> = serde_wasm_bindgen::from_value(self.into())?;
+
+        let tx_array = array.into_iter().map(|tx| {
+            NativeTxType::Withdraw(
+                tx.base_fields.fee,
+                tx.base_fields.data.unwrap_or_default(),
+                tx.amount,
+                tx.to,
+                tx.native_amount,
+                tx.energy_amount,
+            )
+        }).collect();
+
+        Ok(tx_array)
     }
 }

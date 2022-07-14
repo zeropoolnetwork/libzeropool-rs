@@ -289,6 +289,33 @@ impl<D: KeyValueDB, P: PoolParams> MerkleTree<D, P> {
         self.get(constants::HEIGHT as u32, 0)
     }
 
+    pub fn get_root_after_virtual<I>(
+        &self,
+        new_commitments: I,
+    ) -> Hash<P::Fr>
+    where
+        I: IntoIterator<Item = Hash<P::Fr>>,
+    {
+        let next_leaf_index = self.next_index;
+        let next_commitment_index = next_leaf_index / 2u64.pow(constants::OUTPLUSONELOG as u32);
+        let index_step = constants::OUT as u64 + 1;
+
+        let mut virtual_commitment_nodes: HashMap<(u32, u64), Hash<P::Fr>> = new_commitments
+            .into_iter()
+            .enumerate()
+            .map(|(index, hash)| ((constants::OUTPLUSONELOG as u32, next_commitment_index + index as u64), hash))
+            .collect();
+        let new_commitments_count = virtual_commitment_nodes.len() as u64;
+
+        self.get_virtual_node(
+            constants::HEIGHT as u32,
+            0,
+            &mut virtual_commitment_nodes,
+            next_leaf_index,
+            next_leaf_index + new_commitments_count * index_step,
+        )
+    }
+
     pub fn get_opt(&self, height: u32, index: u64) -> Option<Hash<P::Fr>> {
         assert!(height <= constants::HEIGHT as u32);
 
@@ -389,6 +416,33 @@ impl<D: KeyValueDB, P: PoolParams> MerkleTree<D, P> {
         (index_offset..index_offset + new_hashes_count)
             .map(|index| self.get_proof_virtual(index, &mut virtual_nodes, &update_boundaries))
             .collect()
+    }
+
+    pub fn get_proof_virtual_index<I>(
+        &self,
+        index: u64,
+        new_hashes: I,
+    ) -> Option<MerkleProof<P::Fr, { constants::HEIGHT }>>
+    where
+        I: IntoIterator<Item = Hash<P::Fr>>,
+    {
+        let index_offset = self.next_index;
+
+        let mut virtual_nodes: HashMap<(u32, u64), Hash<P::Fr>> = new_hashes
+            .into_iter()
+            .enumerate()
+            .map(|(index, hash)| ((0, index_offset + index as u64), hash))
+            .collect();
+        let new_hashes_count = virtual_nodes.len() as u64;
+
+        let update_boundaries = UpdateBoundaries {
+            updated_range_left_index: index_offset,
+            updated_range_right_index: index_offset + new_hashes_count,
+            new_hashes_left_index: index_offset,
+            new_hashes_right_index: index_offset + new_hashes_count,
+        };
+
+        Some(self.get_proof_virtual(index, &mut virtual_nodes, &update_boundaries))
     }
 
     fn get_proof_virtual<const H: usize>(

@@ -161,6 +161,20 @@ where
         self.txs.iter().collect()
     }
 
+    pub fn get_usable_notes(&self) -> Vec<(u64, Note<P::Fr>)> {
+        let next_usable_index = self.earliest_usable_index();
+
+        // Fetch all usable notes from the state
+        self
+        .txs
+        .iter_slice(next_usable_index..=self.latest_note_index)
+        .filter_map(|(index, tx)| match tx {
+            Transaction::Note(note) => Some((index, note)),
+            _ => None,
+        })
+        .collect()
+    }
+
     /// Return an index of a earliest usable note.
     pub fn earliest_usable_index(&self) -> u64 {
         let latest_account_index = self
