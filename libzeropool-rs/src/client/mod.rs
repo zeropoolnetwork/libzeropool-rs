@@ -7,7 +7,6 @@ use libzeropool::{
         ff_uint::Num,
         ff_uint::{NumRepr, Uint},
         rand::Rng,
-        native::poseidon::MerkleProof,
     },
     native::{
         account::Account,
@@ -334,11 +333,11 @@ where
             }
             let new_balance = match &tx {
                 TxType::Transfer(_, _, _) => {
-                    if input_value.to_uint() >= output_value.to_uint() {
-                        input_value - output_value
+                    if input_value.to_uint() >= (output_value + fee.as_num()).to_uint() {
+                        input_value - output_value - fee.as_num()
                     } else {
                         return Err(CreateTxError::InsufficientBalance(
-                            output_value.to_string(),
+                            (output_value + fee.as_num()).to_string(),
                             input_value.to_string(),
                         ));
                     }
