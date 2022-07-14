@@ -671,10 +671,6 @@ impl<D: KeyValueDB, P: PoolParams> MerkleTree<D, P> {
         ((leaf_index >> constants::OUTPLUSONELOG) + 1) << constants::OUTPLUSONELOG
     }
 
-    fn calc_cur_first_index(leaf_index: u64) -> u64 {
-        (leaf_index >> constants::OUTPLUSONELOG) << constants::OUTPLUSONELOG
-    }
-
     fn update_path_batched(
         &mut self,
         batch: &mut DBTransaction,
