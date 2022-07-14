@@ -307,15 +307,13 @@ impl<D: KeyValueDB, P: PoolParams> MerkleTree<D, P> {
             .collect();
         let new_commitments_count = virtual_commitment_nodes.len() as u64;
 
-        let node = self.get_virtual_node(
+        self.get_virtual_node(
             constants::HEIGHT as u32,
             0,
             &mut virtual_commitment_nodes,
             next_leaf_index,
             next_leaf_index + new_commitments_count * index_step,
-        );
-
-        node
+        )
     }
 
     pub fn get_opt(&self, height: u32, index: u64) -> Option<Hash<P::Fr>> {

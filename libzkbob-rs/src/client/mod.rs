@@ -483,7 +483,7 @@ where
             let account_proof = in_account_index.map_or_else(
                 || Ok(zero_proof()),
                 |i| {
-                    if virtual_leaves.len() > 0 {
+                    if !virtual_leaves.is_empty() {
                         // We will use the account from the virtual tree from the second tx in multi-tx mode
                         tree.get_proof_virtual_index(i, virtual_leaves.iter().cloned())
                             .ok_or(CreateTxError::ProofNotFound(i))
@@ -497,7 +497,7 @@ where
                 .iter()
                 .copied()
                 .map(|(index, _note)| {
-                    if virtual_leaves.len() > 0 {
+                    if !virtual_leaves.is_empty() {
                         // The note proofs become changed after adding new virtual hashes
                         tree.get_proof_virtual_index(index, virtual_leaves.iter().cloned())
                             .ok_or(CreateTxError::ProofNotFound(index))
