@@ -50,6 +50,7 @@ lazy_static = "1.4.0"
 hex = { version = "0.4.3", features = ["serde"] }
 js-sys = "0.3.55"
 wasm-bindgen-rayon = "1.0"
+rayon = "1.5.1"
 
 [dev-dependencies]
 wasm-bindgen-test = "0.3.24"
