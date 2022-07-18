@@ -11,16 +11,16 @@ edition = "2018"
 libzeropool = { version = "0.5.3", default-features = false, features = ["in3out127"] }
 getrandom = { version = "0.2.3" }
 bs58 = "0.4.0"
-kvdb = "0.9.0"
-kvdb-web = { version = "0.9.0", optional = true }
+kvdb-web = { path = "../libs/kvdb-web", version = "0.11.0", optional = true }
 borsh = "0.9.1"
 base64 = "0.13.0"
 byteorder = "1.4.3"
 serde = "1.0.126"
 sha3 = "0.10.0"
 thiserror = "1.0.26"
-kvdb-rocksdb = { version = "0.11.0", optional = true }
-kvdb-memorydb = "0.9.0"
+kvdb = "0.11.0"
+kvdb-rocksdb = { version = "0.15.2", optional = true }
+kvdb-memorydb = "0.11.0"
 
 [dependencies.bellman]
 version = "0.3.4"

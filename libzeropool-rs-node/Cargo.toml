@@ -11,7 +11,7 @@ exclude = ["index.node"]
 crate-type = ["cdylib"]
 
 [dependencies]
-libzeropool-rs = { version = "0.3.8", features = ["native"] }
+libzeropool-rs = { path = "../libzeropool-rs", version = "0.3.8", features = ["native"] }
 neon = { version = "0.10.0", default-features = false, features = ["channel-api", "napi-6", "promise-api"] }
 # FIXME: Using a random fork for now
 neon-serde = { git = "https://github.com/NZXTCorp/neon-serde.git", branch = "refactor/update-neon-0.10" }
