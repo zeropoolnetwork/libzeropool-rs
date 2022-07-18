@@ -3,6 +3,7 @@ members = [
     "libzeropool-rs-wasm",
     "libzeropool-rs",
     "libzeropool-rs-node",
+    "libs/kvdb-web",
 ]
 
 [patch.crates-io]
