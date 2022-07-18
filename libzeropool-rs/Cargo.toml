@@ -1,7 +1,7 @@
 [package]
 name = "libzeropool-rs"
 description = "A higher level zeropool API"
-version = "0.3.10"
+version = "0.3.11"
 authors = ["Dmitry Vdovin <voidxnull@gmail.com>"]
 repository = "https://github.com/zeropoolnetwork/libzeropool-rs/"
 license = "MIT OR Apache-2.0"
@@ -36,7 +36,7 @@ criterion = "0.3"
 [features]
 web = ["getrandom/js", "kvdb-web"]
 node = ["getrandom/js"]
-native = ["kvdb-rocksdb", "bellman/multicore"]
+native = ["kvdb-rocksdb"]
 multicore = ["bellman/multicore"]
 
 [profile.bench]

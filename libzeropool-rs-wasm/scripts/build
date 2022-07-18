@@ -8,10 +8,25 @@ then
     exit
 fi
 
+function patch_package_json () {
+  sed -i.bak -E "s/\"name\": \"libzeropool-rs-wasm\"/\"name\": \"libzeropool-rs-wasm-$1\"/g" $PARENT_DIR/$1/package.json
+  jq '.files |= . + ["snippets"]' $PARENT_DIR/$1/package.json > $PARENT_DIR/$1/tmp.json \
+    && mv $PARENT_DIR/$1/tmp.json $PARENT_DIR/$1/package.json
+}
+
+# build $name $features $is_mt
 function build () {
-  wasm-pack build --release --target web -d $1 -- --features $2
+  if [ "$3" = true ] ; then
+    RUSTFLAGS='-C target-feature=+atomics,+bulk-memory,+mutable-globals' \
+      rustup run nightly \
+      wasm-pack build --release --target web -d $1 \
+      -- --features $2 -Z build-std=panic_abort,std
+  else
+    wasm-pack build --release --target web -d $1 -- --features $2
+  fi
+
   # Optimize the binary, since wasm-pack refuses to see wasm-opt
-  wasm-opt -o $PARENT_DIR/$1/wasm-opt.wasm -O3 $PARENT_DIR/$1/libzeropool_rs_wasm_bg.wasm && mv $PARENT_DIR/$1/wasm-opt.wasm $PARENT_DIR/$1/libzeropool_rs_wasm_bg.wasm
+  # wasm-opt -o $PARENT_DIR/$1/wasm-opt.wasm -O3 $PARENT_DIR/$1/libzeropool_rs_wasm_bg.wasm && mv $PARENT_DIR/$1/wasm-opt.wasm $PARENT_DIR/$1/libzeropool_rs_wasm_bg.wasm
   # Patch typings for async methods
   sed -i.bak -E 's/(createDeposit\(.*\)):.*$/\1: Promise<TransactionData>;/g' $PARENT_DIR/$1/libzeropool_rs_wasm.d.ts
   sed -i.bak -E 's/(createTransfer\(.*\)):.*$/\1: Promise<TransactionData>;/g' $PARENT_DIR/$1/libzeropool_rs_wasm.d.ts
@@ -20,11 +35,8 @@ function build () {
   sed -i.bak -E '/BroccoliDestroyInstance/d' $PARENT_DIR/$1/libzeropool_rs_wasm.d.ts
   sed -i.bak -E '/BroccoliDestroyInstance/d' $PARENT_DIR/$1/libzeropool_rs_wasm_bg.wasm.d.ts
   # Patch package.json, since wasm-pack doesn't allow renaming packages
-  sed -i.bak -E "s/\"name\": \"libzeropool-rs-wasm\"/\"name\": \"libzeropool-rs-wasm-$1\"/g" $PARENT_DIR/$1/package.json
+  patch_package_json $1
 }
 
-build web "web"
-build web-mt "web","multicore"
-
-jq '.files |= . + ["snippets"]' $PARENT_DIR/web-mt/package.json > $PARENT_DIR/web-mt/tmp.json \
-  && mv $PARENT_DIR/web-mt/tmp.json $PARENT_DIR/web-mt/package.json
+build web "web" false
+build web-mt "web","multicore" true
