@@ -1,4 +1,4 @@
-use std::{convert::TryFrom, marker::PhantomData, ops::RangeInclusive};
+use std::{convert::TryFrom, marker::PhantomData, ops::RangeBounds};
 
 use borsh::{BorshDeserialize, BorshSerialize};
 use kvdb::{DBTransaction, KeyValueDB};
@@ -95,7 +95,10 @@ where
         }
     }
 
-    pub fn iter_slice(&self, range: RangeInclusive<u64>) -> impl Iterator<Item = (u64, T)> + '_ {
+    pub fn iter_slice<R>(&self, range: R) -> impl Iterator<Item = (u64, T)> + '_
+    where
+        R: RangeBounds<u64> + 'static
+    {
         self.iter().filter(move |(index, _)| range.contains(index))
     }
 
@@ -109,6 +112,17 @@ where
         let mut batch = self.db.transaction();
         let key = index.to_be_bytes();
         batch.delete(0, &key);
+        self.db.write(batch).unwrap();
+    }
+
+    pub fn remove_all_after(&self, index: u64) {
+        let mut batch = self.db.transaction();
+
+        for item in self.iter_slice(index..) {
+            let key = index.to_be_bytes();
+            batch.delete(0, &key);  
+        }
+
         self.db.write(batch).unwrap();
     }
 
