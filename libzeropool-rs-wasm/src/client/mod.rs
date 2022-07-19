@@ -397,4 +397,12 @@ impl UserAccount {
 
         serde_wasm_bindgen::to_value(&data).unwrap()
     }
+
+    #[wasm_bindgen(js_name = "rollback")]
+    pub fn rollback(&mut self, index: u64) {
+        self.inner
+            .borrow_mut()
+            .state
+            .rollback(index);
+    }
 }
