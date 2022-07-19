@@ -26,7 +26,7 @@ function build () {
   fi
 
   # Optimize the binary, since wasm-pack refuses to see wasm-opt
-  # wasm-opt -o $PARENT_DIR/$1/wasm-opt.wasm -O3 $PARENT_DIR/$1/libzeropool_rs_wasm_bg.wasm && mv $PARENT_DIR/$1/wasm-opt.wasm $PARENT_DIR/$1/libzeropool_rs_wasm_bg.wasm
+  wasm-opt -o $PARENT_DIR/$1/wasm-opt.wasm -O3 $PARENT_DIR/$1/libzeropool_rs_wasm_bg.wasm && mv $PARENT_DIR/$1/wasm-opt.wasm $PARENT_DIR/$1/libzeropool_rs_wasm_bg.wasm
   # Patch typings for async methods
   sed -i.bak -E 's/(createDeposit\(.*\)):.*$/\1: Promise<TransactionData>;/g' $PARENT_DIR/$1/libzeropool_rs_wasm.d.ts
   sed -i.bak -E 's/(createTransfer\(.*\)):.*$/\1: Promise<TransactionData>;/g' $PARENT_DIR/$1/libzeropool_rs_wasm.d.ts
