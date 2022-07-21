@@ -1,7 +1,7 @@
 [package]
 name = "libzeropool-rs"
 description = "A higher level zeropool API"
-version = "0.4.1"
+version = "0.4.2"
 authors = ["Dmitry Vdovin <voidxnull@gmail.com>"]
 repository = "https://github.com/zeropoolnetwork/libzeropool-rs/"
 license = "MIT OR Apache-2.0"

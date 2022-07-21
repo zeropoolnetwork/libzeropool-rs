@@ -118,9 +118,9 @@ where
     pub fn remove_all_after(&self, index: u64) {
         let mut batch = self.db.transaction();
 
-        for item in self.iter_slice(index..) {
+        for (index, _) in self.iter_slice(index..) {
             let key = index.to_be_bytes();
-            batch.delete(0, &key);  
+            batch.delete(0, &key);
         }
 
         self.db.write(batch).unwrap();
