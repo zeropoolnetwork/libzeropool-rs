@@ -30,7 +30,7 @@ pub fn parse_address<P: PoolParams>(
         Num<P::Fr>,
     ),
     AddressParseError,
->{
+> {
     let mut bytes = [0; ADDR_LEN];
     bs58::decode(address).into(&mut bytes)?;
 

@@ -71,7 +71,8 @@ where
 {
     pub fn new(tree: MerkleTree<D, P>, txs: TxStorage<D, P::Fr>) -> Self {
         // TODO: Cache
-        let (latest_account_index, latest_note_index, latest_account) = latest_indices::<D, P>(&txs);
+        let (latest_account_index, latest_note_index, latest_account) =
+            latest_indices::<D, P>(&txs);
 
         State {
             tree,
@@ -148,14 +149,13 @@ where
         let next_usable_index = self.earliest_usable_index();
 
         // Fetch all usable notes from the state
-        self
-        .txs
-        .iter_slice(next_usable_index..=self.latest_note_index)
-        .filter_map(|(index, tx)| match tx {
-            Transaction::Note(note) => Some((index, note)),
-            _ => None,
-        })
-        .collect()
+        self.txs
+            .iter_slice(next_usable_index..=self.latest_note_index)
+            .filter_map(|(index, tx)| match tx {
+                Transaction::Note(note) => Some((index, note)),
+                _ => None,
+            })
+            .collect()
     }
 
     /// Return an index of a earliest usable note.
@@ -206,37 +206,40 @@ where
     pub fn rollback(&mut self, to_index: u64) {
         self.txs.remove_all_after(to_index);
         self.tree.rollback(to_index);
-        let (latest_account_index, latest_note_index, latest_account) = latest_indices::<D, P>(&self.txs);
+        let (latest_account_index, latest_note_index, latest_account) =
+            latest_indices::<D, P>(&self.txs);
         self.latest_account_index = latest_account_index;
         self.latest_note_index = latest_note_index;
         self.latest_account = latest_account;
     }
 }
 
-fn latest_indices<D, P>(txs: &TxStorage<D, P::Fr>) -> (Option<u64>, u64, Option<NativeAccount<P::Fr>>)
+fn latest_indices<D, P>(
+    txs: &TxStorage<D, P::Fr>,
+) -> (Option<u64>, u64, Option<NativeAccount<P::Fr>>)
 where
     D: KeyValueDB,
     P: PoolParams,
     P::Fr: 'static,
 {
-        let mut latest_account_index = None;
-        let mut latest_note_index = 0;
-        let mut latest_account = None;
-        for (index, tx) in txs.iter() {
-            match tx {
-                Transaction::Account(acc) => {
-                    if index >= latest_account_index.unwrap_or(0) {
-                        latest_account_index = Some(index);
-                        latest_account = Some(acc);
-                    }
+    let mut latest_account_index = None;
+    let mut latest_note_index = 0;
+    let mut latest_account = None;
+    for (index, tx) in txs.iter() {
+        match tx {
+            Transaction::Account(acc) => {
+                if index >= latest_account_index.unwrap_or(0) {
+                    latest_account_index = Some(index);
+                    latest_account = Some(acc);
                 }
-                Transaction::Note(_) => {
-                    if index >= latest_note_index {
-                        latest_note_index = index;
-                    }
+            }
+            Transaction::Note(_) => {
+                if index >= latest_note_index {
+                    latest_note_index = index;
                 }
             }
         }
+    }
 
     (latest_account_index, latest_note_index, latest_account)
 }

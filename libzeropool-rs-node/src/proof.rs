@@ -44,7 +44,6 @@ pub fn prove_tx_async(mut cx: FunctionContext) -> JsResult<JsPromise> {
     Ok(promise)
 }
 
-
 pub fn prove_tree_async(mut cx: FunctionContext) -> JsResult<JsPromise> {
     let params: Arc<Params> = (*cx.argument::<BoxedParams>(0)?).clone();
     let tr_pub_js = cx.argument::<JsValue>(1)?;

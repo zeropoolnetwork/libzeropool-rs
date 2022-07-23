@@ -46,7 +46,9 @@ pub type WebMerkleTree<P> = MerkleTree<WebDatabase, P>;
 #[cfg(feature = "web")]
 impl<P: PoolParams> MerkleTree<WebDatabase, P> {
     pub async fn new_web(name: &str, params: P) -> MerkleTree<WebDatabase, P> {
-        let db = WebDatabase::open(name.to_owned(), NUM_COLUMNS).await.unwrap();
+        let db = WebDatabase::open(name.to_owned(), NUM_COLUMNS)
+            .await
+            .unwrap();
 
         Self::new(db, params)
     }
@@ -54,10 +56,7 @@ impl<P: PoolParams> MerkleTree<WebDatabase, P> {
 
 #[cfg(feature = "native")]
 impl<P: PoolParams> MerkleTree<NativeDatabase, P> {
-    pub fn new_native(
-        path: &str,
-        params: P,
-    ) -> std::io::Result<MerkleTree<NativeDatabase, P>> {
+    pub fn new_native(path: &str, params: P) -> std::io::Result<MerkleTree<NativeDatabase, P>> {
         let db = NativeDatabase::open(&DatabaseConfig::with_columns(NUM_COLUMNS), path)?;
 
         Ok(Self::new(db, params))
@@ -75,15 +74,12 @@ impl<D: KeyValueDB, P: PoolParams> MerkleTree<D, P> {
     pub fn new(db: D, params: P) -> Self {
         let db_next_index = db.get(DbCols::NextIndex as u32, NEXT_INDEX_KEY);
         let next_index = match db_next_index {
-            Ok(Some(next_index)) => next_index
-                .as_slice()
-                .read_u64::<BigEndian>()
-                .unwrap(),
+            Ok(Some(next_index)) => next_index.as_slice().read_u64::<BigEndian>().unwrap(),
             _ => {
                 let mut cur_next_index = 0;
                 for (k, _v) in db.iter(0) {
                     let (height, index) = Self::parse_node_key(&k);
-        
+
                     if height == 0 && index >= cur_next_index {
                         cur_next_index = Self::calc_next_index(index);
                     }
@@ -91,7 +87,6 @@ impl<D: KeyValueDB, P: PoolParams> MerkleTree<D, P> {
                 cur_next_index
             }
         };
-
 
         MerkleTree {
             db,
@@ -141,7 +136,11 @@ impl<D: KeyValueDB, P: PoolParams> MerkleTree<D, P> {
         index
     }
 
-    pub fn add_leafs_and_commitments(&mut self, leafs: Vec<(u64, Vec<Hash<P::Fr>>)>, commitments: Vec<(u64, Hash<P::Fr>)>) {
+    pub fn add_leafs_and_commitments(
+        &mut self,
+        leafs: Vec<(u64, Vec<Hash<P::Fr>>)>,
+        commitments: Vec<(u64, Hash<P::Fr>)>,
+    ) {
         let mut next_index: u64 = 0;
         let mut start_index: u64 = u64::MAX;
         let mut virtual_nodes: HashMap<(u32, u64), Hash<P::Fr>> = commitments
@@ -150,18 +149,29 @@ impl<D: KeyValueDB, P: PoolParams> MerkleTree<D, P> {
                 assert_eq!(index & ((1 << constants::OUTPLUSONELOG) - 1), 0);
                 start_index = start_index.min(index);
                 next_index = next_index.max(index + 1);
-                ((constants::OUTPLUSONELOG as u32, index  >> constants::OUTPLUSONELOG), hash)
+                (
+                    (
+                        constants::OUTPLUSONELOG as u32,
+                        index >> constants::OUTPLUSONELOG,
+                    ),
+                    hash,
+                )
             })
             .collect();
-        
+
         leafs.into_iter().for_each(|(index, leafs)| {
             assert_eq!(index & ((1 << constants::OUTPLUSONELOG) - 1), 0);
             start_index = start_index.min(index);
             next_index = next_index.max(index + leafs.len() as u64);
-            (0..constants::OUTPLUSONELOG)
-                .for_each(|height| {
-                    virtual_nodes.insert((height as u32, ((index + leafs.len() as u64 - 1) >> height) + 1), self.zero_note_hashes[height]);
-                });
+            (0..constants::OUTPLUSONELOG).for_each(|height| {
+                virtual_nodes.insert(
+                    (
+                        height as u32,
+                        ((index + leafs.len() as u64 - 1) >> height) + 1,
+                    ),
+                    self.zero_note_hashes[height],
+                );
+            });
             leafs.into_iter().enumerate().for_each(|(i, leaf)| {
                 virtual_nodes.insert((0_u32, index + i as u64), leaf);
             });
@@ -285,10 +295,7 @@ impl<D: KeyValueDB, P: PoolParams> MerkleTree<D, P> {
         self.get(constants::HEIGHT as u32, 0)
     }
 
-    pub fn get_root_after_virtual<I>(
-        &self,
-        new_commitments: I,
-    ) -> Hash<P::Fr>
+    pub fn get_root_after_virtual<I>(&self, new_commitments: I) -> Hash<P::Fr>
     where
         I: IntoIterator<Item = Hash<P::Fr>>,
     {
@@ -299,7 +306,15 @@ impl<D: KeyValueDB, P: PoolParams> MerkleTree<D, P> {
         let mut virtual_commitment_nodes: HashMap<(u32, u64), Hash<P::Fr>> = new_commitments
             .into_iter()
             .enumerate()
-            .map(|(index, hash)| ((constants::OUTPLUSONELOG as u32, next_commitment_index + index as u64), hash))
+            .map(|(index, hash)| {
+                (
+                    (
+                        constants::OUTPLUSONELOG as u32,
+                        next_commitment_index + index as u64,
+                    ),
+                    hash,
+                )
+            })
             .collect();
         let new_commitments_count = virtual_commitment_nodes.len() as u64;
 
@@ -732,8 +747,16 @@ impl<D: KeyValueDB, P: PoolParams> MerkleTree<D, P> {
             batch.delete(DbCols::Leaves as u32, &key);
         }
         if temporary_leaves_count > 0 {
-            batch.put(DbCols::TempLeaves as u32, &key, &temporary_leaves_count.to_be_bytes());
-        } else if self.db.has_key(DbCols::TempLeaves as u32, &key).unwrap_or(false) {
+            batch.put(
+                DbCols::TempLeaves as u32,
+                &key,
+                &temporary_leaves_count.to_be_bytes(),
+            );
+        } else if self
+            .db
+            .has_key(DbCols::TempLeaves as u32, &key)
+            .unwrap_or(false)
+        {
             batch.delete(DbCols::TempLeaves as u32, &key);
         }
     }
@@ -773,7 +796,11 @@ impl<D: KeyValueDB, P: PoolParams> MerkleTree<D, P> {
     }
 
     fn set_named_index_batched(&mut self, batch: &mut DBTransaction, key: &str, value: u64) {
-        batch.put(DbCols::NamedIndex as u32, key.as_bytes(), &value.to_be_bytes());
+        batch.put(
+            DbCols::NamedIndex as u32,
+            key.as_bytes(),
+            &value.to_be_bytes(),
+        );
     }
 
     fn get_temporary_count(&self, height: u32, index: u64) -> u64 {
@@ -877,8 +904,8 @@ mod tests {
     use crate::random::CustomRng;
     use kvdb_memorydb::create;
     use libzeropool::fawkes_crypto::ff_uint::rand::Rng;
-    use libzeropool::POOL_PARAMS;
     use libzeropool::native::tx;
+    use libzeropool::POOL_PARAMS;
     use rand::seq::SliceRandom;
     use rand::thread_rng;
     use test_case::test_case;
@@ -1383,15 +1410,22 @@ mod tests {
     #[test_case(15, 7, 0.0)]
     #[test_case(15, 7, 0.5)]
     #[test_case(15, 7, 1.0)]
-    fn test_add_leafs_and_commitments(tx_count: u64, max_leafs_count: u32, commitments_probability: f64) {
+    fn test_add_leafs_and_commitments(
+        tx_count: u64,
+        max_leafs_count: u32,
+        commitments_probability: f64,
+    ) {
         let mut rng = CustomRng;
         let mut first_tree = MerkleTree::new(create(3), POOL_PARAMS.clone());
         let mut second_tree = MerkleTree::new(create(3), POOL_PARAMS.clone());
 
         let leafs: Vec<(u64, Vec<_>)> = (0..tx_count)
             .map(|i| {
-                let leafs_count: u32 =  1 + (rng.gen::<u32>() % max_leafs_count);
-                (i * (constants::OUT + 1) as u64, (0..leafs_count).map(|_| rng.gen()).collect())
+                let leafs_count: u32 = 1 + (rng.gen::<u32>() % max_leafs_count);
+                (
+                    i * (constants::OUT + 1) as u64,
+                    (0..leafs_count).map(|_| rng.gen()).collect(),
+                )
             })
             .collect();
 
@@ -1399,19 +1433,36 @@ mod tests {
         for (index, leafs) in leafs.clone().into_iter() {
             first_tree.add_hashes(index, leafs)
         }
-        println!("({}, {}, {}) add_hashes elapsed: {}", tx_count, max_leafs_count, commitments_probability, now.elapsed().as_millis());
-        
-        let commitments: Vec<(u64, _)> = leafs.clone().into_iter().map(|(index, leafs)| {
-            let mut out_hashes = leafs.clone();
-            out_hashes.resize(constants::OUT+1, first_tree.zero_note_hashes[0]);
-            let commitment = tx::out_commitment_hash(out_hashes.as_slice(), &POOL_PARAMS.clone());
-            (index, commitment)
-        }).collect();
+        println!(
+            "({}, {}, {}) add_hashes elapsed: {}",
+            tx_count,
+            max_leafs_count,
+            commitments_probability,
+            now.elapsed().as_millis()
+        );
+
+        let commitments: Vec<(u64, _)> = leafs
+            .clone()
+            .into_iter()
+            .map(|(index, leafs)| {
+                let mut out_hashes = leafs.clone();
+                out_hashes.resize(constants::OUT + 1, first_tree.zero_note_hashes[0]);
+                let commitment =
+                    tx::out_commitment_hash(out_hashes.as_slice(), &POOL_PARAMS.clone());
+                (index, commitment)
+            })
+            .collect();
 
         commitments.iter().for_each(|(index, commitment)| {
-            assert_eq!(first_tree.get(constants::OUTPLUSONELOG as u32, *index >> constants::OUTPLUSONELOG), *commitment);
+            assert_eq!(
+                first_tree.get(
+                    constants::OUTPLUSONELOG as u32,
+                    *index >> constants::OUTPLUSONELOG
+                ),
+                *commitment
+            );
         });
-        
+
         let mut sub_leafs: Vec<(u64, Vec<_>)> = Vec::new();
         let mut sub_commitments: Vec<(u64, _)> = Vec::new();
         (0..tx_count).for_each(|i| {
@@ -1421,10 +1472,16 @@ mod tests {
                 sub_leafs.push((leafs[i as usize].0, leafs[i as usize].1.clone()));
             }
         });
-        
+
         let now = std::time::Instant::now();
         second_tree.add_leafs_and_commitments(sub_leafs, sub_commitments);
-        println!("({}, {}, {}) add_leafs_and_commitments elapsed: {}", tx_count, max_leafs_count, commitments_probability, now.elapsed().as_millis());
+        println!(
+            "({}, {}, {}) add_leafs_and_commitments elapsed: {}",
+            tx_count,
+            max_leafs_count,
+            commitments_probability,
+            now.elapsed().as_millis()
+        );
 
         assert_eq!(first_tree.get_root(), second_tree.get_root());
         assert_eq!(first_tree.next_index(), second_tree.next_index());

@@ -222,11 +222,11 @@ where
 
         // Should be provided by relayer together with note proofs, but as a fallback
         // take the next index of the tree.
-        let mut delta_index = Num::from(delta_index.unwrap_or_else(|| self.state.tree.next_index()));
+        let mut delta_index =
+            Num::from(delta_index.unwrap_or_else(|| self.state.tree.next_index()));
 
         // Iterate over txs
         for tx in txs.iter() {
-
             let (fee, tx_data, user_data) = {
                 let mut tx_data: Vec<u8> = vec![];
                 match &tx {
@@ -241,7 +241,7 @@ where
                         tx_data.write_all(&raw_fee.to_be_bytes()).unwrap();
                         tx_data.write_all(&deadline.to_be_bytes()).unwrap();
                         tx_data.append(&mut holder.clone());
-                        
+
                         (fee, tx_data, user_data)
                     }
                     TxType::Transfer(fee, user_data, _) => {
@@ -272,11 +272,15 @@ where
                 })
                 .take(constants::IN)
                 .collect();
-            
+
             let spend_interval_index = in_notes_original
                 .last()
                 .map(|(index, _)| *index + 1)
-                .unwrap_or(if state.latest_note_index > 0 { state.latest_note_index + 1 } else { 0 });
+                .unwrap_or(if state.latest_note_index > 0 {
+                    state.latest_note_index + 1
+                } else {
+                    0
+                });
 
             // Calculate total balance (account + constants::IN notes).
             let mut input_value = in_account.b.to_num();
@@ -365,7 +369,8 @@ where
                         ));
                     }
                 }
-                TxType::Deposit(_, _, amount, _) | TxType::DepositPermittable(_, _, amount, _, _) => {
+                TxType::Deposit(_, _, amount, _)
+                | TxType::DepositPermittable(_, _, amount, _, _) => {
                     delta_value += amount.to_num();
                     input_value + delta_value
                 }
@@ -524,7 +529,6 @@ where
             virtual_commitments.push(out_commit);
 
             delta_index += Num::from((constants::OUT as u64) + 1);
-
 
             result.push(TransactionData {
                 public,

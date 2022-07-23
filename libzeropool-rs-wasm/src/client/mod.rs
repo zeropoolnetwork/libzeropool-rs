@@ -14,28 +14,28 @@ use libzeropool::{
     native::{
         account::Account as NativeAccount,
         note::Note as NativeNote,
-        tx::{parse_delta, TransferPub as NativeTransferPub, TransferSec as NativeTransferSec}
+        tx::{parse_delta, TransferPub as NativeTransferPub, TransferSec as NativeTransferSec},
     },
 };
 use libzeropool_rs::{
     client::{TxType as NativeTxType, UserAccount as NativeUserAccount},
-    merkle::{Hash, Node}
+    merkle::{Hash, Node},
 };
-use serde::{Serialize};
+use serde::Serialize;
 use wasm_bindgen::{prelude::*, JsCast};
 use wasm_bindgen_futures::future_to_promise;
 
-use crate::{IMultiTransferData, IMultiWithdrawData};
 use crate::database::Database;
 use crate::ts_types::Hash as JsHash;
 use crate::{
-    keys::reduce_sk, Account, Fr, Fs, Hashes, IDepositData, IDepositPermittableData,
-    ITransferData, IWithdrawData, IndexedNote, IndexedNotes, 
-    MerkleProof, Pair, PoolParams, Transaction, UserState, POOL_PARAMS,
+    keys::reduce_sk, Account, Fr, Fs, Hashes, IDepositData, IDepositPermittableData, ITransferData,
+    IWithdrawData, IndexedNote, IndexedNotes, MerkleProof, Pair, PoolParams, Transaction,
+    UserState, POOL_PARAMS,
 };
+use crate::{IMultiTransferData, IMultiWithdrawData};
 
 mod tx_types;
-use tx_types::{JsTxType, JsMultiTxType};
+use tx_types::{JsMultiTxType, JsTxType};
 
 use self::tx_parser::StateUpdate;
 
@@ -204,24 +204,27 @@ impl UserAccount {
                 .create_txs(native_txs, None)
                 .map_err(|err| js_err!("{}", err))?;
 
-            let ready_txs: Vec<TransactionData> = txs.into_iter().map(|tx| {
-                let (v, e, index, _) = parse_delta(tx.public.delta);
-                let parsed_delta = ParsedDelta {
-                    v: v.try_into().unwrap(),
-                    e: e.try_into().unwrap(),
-                    index: index.try_into().unwrap(),
-                };
+            let ready_txs: Vec<TransactionData> = txs
+                .into_iter()
+                .map(|tx| {
+                    let (v, e, index, _) = parse_delta(tx.public.delta);
+                    let parsed_delta = ParsedDelta {
+                        v: v.try_into().unwrap(),
+                        e: e.try_into().unwrap(),
+                        index: index.try_into().unwrap(),
+                    };
 
-                TransactionData {
-                    public: tx.public,
-                    secret: tx.secret,
-                    ciphertext: tx.ciphertext,
-                    memo: tx.memo,
-                    out_hashes: tx.out_hashes,
-                    commitment_root: tx.commitment_root,
-                    parsed_delta,
-                }
-            }).collect();
+                    TransactionData {
+                        public: tx.public,
+                        secret: tx.secret,
+                        ciphertext: tx.ciphertext,
+                        memo: tx.memo,
+                        out_hashes: tx.out_hashes,
+                        commitment_root: tx.commitment_root,
+                        parsed_delta,
+                    }
+                })
+                .collect();
 
             Ok(serde_wasm_bindgen::to_value(&ready_txs).unwrap())
         })
@@ -256,7 +259,10 @@ impl UserAccount {
     }
 
     #[wasm_bindgen(js_name = "createMultiWithdraw")]
-    pub fn create_multi_withdraw(&self, withdrawals: IMultiWithdrawData) -> Result<Promise, JsValue> {
+    pub fn create_multi_withdraw(
+        &self,
+        withdrawals: IMultiWithdrawData,
+    ) -> Result<Promise, JsValue> {
         Ok(self.construct_multi_tx_data(withdrawals.to_native_array()?))
     }
 
@@ -338,15 +344,24 @@ impl UserAccount {
 
     #[wasm_bindgen(js_name = "updateState")]
     pub fn update_state(&mut self, state_update: &JsValue) -> Result<(), JsValue> {
-        let state_update: StateUpdate = state_update.into_serde().map_err(|err| js_err!(&err.to_string()))?;
-        
+        let state_update: StateUpdate = state_update
+            .into_serde()
+            .map_err(|err| js_err!(&err.to_string()))?;
+
         if !state_update.new_leafs.is_empty() || !state_update.new_commitments.is_empty() {
-            self.inner.borrow_mut().state.tree.add_leafs_and_commitments(state_update.new_leafs, state_update.new_commitments);
+            self.inner
+                .borrow_mut()
+                .state
+                .tree
+                .add_leafs_and_commitments(state_update.new_leafs, state_update.new_commitments);
         }
 
-        state_update.new_accounts.into_iter().for_each(|(at_index, account)| {
-            self.inner.borrow_mut().state.add_account(at_index, account);
-        });
+        state_update
+            .new_accounts
+            .into_iter()
+            .for_each(|(at_index, account)| {
+                self.inner.borrow_mut().state.add_account(at_index, account);
+            });
 
         state_update.new_notes.into_iter().for_each(|notes| {
             notes.into_iter().for_each(|(at_index, note)| {

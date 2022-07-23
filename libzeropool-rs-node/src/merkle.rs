@@ -25,8 +25,7 @@ impl Finalize for MerkleTree {}
 pub fn merkle_new(mut cx: FunctionContext) -> JsResult<BoxedMerkleTree> {
     let path_js = cx.argument::<JsString>(0)?;
     let path = path_js.value(&mut cx);
-    let inner =
-        NativeMerkleTree::new_native(&path, POOL_PARAMS.clone()).unwrap();
+    let inner = NativeMerkleTree::new_native(&path, POOL_PARAMS.clone()).unwrap();
 
     Ok(cx.boxed(RwLock::new(MerkleTree { inner })))
 }
