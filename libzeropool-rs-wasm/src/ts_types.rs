@@ -222,6 +222,12 @@ extern "C" {
     #[wasm_bindgen(typescript_type = "IDepositPermittableData")]
     pub type IDepositPermittableData;
 
+    #[wasm_bindgen(typescript_type = "IDepositData[]")]
+    pub type IMultiDepositData;
+
+    #[wasm_bindgen(typescript_type = "IDepositPermittableData[]")]
+    pub type IMultiDepositPermittableData;
+
     #[wasm_bindgen(typescript_type = "ITransferData")]
     pub type ITransferData;
 

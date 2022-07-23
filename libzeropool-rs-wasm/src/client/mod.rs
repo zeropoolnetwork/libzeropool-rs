@@ -28,9 +28,9 @@ use wasm_bindgen_futures::future_to_promise;
 use crate::database::Database;
 use crate::ts_types::Hash as JsHash;
 use crate::{
-    keys::reduce_sk, Account, Fr, Fs, Hashes, IDepositData, IDepositPermittableData, ITransferData,
-    IWithdrawData, IndexedNote, IndexedNotes, MerkleProof, Pair, PoolParams, Transaction,
-    UserState, POOL_PARAMS,
+    keys::reduce_sk, Account, Fr, Fs, Hashes, IDepositData, IDepositPermittableData,
+    IMultiDepositData, IMultiDepositPermittableData, ITransferData, IWithdrawData, IndexedNote,
+    IndexedNotes, MerkleProof, Pair, PoolParams, Transaction, UserState, POOL_PARAMS,
 };
 use crate::{IMultiTransferData, IMultiWithdrawData};
 
@@ -241,6 +241,19 @@ impl UserAccount {
         deposit: IDepositPermittableData,
     ) -> Result<Promise, JsValue> {
         Ok(self.construct_tx_data(deposit.to_native()?))
+    }
+
+    #[wasm_bindgen(js_name = "createMultiDeposit")]
+    pub fn create_multi_deposit(&self, deposits: IMultiDepositData) -> Result<Promise, JsValue> {
+        Ok(self.construct_multi_tx_data(deposits.to_native_array()?))
+    }
+
+    #[wasm_bindgen(js_name = "createMultiDepositPermittable")]
+    pub fn create_multi_deposit_permittable(
+        &self,
+        deposits: IMultiDepositPermittableData,
+    ) -> Result<Promise, JsValue> {
+        Ok(self.construct_multi_tx_data(deposits.to_native_array()?))
     }
 
     #[wasm_bindgen(js_name = "createTransfer")]

@@ -1,6 +1,6 @@
 use crate::{
-    Fr, IDepositData, IDepositPermittableData, IMultiTransferData, IMultiWithdrawData,
-    ITransferData, IWithdrawData,
+    Fr, IDepositData, IDepositPermittableData, IMultiDepositData, IMultiDepositPermittableData,
+    IMultiTransferData, IMultiWithdrawData, ITransferData, IWithdrawData,
 };
 use libzeropool_rs::client::{TokenAmount, TxOutput, TxType as NativeTxType};
 use serde::Deserialize;
@@ -68,6 +68,39 @@ impl JsTxType for IDepositData {
     }
 }
 
+impl JsMultiTxType for IMultiDepositData {
+    fn to_native_array(&self) -> Result<Vec<NativeTxType<Fr>>, JsValue> {
+        let array: Vec<DepositData> = serde_wasm_bindgen::from_value(self.into())?;
+
+        let tx_array = array
+            .into_iter()
+            .map(|tx| {
+                let outputs = tx
+                    .outputs
+                    .map(|outputs| {
+                        outputs
+                            .into_iter()
+                            .map(|out| TxOutput {
+                                to: out.to,
+                                amount: out.amount,
+                            })
+                            .collect::<Vec<_>>()
+                    })
+                    .unwrap_or_default();
+
+                NativeTxType::Deposit(
+                    tx.base_fields.fee,
+                    tx.base_fields.data.unwrap_or_default(),
+                    tx.amount,
+                    outputs,
+                )
+            })
+            .collect();
+
+        Ok(tx_array)
+    }
+}
+
 #[wasm_bindgen]
 #[derive(Deserialize)]
 pub struct DepositPermittableData {
@@ -109,6 +142,40 @@ impl JsTxType for IDepositPermittableData {
             holder,
             outputs,
         ))
+    }
+}
+
+impl JsMultiTxType for IMultiDepositPermittableData {
+    fn to_native_array(&self) -> Result<Vec<NativeTxType<Fr>>, JsValue> {
+        let array: Vec<DepositPermittableData> = serde_wasm_bindgen::from_value(self.into())?;
+
+        let tx_array = array
+            .into_iter()
+            .map(|tx| {
+                let outputs = tx
+                    .outputs
+                    .map(|outputs| {
+                        outputs
+                            .into_iter()
+                            .map(|out| TxOutput {
+                                to: out.to,
+                                amount: out.amount,
+                            })
+                            .collect::<Vec<_>>()
+                    })
+                    .unwrap_or_default();
+                NativeTxType::DepositPermittable(
+                    tx.base_fields.fee,
+                    tx.base_fields.data.unwrap_or_default(),
+                    tx.amount,
+                    tx.deadline.parse::<u64>().unwrap_or(0),
+                    tx.holder,
+                    outputs,
+                )
+            })
+            .collect();
+
+        Ok(tx_array)
     }
 }
 
