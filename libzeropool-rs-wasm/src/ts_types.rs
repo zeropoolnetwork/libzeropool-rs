@@ -106,13 +106,14 @@ export interface ITxBaseFields {
 
 export interface IDepositData extends ITxBaseFields {
     amount: string;
-    outputs: Output[];
+    outputs?: Output[];
 }
 
 export interface IDepositPermittableData extends ITxBaseFields {
     amount: string;
     deadline: string;
     holder: Uint8Array;
+    outputs?: Output[];
 }
 
 export interface ITransferData extends ITxBaseFields {
