@@ -109,6 +109,12 @@ export interface IDepositData extends ITxBaseFields {
     outputs: Output[];
 }
 
+export interface IDepositPermittableData extends ITxBaseFields {
+    amount: string;
+    deadline: string;
+    holder: Uint8Array;
+}
+
 export interface ITransferData extends ITxBaseFields {
     outputs: Output[];
 }
@@ -118,6 +124,25 @@ export interface IWithdrawData extends ITxBaseFields {
     to: Uint8Array;
     native_amount: string;
     energy_amount: string;
+}
+
+export interface DecryptedMemo {
+    index: number;
+    acc: Account | undefined;
+    inNotes:  { note: Note, index: number }[];
+    outNotes: { note: Note, index: number }[];
+    txHash: string | undefined;
+}
+
+export interface IndexedTx {
+    index: number;
+    memo: string;
+    commitment: string;
+}
+
+export interface ParseTxsResult {
+    decryptedMemos: DecryptedMemo[];
+    stateUpdate: any;
 }
 
 "#;
@@ -193,15 +218,37 @@ extern "C" {
     #[wasm_bindgen(typescript_type = "IDepositData")]
     pub type IDepositData;
 
+    #[wasm_bindgen(typescript_type = "IDepositPermittableData")]
+    pub type IDepositPermittableData;
+
     #[wasm_bindgen(typescript_type = "ITransferData")]
     pub type ITransferData;
 
+    #[wasm_bindgen(typescript_type = "ITransferData[]")]
+    pub type IMultiTransferData;
+
     #[wasm_bindgen(typescript_type = "IWithdrawData")]
     pub type IWithdrawData;
+
+    #[wasm_bindgen(typescript_type = "IWithdrawData[]")]
+    pub type IMultiWithdrawData;
+
+    #[wasm_bindgen(typescript_type = "DecryptedMemo[]")]
+    pub type DecryptedMemos;
+
+    #[wasm_bindgen(typescript_type = "ParseTxsResult")]
+    pub type ParseTxsResult;
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone)]
 pub struct IndexedNote {
     pub index: u64,
     pub note: NativeNote<Fr>,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct IndexedTx {
+    pub index: u64,
+    pub memo: String,
+    pub commitment: String,
 }

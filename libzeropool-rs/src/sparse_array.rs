@@ -97,7 +97,7 @@ where
 
     pub fn iter_slice<R>(&self, range: R) -> impl Iterator<Item = (u64, T)> + '_
     where
-        R: RangeBounds<u64> + 'static
+        R: RangeBounds<u64> + 'static,
     {
         self.iter().filter(move |(index, _)| range.contains(index))
     }

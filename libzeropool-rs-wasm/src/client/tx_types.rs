@@ -1,17 +1,26 @@
-use crate::{Fr, IDepositData, ITransferData, IWithdrawData};
+use crate::{
+    Fr, IDepositData, IDepositPermittableData, IMultiTransferData, IMultiWithdrawData,
+    ITransferData, IWithdrawData,
+};
 use libzeropool_rs::client::{TokenAmount, TxOutput, TxType as NativeTxType};
 use serde::Deserialize;
 use wasm_bindgen::prelude::*;
 
+#[allow(clippy::manual_non_exhaustive)]
 #[wasm_bindgen]
 pub enum TxType {
     Transfer = "transfer",
     Deposit = "deposit",
+    DepositPermittable = "deposit_permittable",
     Withdraw = "withdraw",
 }
 
 pub trait JsTxType {
     fn to_native(&self) -> Result<NativeTxType<Fr>, JsValue>;
+}
+
+pub trait JsMultiTxType {
+    fn to_native_array(&self) -> Result<Vec<NativeTxType<Fr>>, JsValue>;
 }
 
 #[wasm_bindgen]
@@ -27,7 +36,7 @@ pub struct DepositData {
     #[serde(flatten)]
     base_fields: TxBaseFields,
     amount: TokenAmount<Fr>,
-    outputs: Vec<Output>,
+    outputs: Option<Vec<Output>>,
 }
 
 impl JsTxType for IDepositData {
@@ -39,24 +48,72 @@ impl JsTxType for IDepositData {
         } = serde_wasm_bindgen::from_value(self.into())?;
 
         let outputs = outputs
-            .into_iter()
-            .map(|out| TxOutput {
-                to: out.to,
-                amount: out.amount,
+            .map(|outputs| {
+                outputs
+                    .into_iter()
+                    .map(|out| TxOutput {
+                        to: out.to,
+                        amount: out.amount,
+                    })
+                    .collect::<Vec<_>>()
             })
-            .collect::<Vec<_>>();
+            .unwrap_or_default();
 
         Ok(NativeTxType::Deposit(
             base_fields.fee,
-            base_fields.data.unwrap_or(vec![]),
+            base_fields.data.unwrap_or_default(),
             amount,
             outputs,
         ))
     }
 }
 
+#[wasm_bindgen]
 #[derive(Deserialize)]
-struct Output {
+pub struct DepositPermittableData {
+    #[serde(flatten)]
+    base_fields: TxBaseFields,
+    amount: TokenAmount<Fr>,
+    deadline: String,
+    holder: Vec<u8>,
+    outputs: Option<Vec<Output>>,
+}
+
+impl JsTxType for IDepositPermittableData {
+    fn to_native(&self) -> Result<NativeTxType<Fr>, JsValue> {
+        let DepositPermittableData {
+            base_fields,
+            amount,
+            deadline,
+            holder,
+            outputs,
+        } = serde_wasm_bindgen::from_value(self.into())?;
+
+        let outputs = outputs
+            .map(|outputs| {
+                outputs
+                    .into_iter()
+                    .map(|out| TxOutput {
+                        to: out.to,
+                        amount: out.amount,
+                    })
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
+
+        Ok(NativeTxType::DepositPermittable(
+            base_fields.fee,
+            base_fields.data.unwrap_or_default(),
+            amount,
+            deadline.parse::<u64>().unwrap_or(0),
+            holder,
+            outputs,
+        ))
+    }
+}
+
+#[derive(Deserialize)]
+pub struct Output {
     to: String,
     amount: TokenAmount<Fr>,
 }
@@ -86,9 +143,37 @@ impl JsTxType for ITransferData {
 
         Ok(NativeTxType::Transfer(
             base_fields.fee,
-            base_fields.data.unwrap_or(vec![]),
+            base_fields.data.unwrap_or_default(),
             outputs,
         ))
+    }
+}
+
+impl JsMultiTxType for IMultiTransferData {
+    fn to_native_array(&self) -> Result<Vec<NativeTxType<Fr>>, JsValue> {
+        let array: Vec<TransferData> = serde_wasm_bindgen::from_value(self.into())?;
+
+        let tx_array = array
+            .into_iter()
+            .map(|tx| {
+                let outputs = tx
+                    .outputs
+                    .into_iter()
+                    .map(|out| TxOutput {
+                        to: out.to,
+                        amount: out.amount,
+                    })
+                    .collect::<Vec<_>>();
+
+                NativeTxType::Transfer(
+                    tx.base_fields.fee,
+                    tx.base_fields.data.unwrap_or_default(),
+                    outputs,
+                )
+            })
+            .collect();
+
+        Ok(tx_array)
     }
 }
 
@@ -115,11 +200,33 @@ impl JsTxType for IWithdrawData {
 
         Ok(NativeTxType::Withdraw(
             base_fields.fee,
-            base_fields.data.unwrap_or(vec![]),
+            base_fields.data.unwrap_or_default(),
             amount,
             to,
             native_amount,
             energy_amount,
         ))
+    }
+}
+
+impl JsMultiTxType for IMultiWithdrawData {
+    fn to_native_array(&self) -> Result<Vec<NativeTxType<Fr>>, JsValue> {
+        let array: Vec<WithdrawData> = serde_wasm_bindgen::from_value(self.into())?;
+
+        let tx_array = array
+            .into_iter()
+            .map(|tx| {
+                NativeTxType::Withdraw(
+                    tx.base_fields.fee,
+                    tx.base_fields.data.unwrap_or_default(),
+                    tx.amount,
+                    tx.to,
+                    tx.native_amount,
+                    tx.energy_amount,
+                )
+            })
+            .collect();
+
+        Ok(tx_array)
     }
 }

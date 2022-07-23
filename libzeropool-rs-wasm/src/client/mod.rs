@@ -6,10 +6,10 @@ use js_sys::{Array, Promise};
 use libzeropool::{
     constants,
     fawkes_crypto::{
+        borsh::BorshDeserialize,
         core::sizedvec::SizedVec,
         ff_uint::Num,
         ff_uint::{NumRepr, Uint},
-        borsh::BorshDeserialize,
     },
     native::{
         account::Account as NativeAccount,
@@ -28,12 +28,18 @@ use wasm_bindgen_futures::future_to_promise;
 use crate::database::Database;
 use crate::ts_types::Hash as JsHash;
 use crate::{
-    keys::reduce_sk, Account, Fr, Fs, Hashes, IDepositData, ITransferData, IWithdrawData,
-    IndexedNote, IndexedNotes, MerkleProof, Pair, PoolParams, Transaction, UserState, POOL_PARAMS,
+    keys::reduce_sk, Account, Fr, Fs, Hashes, IDepositData, IDepositPermittableData, ITransferData,
+    IWithdrawData, IndexedNote, IndexedNotes, MerkleProof, Pair, PoolParams, Transaction,
+    UserState, POOL_PARAMS,
 };
+use crate::{IMultiTransferData, IMultiWithdrawData};
 
 mod tx_types;
-use tx_types::JsTxType;
+use tx_types::{JsMultiTxType, JsTxType};
+
+use self::tx_parser::StateUpdate;
+
+mod tx_parser;
 
 // TODO: Find a way to expose MerkleTree,
 
@@ -169,8 +175,71 @@ impl UserAccount {
         })
     }
 
+    fn construct_multi_tx_data(&self, native_txs: Vec<NativeTxType<Fr>>) -> Promise {
+        #[derive(Serialize)]
+        struct ParsedDelta {
+            v: i64,
+            e: i64,
+            index: u64,
+        }
+
+        #[derive(Serialize)]
+        struct TransactionData {
+            public: NativeTransferPub<Fr>,
+            secret: NativeTransferSec<Fr>,
+            #[serde(with = "hex")]
+            ciphertext: Vec<u8>,
+            #[serde(with = "hex")]
+            memo: Vec<u8>,
+            commitment_root: Num<Fr>,
+            out_hashes: SizedVec<Num<Fr>, { constants::OUT + 1 }>,
+            parsed_delta: ParsedDelta,
+        }
+
+        let account = self.inner.clone();
+
+        future_to_promise(async move {
+            let txs = account
+                .borrow()
+                .create_txs(native_txs, None)
+                .map_err(|err| js_err!("{}", err))?;
+
+            let ready_txs: Vec<TransactionData> = txs
+                .into_iter()
+                .map(|tx| {
+                    let (v, e, index, _) = parse_delta(tx.public.delta);
+                    let parsed_delta = ParsedDelta {
+                        v: v.try_into().unwrap(),
+                        e: e.try_into().unwrap(),
+                        index: index.try_into().unwrap(),
+                    };
+
+                    TransactionData {
+                        public: tx.public,
+                        secret: tx.secret,
+                        ciphertext: tx.ciphertext,
+                        memo: tx.memo,
+                        out_hashes: tx.out_hashes,
+                        commitment_root: tx.commitment_root,
+                        parsed_delta,
+                    }
+                })
+                .collect();
+
+            Ok(serde_wasm_bindgen::to_value(&ready_txs).unwrap())
+        })
+    }
+
     #[wasm_bindgen(js_name = "createDeposit")]
     pub fn create_deposit(&self, deposit: IDepositData) -> Result<Promise, JsValue> {
+        Ok(self.construct_tx_data(deposit.to_native()?))
+    }
+
+    #[wasm_bindgen(js_name = "createDepositPermittable")]
+    pub fn create_deposit_permittable(
+        &self,
+        deposit: IDepositPermittableData,
+    ) -> Result<Promise, JsValue> {
         Ok(self.construct_tx_data(deposit.to_native()?))
     }
 
@@ -179,9 +248,22 @@ impl UserAccount {
         Ok(self.construct_tx_data(transfer.to_native()?))
     }
 
+    #[wasm_bindgen(js_name = "createMultiTransfer")]
+    pub fn create_multi_tranfer(&self, transfers: IMultiTransferData) -> Result<Promise, JsValue> {
+        Ok(self.construct_multi_tx_data(transfers.to_native_array()?))
+    }
+
     #[wasm_bindgen(js_name = "createWithdraw")]
     pub fn create_withdraw(&self, withdraw: IWithdrawData) -> Result<Promise, JsValue> {
         Ok(self.construct_tx_data(withdraw.to_native()?))
+    }
+
+    #[wasm_bindgen(js_name = "createMultiWithdraw")]
+    pub fn create_multi_withdraw(
+        &self,
+        withdrawals: IMultiWithdrawData,
+    ) -> Result<Promise, JsValue> {
+        Ok(self.construct_multi_tx_data(withdrawals.to_native_array()?))
     }
 
     #[wasm_bindgen(js_name = "isOwnAddress")]
@@ -260,6 +342,36 @@ impl UserAccount {
         Ok(())
     }
 
+    #[wasm_bindgen(js_name = "updateState")]
+    pub fn update_state(&mut self, state_update: &JsValue) -> Result<(), JsValue> {
+        let state_update: StateUpdate = state_update
+            .into_serde()
+            .map_err(|err| js_err!(&err.to_string()))?;
+
+        if !state_update.new_leafs.is_empty() || !state_update.new_commitments.is_empty() {
+            self.inner
+                .borrow_mut()
+                .state
+                .tree
+                .add_leafs_and_commitments(state_update.new_leafs, state_update.new_commitments);
+        }
+
+        state_update
+            .new_accounts
+            .into_iter()
+            .for_each(|(at_index, account)| {
+                self.inner.borrow_mut().state.add_account(at_index, account);
+            });
+
+        state_update.new_notes.into_iter().for_each(|notes| {
+            notes.into_iter().for_each(|(at_index, note)| {
+                self.inner.borrow_mut().state.add_note(at_index, note);
+            });
+        });
+
+        Ok(())
+    }
+
     #[wasm_bindgen(js_name = "getRoot")]
     pub fn get_root(&mut self) -> String {
         let root = self.inner.borrow_mut().state.tree.get_root().to_string();
@@ -283,6 +395,14 @@ impl UserAccount {
     /// Returns user's total balance (account + available notes).
     pub fn note_balance(&self) -> String {
         self.inner.borrow().state.note_balance().to_string()
+    }
+
+    #[wasm_bindgen(js_name = "getUsableNotes")]
+    /// Returns all notes available for spending
+    pub fn get_usable_notes(&self) -> JsValue {
+        let data = self.inner.borrow().state.get_usable_notes();
+
+        serde_wasm_bindgen::to_value(&data).unwrap()
     }
 
     #[wasm_bindgen(js_name = "nextTreeIndex")]
@@ -400,9 +520,6 @@ impl UserAccount {
 
     #[wasm_bindgen(js_name = "rollback")]
     pub fn rollback(&mut self, index: u64) {
-        self.inner
-            .borrow_mut()
-            .state
-            .rollback(index);
+        self.inner.borrow_mut().state.rollback(index);
     }
 }
