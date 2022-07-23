@@ -25,7 +25,7 @@ use serde::{Serialize};
 use wasm_bindgen::{prelude::*, JsCast};
 use wasm_bindgen_futures::future_to_promise;
 
-use crate::{IndexedTx, IndexedTxs, DecryptedMemos, IMultiTransferData, IMultiWithdrawData};
+use crate::{IMultiTransferData, IMultiWithdrawData};
 use crate::database::Database;
 use crate::ts_types::Hash as JsHash;
 use crate::{
@@ -33,10 +33,11 @@ use crate::{
     ITransferData, IWithdrawData, IndexedNote, IndexedNotes, 
     MerkleProof, Pair, PoolParams, Transaction, UserState, POOL_PARAMS,
 };
-use crate::{DecryptedMemos, IndexedTx, IndexedTxs};
 
 mod tx_types;
 use tx_types::{JsTxType, JsMultiTxType};
+
+use self::tx_parser::StateUpdate;
 
 mod tx_parser;
 

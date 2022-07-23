@@ -55,14 +55,10 @@ impl<P: PoolParams> MerkleTree<WebDatabase, P> {
 #[cfg(feature = "native")]
 impl<P: PoolParams> MerkleTree<NativeDatabase, P> {
     pub fn new_native(
-        config: DatabaseConfig,
         path: &str,
         params: P,
     ) -> std::io::Result<MerkleTree<NativeDatabase, P>> {
-        let db = NativeDatabase::open(&DatabaseConfig{
-            columns: NUM_COLUMNS,
-            ..config
-        } , path)?;
+        let db = NativeDatabase::open(&DatabaseConfig::with_columns(NUM_COLUMNS), path)?;
 
         Ok(Self::new(db, params))
     }
