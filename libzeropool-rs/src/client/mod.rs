@@ -75,7 +75,7 @@ pub enum TxType<Fr: PrimeField> {
     // fee, data, deposit_amount, tx_outputs
     Deposit(TokenAmount<Fr>, Vec<u8>, TokenAmount<Fr>, Vec<TxOutput<Fr>>),
     // fee, data, deposit_amount, deadline, holder
-    DepositPermittable(TokenAmount<Fr>, Vec<u8>, TokenAmount<Fr>, u64, Vec<u8>),
+    DepositPermittable(TokenAmount<Fr>, Vec<u8>, TokenAmount<Fr>, u64, Vec<u8>, Vec<TxOutput<Fr>>),
     // fee, data, withdraw_amount, to, native_amount, energy_amount
     Withdraw(
         TokenAmount<Fr>,
@@ -235,7 +235,7 @@ where
                         tx_data.write_all(&raw_fee.to_be_bytes()).unwrap();
                         (fee, tx_data, user_data)
                     }
-                    TxType::DepositPermittable(fee, user_data, _, deadline, holder) => {
+                    TxType::DepositPermittable(fee, user_data, _, deadline, holder, _) => {
                         let raw_fee: u64 = fee.to_num().try_into().unwrap();
 
                         tx_data.write_all(&raw_fee.to_be_bytes()).unwrap();
@@ -291,36 +291,41 @@ where
             let mut output_value = Num::ZERO;
 
             let (num_real_out_notes, out_notes): (_, SizedVec<_, { constants::OUT }>) =
-                if let TxType::Transfer(_, _, outputs) = &tx {
-                    if outputs.len() >= constants::OUT {
-                        return Err(CreateTxError::TooManyOutputs {
-                            max: constants::OUT,
-                            got: outputs.len(),
-                        });
-                    }
+                match &tx {
+                    TxType::Transfer(_, _, outputs) |
+                    TxType::Deposit(_, _, _, outputs) |
+                    TxType::DepositPermittable(_, _, _, _, _, outputs) => {
+                        if outputs.len() >= constants::OUT {
+                            return Err(CreateTxError::TooManyOutputs {
+                                max: constants::OUT,
+                                got: outputs.len(),
+                            });
+                        }
 
-                    let out_notes = outputs
-                        .iter()
-                        .map(|dest| {
-                            let (to_d, to_p_d) = parse_address::<P>(&dest.to)?;
+                        let out_notes = outputs
+                            .iter()
+                            .map(|dest| {
+                                let (to_d, to_p_d) = parse_address::<P>(&dest.to)?;
 
-                            output_value += dest.amount.to_num();
+                                output_value += dest.amount.to_num();
 
-                            Ok(Note {
-                                d: to_d,
-                                p_d: to_p_d,
-                                b: dest.amount,
-                                t: rng.gen(),
+                                Ok(Note {
+                                    d: to_d,
+                                    p_d: to_p_d,
+                                    b: dest.amount,
+                                    t: rng.gen(),
+                                })
                             })
-                        })
-                        // fill out remaining output notes with zeroes
-                        .chain((0..).map(|_| Ok(zero_note())))
-                        .take(constants::OUT)
-                        .collect::<Result<SizedVec<_, { constants::OUT }>, AddressParseError>>()?;
+                            // fill out remaining output notes with zeroes
+                            .chain((0..).map(|_| Ok(zero_note())))
+                            .take(constants::OUT)
+                            .collect::<Result<SizedVec<_, { constants::OUT }>, AddressParseError>>()?;
 
-                    (outputs.len(), out_notes)
-                } else {
-                    (0, (0..).map(|_| zero_note()).take(constants::OUT).collect())
+                        (outputs.len(), out_notes)
+                    }
+                    _ => {
+                        (0, (0..).map(|_| zero_note()).take(constants::OUT).collect())
+                    }
                 };
 
             let mut delta_value = -fee.as_num();
@@ -370,9 +375,17 @@ where
                     }
                 }
                 TxType::Deposit(_, _, amount, _)
-                | TxType::DepositPermittable(_, _, amount, _, _) => {
+                | TxType::DepositPermittable(_, _, amount, _, _, _) => {
                     delta_value += amount.to_num();
-                    input_value + delta_value
+                    let new_total_balance = input_value + delta_value;
+                    if new_total_balance.to_uint() >= output_value.to_uint() {
+                        new_total_balance - output_value
+                    } else {
+                        return Err(CreateTxError::InsufficientBalance(
+                            output_value.to_string(),
+                            new_total_balance.to_string(),
+                        ));
+                    }
                 }
             };
 

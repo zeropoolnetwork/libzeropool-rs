@@ -36,7 +36,7 @@ pub struct DepositData {
     #[serde(flatten)]
     base_fields: TxBaseFields,
     amount: TokenAmount<Fr>,
-    outputs: Vec<Output>,
+    outputs: Option<Vec<Output>>,
 }
 
 impl JsTxType for IDepositData {
@@ -48,12 +48,16 @@ impl JsTxType for IDepositData {
         } = serde_wasm_bindgen::from_value(self.into())?;
 
         let outputs = outputs
-            .into_iter()
-            .map(|out| TxOutput {
-                to: out.to,
-                amount: out.amount,
+            .map(|outputs| {
+                outputs
+                    .into_iter()
+                    .map(|out| TxOutput {
+                        to: out.to,
+                        amount: out.amount,
+                    })
+                    .collect::<Vec<_>>()
             })
-            .collect::<Vec<_>>();
+            .unwrap_or_default();
 
         Ok(NativeTxType::Deposit(
             base_fields.fee,
@@ -72,6 +76,7 @@ pub struct DepositPermittableData {
     amount: TokenAmount<Fr>,
     deadline: String,
     holder: Vec<u8>,
+    outputs: Option<Vec<Output>>,
 }
 
 impl JsTxType for IDepositPermittableData {
@@ -81,7 +86,20 @@ impl JsTxType for IDepositPermittableData {
             amount,
             deadline,
             holder,
+            outputs,
         } = serde_wasm_bindgen::from_value(self.into())?;
+
+        let outputs = outputs
+            .map(|outputs| {
+                outputs
+                    .into_iter()
+                    .map(|out| TxOutput {
+                        to: out.to,
+                        amount: out.amount,
+                    })
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
 
         Ok(NativeTxType::DepositPermittable(
             base_fields.fee,
@@ -89,6 +107,7 @@ impl JsTxType for IDepositPermittableData {
             amount,
             deadline.parse::<u64>().unwrap_or(0),
             holder,
+            outputs,
         ))
     }
 }
