@@ -204,6 +204,9 @@ extern "C" {
     #[wasm_bindgen(typescript_type = "TransactionData")]
     pub type TransactionData;
 
+    #[wasm_bindgen(typescript_type = "TransactionData[]")]
+    pub type TransactionDataList;
+
     #[wasm_bindgen(typescript_type = "Constants")]
     pub type Constants;
 
