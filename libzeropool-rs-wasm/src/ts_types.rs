@@ -135,6 +135,13 @@ export interface DecryptedMemo {
     txHash: string | undefined;
 }
 
+export interface StateUpdate {
+    newLeafs: any[];
+    newCommitments: any[];
+    newAccounts: any[];
+    newNotes: any[][];
+}
+
 export interface IndexedTx {
     index: number;
     memo: string;
@@ -143,7 +150,7 @@ export interface IndexedTx {
 
 export interface ParseTxsResult {
     decryptedMemos: DecryptedMemo[];
-    stateUpdate: any;
+    stateUpdate: StateUpdate;
 }
 
 "#;
@@ -245,6 +252,9 @@ extern "C" {
 
     #[wasm_bindgen(typescript_type = "DecryptedMemo[]")]
     pub type DecryptedMemos;
+
+    #[wasm_bindgen(typescript_type = "StateUpdate")]
+    pub type StateUpdate;
 
     #[wasm_bindgen(typescript_type = "ParseTxsResult")]
     pub type ParseTxsResult;

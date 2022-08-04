@@ -12,9 +12,13 @@ use crate::{Fr, Fs, IndexedNote, IndexedTx, ParseTxsResult, PoolParams, POOL_PAR
 
 #[derive(Serialize, Deserialize, Default)]
 pub struct StateUpdate {
+    #[serde(rename = "newLeafs")]
     pub new_leafs: Vec<(u64, Vec<Hash<Fr>>)>,
+    #[serde(rename = "newCommitments")]
     pub new_commitments: Vec<(u64, Hash<Fr>)>,
+    #[serde(rename = "newAccounts")]
     pub new_accounts: Vec<(u64, Account<Fr>)>,
+    #[serde(rename = "newNotes")]
     pub new_notes: Vec<Vec<(u64, Note<Fr>)>>,
 }
 
