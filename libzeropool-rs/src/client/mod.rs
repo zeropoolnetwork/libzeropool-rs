@@ -30,6 +30,7 @@ use self::state::{State, Transaction};
 use crate::{
     address::{format_address, parse_address, AddressParseError},
     keys::{reduce_sk, Keys},
+    merkle::Hash,
     random::CustomRng,
     utils::{keccak256, zero_note, zero_proof},
 };
@@ -48,6 +49,14 @@ pub enum CreateTxError {
     InsufficientBalance(String, String),
     #[error("Insufficient energy: available {0}, received {1}")]
     InsufficientEnergy(String, String),
+}
+
+#[derive(Serialize, Deserialize, Default)]
+pub struct StateFragment<Fr: PrimeField> {
+    pub new_leafs: Vec<(u64, Vec<Hash<Fr>>)>,
+    pub new_commitments: Vec<(u64, Hash<Fr>)>,
+    pub new_accounts: Vec<(u64, Account<Fr>)>,
+    pub new_notes: Vec<Vec<(u64, Note<Fr>)>>,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -75,7 +84,14 @@ pub enum TxType<Fr: PrimeField> {
     // fee, data, deposit_amount, tx_outputs
     Deposit(TokenAmount<Fr>, Vec<u8>, TokenAmount<Fr>, Vec<TxOutput<Fr>>),
     // fee, data, deposit_amount, deadline, holder
-    DepositPermittable(TokenAmount<Fr>, Vec<u8>, TokenAmount<Fr>, u64, Vec<u8>, Vec<TxOutput<Fr>>),
+    DepositPermittable(
+        TokenAmount<Fr>,
+        Vec<u8>,
+        TokenAmount<Fr>,
+        u64,
+        Vec<u8>,
+        Vec<TxOutput<Fr>>,
+    ),
     // fee, data, withdraw_amount, to, native_amount, energy_amount
     Withdraw(
         TokenAmount<Fr>,
@@ -166,13 +182,352 @@ where
         &self,
         tx: TxType<P::Fr>,
         delta_index: Option<u64>,
+        extra_state: Option<StateFragment<P::Fr>>,
     ) -> Result<TransactionData<P::Fr>, CreateTxError> {
-        let multi_tx_res = self.create_txs([tx].to_vec(), delta_index);
+        let mut rng = CustomRng;
+        let keys = self.keys.clone();
+        let state = &self.state;
 
-        match multi_tx_res {
-            Ok(txs) => Ok(txs[0].clone()),
-            Err(error) => Err(error),
+        // initial input account (from optimistic state)
+        let (in_account_optimistic_index, in_account_optimistic) = match extra_state {
+            Some(extra_state) => {
+                let last_acc = extra_state.new_accounts.last();
+                match last_acc {
+                    Some(last_acc) => (Some(last_acc.0), Some(last_acc.1)),
+                    _ => (None, None),
+                }
+            }
+            _ => (None, None),
+        };
+
+        // initial input account (from non-optimistic state)
+        let in_account = in_account_optimistic.unwrap_or_else(|| {
+            state.latest_account.unwrap_or_else(|| {
+                // Initial account should have d = pool_id to protect from reply attacks
+                let d = self.pool_id;
+                let p_d = derive_key_p_d(d.to_num(), self.keys.eta, &self.params).x;
+                Account {
+                    d: self.pool_id,
+                    p_d,
+                    i: BoundedNum::new(Num::ZERO),
+                    b: BoundedNum::new(Num::ZERO),
+                    e: BoundedNum::new(Num::ZERO),
+                }
+            })
+        });
+
+        let tree = &self.state.tree;
+
+        let initial_next_index = tree.next_index();
+
+        let in_account_index = state.latest_account_index;
+
+        // initial usable note index
+        let next_usable_index = state.earliest_usable_index();
+
+        // Should be provided by relayer together with note proofs, but as a fallback
+        // take the next index of the tree.
+        let delta_index = Num::from(delta_index.unwrap_or_else(|| self.state.tree.next_index()));
+
+        let (fee, tx_data, user_data) = {
+            let mut tx_data: Vec<u8> = vec![];
+            match &tx {
+                TxType::Deposit(fee, user_data, _, _) => {
+                    let raw_fee: u64 = fee.to_num().try_into().unwrap();
+                    tx_data.write_all(&raw_fee.to_be_bytes()).unwrap();
+                    (fee, tx_data, user_data)
+                }
+                TxType::DepositPermittable(fee, user_data, _, deadline, holder, _) => {
+                    let raw_fee: u64 = fee.to_num().try_into().unwrap();
+
+                    tx_data.write_all(&raw_fee.to_be_bytes()).unwrap();
+                    tx_data.write_all(&deadline.to_be_bytes()).unwrap();
+                    tx_data.append(&mut holder.clone());
+
+                    (fee, tx_data, user_data)
+                }
+                TxType::Transfer(fee, user_data, _) => {
+                    let raw_fee: u64 = fee.to_num().try_into().unwrap();
+                    tx_data.write_all(&raw_fee.to_be_bytes()).unwrap();
+                    (fee, tx_data, user_data)
+                }
+                TxType::Withdraw(fee, user_data, _, reciever, native_amount, _) => {
+                    let raw_fee: u64 = fee.to_num().try_into().unwrap();
+                    let raw_native_amount: u64 = native_amount.to_num().try_into().unwrap();
+
+                    tx_data.write_all(&raw_fee.to_be_bytes()).unwrap();
+                    tx_data.write_all(&raw_native_amount.to_be_bytes()).unwrap();
+                    tx_data.append(&mut reciever.clone());
+
+                    (fee, tx_data, user_data)
+                }
+            }
+        };
+
+        // Fetch constants::IN usable notes from state
+        let in_notes_original: Vec<(u64, Note<P::Fr>)> = state
+            .txs
+            .iter_slice(next_usable_index..=state.latest_note_index)
+            .filter_map(|(index, tx)| match tx {
+                Transaction::Note(note) => Some((index, note)),
+                _ => None,
+            })
+            .take(constants::IN)
+            .collect();
+
+        let spend_interval_index = in_notes_original
+            .last()
+            .map(|(index, _)| *index + 1)
+            .unwrap_or(if state.latest_note_index > 0 {
+                state.latest_note_index + 1
+            } else {
+                0
+            });
+
+        // Calculate total balance (account + constants::IN notes).
+        let mut input_value = in_account.b.to_num();
+        for (_index, note) in &in_notes_original {
+            input_value += note.b.to_num();
         }
+
+        let mut output_value = Num::ZERO;
+
+        let (num_real_out_notes, out_notes): (_, SizedVec<_, { constants::OUT }>) =
+            if let TxType::Transfer(_, _, outputs) = &tx {
+                if outputs.len() >= constants::OUT {
+                    return Err(CreateTxError::TooManyOutputs {
+                        max: constants::OUT,
+                        got: outputs.len(),
+                    });
+                }
+
+                let out_notes = outputs
+                    .iter()
+                    .map(|dest| {
+                        let (to_d, to_p_d) = parse_address::<P>(&dest.to)?;
+
+                        output_value += dest.amount.to_num();
+
+                        Ok(Note {
+                            d: to_d,
+                            p_d: to_p_d,
+                            b: dest.amount,
+                            t: rng.gen(),
+                        })
+                    })
+                    // fill out remaining output notes with zeroes
+                    .chain((0..).map(|_| Ok(zero_note())))
+                    .take(constants::OUT)
+                    .collect::<Result<SizedVec<_, { constants::OUT }>, AddressParseError>>()?;
+
+                (outputs.len(), out_notes)
+            } else {
+                (0, (0..).map(|_| zero_note()).take(constants::OUT).collect())
+            };
+
+        let mut delta_value = -fee.as_num();
+        // By default all account energy will be withdrawn on withdraw tx
+        let mut delta_energy = Num::ZERO;
+
+        let in_account_pos = in_account_index.unwrap_or(0);
+
+        let mut input_energy = in_account.e.to_num();
+        input_energy += in_account.b.to_num() * (delta_index - Num::from(in_account_pos));
+
+        for (note_index, note) in &in_notes_original {
+            input_energy += note.b.to_num() * (delta_index - Num::from(*note_index));
+        }
+        let new_balance = match &tx {
+            TxType::Transfer(_, _, _) => {
+                if input_value.to_uint() >= (output_value + fee.as_num()).to_uint() {
+                    input_value - output_value - fee.as_num()
+                } else {
+                    return Err(CreateTxError::InsufficientBalance(
+                        (output_value + fee.as_num()).to_string(),
+                        input_value.to_string(),
+                    ));
+                }
+            }
+            TxType::Withdraw(_, _, amount, _, _, energy) => {
+                let amount = amount.to_num();
+                let energy = energy.to_num();
+
+                if energy.to_uint() > input_energy.to_uint() {
+                    return Err(CreateTxError::InsufficientEnergy(
+                        input_energy.to_string(),
+                        energy.to_string(),
+                    ));
+                }
+
+                delta_energy -= energy;
+                delta_value -= amount;
+
+                if input_value.to_uint() >= amount.to_uint() {
+                    input_value + delta_value
+                } else {
+                    return Err(CreateTxError::InsufficientBalance(
+                        delta_value.to_string(),
+                        input_value.to_string(),
+                    ));
+                }
+            }
+            TxType::Deposit(_, _, amount, _)
+            | TxType::DepositPermittable(_, _, amount, _, _, _) => {
+                delta_value += amount.to_num();
+                input_value + delta_value
+            }
+        };
+
+        let (d, p_d) = self.generate_address_components();
+        let out_account = Account {
+            d,
+            p_d,
+            i: BoundedNum::new(Num::from(spend_interval_index)),
+            b: BoundedNum::new(new_balance),
+            e: BoundedNum::new(delta_energy + input_energy),
+        };
+
+        let in_account_hash = in_account.hash(&self.params);
+        let nullifier = nullifier(
+            in_account_hash,
+            keys.eta,
+            in_account_pos.into(),
+            &self.params,
+        );
+
+        let ciphertext = {
+            let entropy: [u8; 32] = rng.gen();
+
+            // No need to include all the zero notes in the encrypted transaction
+            let out_notes = &out_notes[0..num_real_out_notes];
+
+            cipher::encrypt(&entropy, keys.eta, out_account, out_notes, &self.params)
+        };
+
+        // Hash input account + notes filling remaining space with non-hashed zeroes
+        let owned_zero_notes = (0..).map(|_| {
+            let d: BoundedNum<_, { constants::DIVERSIFIER_SIZE_BITS }> = rng.gen();
+            let p_d = derive_key_p_d::<P, P::Fr>(d.to_num(), keys.eta, &self.params).x;
+            Note {
+                d,
+                p_d,
+                b: BoundedNum::new(Num::ZERO),
+                t: rng.gen(),
+            }
+        });
+        let in_notes: SizedVec<Note<P::Fr>, { constants::IN }> = in_notes_original
+            .iter()
+            .map(|(_, note)| note)
+            .cloned()
+            .chain(owned_zero_notes)
+            .take(constants::IN)
+            .collect();
+        let in_note_hashes = in_notes.iter().map(|note| note.hash(&self.params));
+        let input_hashes: SizedVec<_, { constants::IN + 1 }> = [in_account_hash]
+            .iter()
+            .copied()
+            .chain(in_note_hashes)
+            .collect();
+
+        // Same with output
+        let out_account_hash = out_account.hash(&self.params);
+        let out_note_hashes = out_notes.iter().map(|n| n.hash(&self.params));
+        let out_hashes: SizedVec<Num<P::Fr>, { constants::OUT + 1 }> = [out_account_hash]
+            .iter()
+            .copied()
+            .chain(out_note_hashes)
+            .collect();
+
+        let out_commit = out_commitment_hash(out_hashes.as_slice(), &self.params);
+        let tx_hash = tx_hash(input_hashes.as_slice(), out_commit, &self.params);
+
+        let delta = make_delta::<P::Fr>(
+            delta_value,
+            delta_energy,
+            delta_index,
+            *self.pool_id.clone().as_num(),
+        );
+
+        //let root: Num<P::Fr> = tree.get_root_after_virtual(virtual_commitments.iter().cloned());
+        let root: Num<P::Fr> = tree.get_root();
+
+        // memo = tx_specific_data, ciphertext, user_defined_data
+        let mut memo_data = {
+            let tx_data_size = tx_data.len();
+            let ciphertext_size = ciphertext.len();
+            let user_data_size = user_data.len();
+            Vec::with_capacity(tx_data_size + ciphertext_size + user_data_size)
+        };
+
+        #[allow(clippy::redundant_clone)]
+        memo_data.append(&mut tx_data.clone());
+        memo_data.extend(&ciphertext);
+        memo_data.append(&mut user_data.clone());
+
+        let memo_hash = keccak256(&memo_data);
+        let memo = Num::from_uint_reduced(NumRepr(Uint::from_big_endian(&memo_hash)));
+
+        let public = TransferPub::<P::Fr> {
+            root,
+            nullifier,
+            out_commit,
+            delta,
+            memo,
+        };
+
+        let tx = Tx {
+            input: (in_account, in_notes),
+            output: (out_account, out_notes),
+        };
+
+        let (eddsa_s, eddsa_r) = tx_sign(keys.sk, tx_hash, &self.params);
+
+        let account_proof = in_account_index.map_or_else(
+            || Ok(zero_proof()),
+            |i| {
+                if !virtual_leaves.is_empty() {
+                    // We will use the account from the virtual tree from the second tx in multi-tx mode
+                    tree.get_proof_virtual_index(i, virtual_leaves.iter().cloned())
+                        .ok_or(CreateTxError::ProofNotFound(i))
+                } else {
+                    tree.get_leaf_proof(i)
+                        .ok_or(CreateTxError::ProofNotFound(i))
+                }
+            },
+        )?;
+        let note_proofs = in_notes_original
+            .iter()
+            .copied()
+            .map(|(index, _note)| {
+                if !virtual_leaves.is_empty() {
+                    // The note proofs become changed after adding new virtual hashes
+                    tree.get_proof_virtual_index(index, virtual_leaves.iter().cloned())
+                        .ok_or(CreateTxError::ProofNotFound(index))
+                } else {
+                    tree.get_leaf_proof(index)
+                        .ok_or(CreateTxError::ProofNotFound(index))
+                }
+            })
+            .chain((0..).map(|_| Ok(zero_proof())))
+            .take(constants::IN)
+            .collect::<Result<_, _>>()?;
+
+        let secret = TransferSec::<P::Fr> {
+            tx,
+            in_proof: (account_proof, note_proofs),
+            eddsa_s: eddsa_s.to_other().unwrap(),
+            eddsa_r,
+            eddsa_a: keys.a,
+        };
+
+        Ok(TransactionData {
+            public,
+            secret,
+            ciphertext,
+            memo: memo_data,
+            commitment_root: out_commit,
+            out_hashes,
+        })
     }
 
     pub fn create_txs(
@@ -290,43 +645,40 @@ where
 
             let mut output_value = Num::ZERO;
 
-            let (num_real_out_notes, out_notes): (_, SizedVec<_, { constants::OUT }>) =
-                match &tx {
-                    TxType::Transfer(_, _, outputs) |
-                    TxType::Deposit(_, _, _, outputs) |
-                    TxType::DepositPermittable(_, _, _, _, _, outputs) => {
-                        if outputs.len() >= constants::OUT {
-                            return Err(CreateTxError::TooManyOutputs {
-                                max: constants::OUT,
-                                got: outputs.len(),
-                            });
-                        }
+            let (num_real_out_notes, out_notes): (_, SizedVec<_, { constants::OUT }>) = match &tx {
+                TxType::Transfer(_, _, outputs)
+                | TxType::Deposit(_, _, _, outputs)
+                | TxType::DepositPermittable(_, _, _, _, _, outputs) => {
+                    if outputs.len() >= constants::OUT {
+                        return Err(CreateTxError::TooManyOutputs {
+                            max: constants::OUT,
+                            got: outputs.len(),
+                        });
+                    }
 
-                        let out_notes = outputs
-                            .iter()
-                            .map(|dest| {
-                                let (to_d, to_p_d) = parse_address::<P>(&dest.to)?;
+                    let out_notes = outputs
+                        .iter()
+                        .map(|dest| {
+                            let (to_d, to_p_d) = parse_address::<P>(&dest.to)?;
 
-                                output_value += dest.amount.to_num();
+                            output_value += dest.amount.to_num();
 
-                                Ok(Note {
-                                    d: to_d,
-                                    p_d: to_p_d,
-                                    b: dest.amount,
-                                    t: rng.gen(),
-                                })
+                            Ok(Note {
+                                d: to_d,
+                                p_d: to_p_d,
+                                b: dest.amount,
+                                t: rng.gen(),
                             })
-                            // fill out remaining output notes with zeroes
-                            .chain((0..).map(|_| Ok(zero_note())))
-                            .take(constants::OUT)
-                            .collect::<Result<SizedVec<_, { constants::OUT }>, AddressParseError>>()?;
+                        })
+                        // fill out remaining output notes with zeroes
+                        .chain((0..).map(|_| Ok(zero_note())))
+                        .take(constants::OUT)
+                        .collect::<Result<SizedVec<_, { constants::OUT }>, AddressParseError>>()?;
 
-                        (outputs.len(), out_notes)
-                    }
-                    _ => {
-                        (0, (0..).map(|_| zero_note()).take(constants::OUT).collect())
-                    }
-                };
+                    (outputs.len(), out_notes)
+                }
+                _ => (0, (0..).map(|_| zero_note()).take(constants::OUT).collect()),
+            };
 
             let mut delta_value = -fee.as_num();
             // By default all account energy will be withdrawn on withdraw tx
@@ -575,6 +927,7 @@ mod tests {
                 vec![],
             ),
             None,
+            None,
         )
         .unwrap();
     }
@@ -591,6 +944,7 @@ mod tests {
                 BoundedNum::new(Num::ONE),
                 vec![],
             ),
+            None,
             None,
         )
         .unwrap();
@@ -612,6 +966,7 @@ mod tests {
         acc.create_tx(
             TxType::Transfer(BoundedNum::new(Num::ZERO), vec![], vec![out]),
             None,
+            None,
         )
         .unwrap();
     }
@@ -631,6 +986,7 @@ mod tests {
 
         acc.create_tx(
             TxType::Transfer(BoundedNum::new(Num::ZERO), vec![], vec![out]),
+            None,
             None,
         )
         .unwrap();
