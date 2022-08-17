@@ -145,7 +145,11 @@ impl UserAccount {
         Ok(pair)
     }
 
-    fn construct_tx_data(&self, native_tx: NativeTxType<Fr>) -> Result<TransactionData, JsValue> {
+    fn construct_tx_data(
+        &self,
+        native_tx: NativeTxType<Fr>,
+        new_state: Option<StateUpdate>,
+    ) -> Result<TransactionData, JsValue> {
         let account = self.inner.clone();
 
         let tx = account
@@ -175,47 +179,9 @@ impl UserAccount {
             .unchecked_into::<TransactionData>())
     }
 
-    fn construct_multi_tx_data(
-        &self,
-        native_txs: Vec<NativeTxType<Fr>>,
-    ) -> Result<TransactionDataList, JsValue> {
-        let account = self.inner.clone();
-
-        let txs = account
-            .borrow()
-            .create_txs(native_txs, None)
-            .map_err(|err| js_err!("{}", err))?;
-
-        let ready_txs: Vec<TransactionDataSer> = txs
-            .into_iter()
-            .map(|tx| {
-                let (v, e, index, _) = parse_delta(tx.public.delta);
-                let parsed_delta = ParsedDelta {
-                    v: v.try_into().unwrap(),
-                    e: e.try_into().unwrap(),
-                    index: index.try_into().unwrap(),
-                };
-
-                TransactionDataSer {
-                    public: tx.public,
-                    secret: tx.secret,
-                    ciphertext: tx.ciphertext,
-                    memo: tx.memo,
-                    out_hashes: tx.out_hashes,
-                    commitment_root: tx.commitment_root,
-                    parsed_delta,
-                }
-            })
-            .collect();
-
-        Ok(serde_wasm_bindgen::to_value(&ready_txs)
-            .unwrap()
-            .unchecked_into::<TransactionDataList>())
-    }
-
     #[wasm_bindgen(js_name = "createDeposit")]
     pub fn create_deposit(&self, deposit: IDepositData) -> Result<TransactionData, JsValue> {
-        self.construct_tx_data(deposit.to_native()?)
+        Ok(self.construct_tx_data(deposit.to_native()?, None))
     }
 
     #[wasm_bindgen(js_name = "createDepositPermittable")]
@@ -223,49 +189,26 @@ impl UserAccount {
         &self,
         deposit: IDepositPermittableData,
     ) -> Result<TransactionData, JsValue> {
-        self.construct_tx_data(deposit.to_native()?)
-    }
-
-    #[wasm_bindgen(js_name = "createMultiDeposit")]
-    pub fn create_multi_deposit(
-        &self,
-        deposits: IMultiDepositData,
-    ) -> Result<TransactionDataList, JsValue> {
-        self.construct_multi_tx_data(deposits.to_native_array()?)
-    }
-
-    #[wasm_bindgen(js_name = "createMultiDepositPermittable")]
-    pub fn create_multi_deposit_permittable(
-        &self,
-        deposits: IMultiDepositPermittableData,
-    ) -> Result<TransactionDataList, JsValue> {
-        self.construct_multi_tx_data(deposits.to_native_array()?)
+        Ok(self.construct_tx_data(deposit.to_native()?, None))
     }
 
     #[wasm_bindgen(js_name = "createTransfer")]
     pub fn create_tranfer(&self, transfer: ITransferData) -> Result<TransactionData, JsValue> {
-        self.construct_tx_data(transfer.to_native()?)
+        Ok(self.construct_tx_data(transfer.to_native()?, None))
     }
 
-    #[wasm_bindgen(js_name = "createMultiTransfer")]
-    pub fn create_multi_tranfer(
+    #[wasm_bindgen(js_name = "createTransferOptimistic")]
+    pub fn create_tranfer_optimistic(
         &self,
-        transfers: IMultiTransferData,
-    ) -> Result<TransactionDataList, JsValue> {
-        self.construct_multi_tx_data(transfers.to_native_array()?)
+        transfer: ITransferData,
+        new_state: StateUpdate,
+    ) -> Result<TransactionData, JsValue> {
+        Ok(self.construct_tx_data(transfer.to_native()?, new_state.to_native()?))
     }
 
     #[wasm_bindgen(js_name = "createWithdraw")]
     pub fn create_withdraw(&self, withdraw: IWithdrawData) -> Result<TransactionData, JsValue> {
-        self.construct_tx_data(withdraw.to_native()?)
-    }
-
-    #[wasm_bindgen(js_name = "createMultiWithdraw")]
-    pub fn create_multi_withdraw(
-        &self,
-        withdrawals: IMultiWithdrawData,
-    ) -> Result<TransactionDataList, JsValue> {
-        self.construct_multi_tx_data(withdrawals.to_native_array()?)
+        Ok(self.construct_tx_data(withdraw.to_native()?, None))
     }
 
     #[wasm_bindgen(js_name = "isOwnAddress")]
