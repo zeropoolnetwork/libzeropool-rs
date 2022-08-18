@@ -233,6 +233,11 @@ where
         // initial usable note index
         let next_usable_index = state.earliest_usable_index_optimistic(extra_state.new_accounts, extra_state.new_notes);
 
+        let latest_note_index_optimistic = extra_state.new_notes
+            .last()
+            .map(|indexed_note| indexed_note.0)
+            .unwrap_or(state.latest_note_index);
+
         // Should be provided by relayer together with note proofs, but as a fallback
         // take the next index of the tree (optimistic part included).
         let delta_index = Num::from(delta_index.unwrap_or_else( || {
@@ -284,6 +289,11 @@ where
             }
         };
 
+        // Optimistic available notes
+        let optimistic_available_notes = extra_state.new_notes
+            .into_iter()
+            .filter(|indexed_note| indexed_note.0 >= next_usable_index);
+
         // Fetch constants::IN usable notes from state
         let in_notes_original: Vec<(u64, Note<P::Fr>)> = state
             .txs
@@ -292,17 +302,14 @@ where
                 Transaction::Note(note) => Some((index, note)),
                 _ => None,
             })
+            .chain(optimistic_available_notes)
             .take(constants::IN)
             .collect();
 
         let spend_interval_index = in_notes_original
             .last()
             .map(|(index, _)| *index + 1)
-            .unwrap_or(if state.latest_note_index > 0 {
-                state.latest_note_index + 1
-            } else {
-                0
-            });
+            .unwrap_or(if latest_note_index_optimistic > 0 { latest_note_index_optimistic + 1 } else { 0 });
 
         // Calculate total balance (account + constants::IN notes).
         let mut input_value = in_account.b.to_num();
@@ -505,28 +512,16 @@ where
         let account_proof = in_account_index.map_or_else(
             || Ok(zero_proof()),
             |i| {
-                if !virtual_leaves.is_empty() {
-                    // We will use the account from the virtual tree from the second tx in multi-tx mode
-                    tree.get_proof_virtual_index(i, virtual_leaves.iter().cloned())
-                        .ok_or(CreateTxError::ProofNotFound(i))
-                } else {
-                    tree.get_leaf_proof(i)
-                        .ok_or(CreateTxError::ProofNotFound(i))
-                }
+                tree.get_proof_optimistic_index(i, extra_state.new_leafs, extra_state.new_commitments)
+                    .ok_or(CreateTxError::ProofNotFound(i))
             },
         )?;
         let note_proofs = in_notes_original
             .iter()
             .copied()
             .map(|(index, _note)| {
-                if !virtual_leaves.is_empty() {
-                    // The note proofs become changed after adding new virtual hashes
-                    tree.get_proof_virtual_index(index, virtual_leaves.iter().cloned())
-                        .ok_or(CreateTxError::ProofNotFound(index))
-                } else {
-                    tree.get_leaf_proof(index)
-                        .ok_or(CreateTxError::ProofNotFound(index))
-                }
+                tree.get_proof_optimistic_index(index, extra_state.new_leafs, extra_state.new_commitments)
+                    .ok_or(CreateTxError::ProofNotFound(index))
             })
             .chain((0..).map(|_| Ok(zero_proof())))
             .take(constants::IN)

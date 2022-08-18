@@ -196,10 +196,9 @@ where
         let latest_note_index_optimistic = optimistic_notes
             .last()
             .map(|indexed_note| indexed_note.0)
-            .unwrap_or(0);
+            .unwrap_or(self.latest_note_index);
 
-        let max_note_index = std::cmp::max(self.latest_note_index, latest_note_index_optimistic);
-        let notes_range = latest_account_index..=max_note_index;
+        let notes_range = latest_account_index..=latest_note_index_optimistic;
 
         let optimistic_note_indices = optimistic_notes
             .iter()

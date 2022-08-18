@@ -456,6 +456,62 @@ impl<D: KeyValueDB, P: PoolParams> MerkleTree<D, P> {
         Some(self.get_proof_virtual(index, &mut virtual_nodes, &update_boundaries))
     }
 
+    pub fn get_proof_optimistic_index<I1, I2>(
+        &self,
+        index: u64,
+        new_hashes: I1,
+        new_commitments: I2,
+    ) -> Option<MerkleProof<P::Fr, { constants::HEIGHT }>>
+    where
+        I1: IntoIterator<Item = (u64, Vec<Hash<P::Fr>>)>,
+        I2: IntoIterator<Item = (u64, Hash<P::Fr>)>,
+    {
+        let mut next_index: u64 = 0;
+        let mut start_index: u64 = u64::MAX;
+        let mut virtual_nodes: HashMap<(u32, u64), Hash<P::Fr>> = new_commitments
+            .into_iter()
+            .map(|(index, hash)| {
+                assert_eq!(index & ((1 << constants::OUTPLUSONELOG) - 1), 0);
+                start_index = start_index.min(index);
+                next_index = next_index.max(index + 1);
+                ((constants::OUTPLUSONELOG as u32, index  >> constants::OUTPLUSONELOG), hash)
+            })
+            .collect();
+        
+        new_hashes.into_iter().for_each(|(index, leafs)| {
+            assert_eq!(index & ((1 << constants::OUTPLUSONELOG) - 1), 0);
+            start_index = start_index.min(index);
+            next_index = next_index.max(index + leafs.len() as u64);
+            (0..constants::OUTPLUSONELOG)
+                .for_each(|height| {
+                    virtual_nodes.insert((height as u32, ((index + leafs.len() as u64 - 1) >> height) + 1), self.zero_note_hashes[height]);
+                });
+            leafs.into_iter().enumerate().for_each(|(i, leaf)| {
+                virtual_nodes.insert((0_u32, index + i as u64), leaf);
+            });
+        });
+
+        let original_next_index = self.next_index;
+        self.update_next_index_from_node(0, next_index);
+
+        let update_boundaries = UpdateBoundaries {
+            updated_range_left_index: self.next_index,
+            updated_range_right_index: Self::calc_next_index(next_index),
+            new_hashes_left_index: start_index,
+            new_hashes_right_index: next_index,
+        };
+
+        // calculate new hashes
+        self.get_virtual_node_full(
+            constants::HEIGHT as u32,
+            0,
+            &mut virtual_nodes,
+            &update_boundaries,
+        );
+
+        Some(self.get_proof_virtual(index, &mut virtual_nodes, &update_boundaries))
+    }
+
     fn get_proof_virtual<const H: usize>(
         &self,
         index: u64,
