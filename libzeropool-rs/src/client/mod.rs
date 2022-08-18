@@ -56,7 +56,11 @@ pub struct StateFragment<Fr: PrimeField> {
     pub new_leafs: Vec<(u64, Vec<Hash<Fr>>)>,
     pub new_commitments: Vec<(u64, Hash<Fr>)>,
     pub new_accounts: Vec<(u64, Account<Fr>)>,
+<<<<<<< HEAD:libzeropool-rs/src/client/mod.rs
     pub new_notes: Vec<Vec<(u64, Note<Fr>)>>,
+=======
+    pub new_notes: Vec<(u64, Note<Fr>)>,
+>>>>>>> 66a8d1d (create_tx changes):libzkbob-rs/src/client/mod.rs
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -188,16 +192,22 @@ where
         let keys = self.keys.clone();
         let state = &self.state;
 
-        // initial input account (from optimistic state)
-        let (in_account_optimistic_index, in_account_optimistic) = match extra_state {
-            Some(extra_state) => {
-                let last_acc = extra_state.new_accounts.last();
-                match last_acc {
-                    Some(last_acc) => (Some(last_acc.0), Some(last_acc.1)),
-                    _ => (None, None),
-                }
+        let extra_state = extra_state.unwrap_or(
+            StateFragment {
+                new_leafs: [].to_vec(),
+                new_commitments: [].to_vec(),
+                new_accounts: [].to_vec(),
+                new_notes: [].to_vec(),
             }
-            _ => (None, None),
+        );
+
+        // initial input account (from optimistic state)
+        let (in_account_optimistic_index, in_account_optimistic) = {
+            let last_acc = extra_state.new_accounts.last();
+            match last_acc {
+                Some(last_acc) => (Some(last_acc.0), Some(last_acc.1)),
+                _ => (None, None),
+            }
         };
 
         // initial input account (from non-optimistic state)
@@ -218,16 +228,26 @@ where
 
         let tree = &self.state.tree;
 
-        let initial_next_index = tree.next_index();
-
-        let in_account_index = state.latest_account_index;
+        let in_account_index = in_account_optimistic_index.or(state.latest_account_index);
 
         // initial usable note index
-        let next_usable_index = state.earliest_usable_index();
+        let next_usable_index = state.earliest_usable_index_optimistic(extra_state.new_accounts, extra_state.new_notes);
 
         // Should be provided by relayer together with note proofs, but as a fallback
-        // take the next index of the tree.
-        let delta_index = Num::from(delta_index.unwrap_or_else(|| self.state.tree.next_index()));
+        // take the next index of the tree (optimistic part included).
+        let delta_index = Num::from(delta_index.unwrap_or_else( || {
+            let next_by_optimistic_leaf = extra_state.new_leafs
+                .last()
+                .map(|leafs| leafs.0 + (leafs.1.len() as u64) + 1);
+            let next_by_optimistic_commitment = extra_state.new_commitments
+                .last()
+                .map(|commitment| commitment.0 + (constants::OUT as u64) + 1);
+            next_by_optimistic_leaf
+                .into_iter()
+                .chain(next_by_optimistic_commitment)
+                .min()
+                .unwrap_or(self.state.tree.next_index())
+        }));
 
         let (fee, tx_data, user_data) = {
             let mut tx_data: Vec<u8> = vec![];

@@ -177,6 +177,47 @@ where
             .unwrap_or(latest_account_index)
     }
 
+    /// Return an index of a earliest usable note including optimistic state
+    pub fn earliest_usable_index_optimistic(
+        &self,
+        optimistic_accounts: Vec<(u64, Account<P::Fr>)>,
+        optimistic_notes: Vec<(u64, Note<P::Fr>)>
+    ) -> u64 {
+        let latest_account_index = optimistic_accounts
+            .last()
+            .map(|indexed_acc| indexed_acc.1)
+            .or(self.latest_account)
+            .map(|acc| acc.i.to_num())
+            .unwrap_or(Num::ZERO)
+            .try_into()
+            .unwrap();
+
+        
+        let latest_note_index_optimistic = optimistic_notes
+            .last()
+            .map(|indexed_note| indexed_note.0)
+            .unwrap_or(0);
+
+        let max_note_index = std::cmp::max(self.latest_note_index, latest_note_index_optimistic);
+        let notes_range = latest_account_index..=max_note_index;
+
+        let optimistic_note_indices = optimistic_notes
+            .iter()
+            .map(|indexed_note| indexed_note.0)
+            .filter(move |index| notes_range.contains(index));
+
+        
+        self.txs
+            .iter_slice(notes_range)
+            .filter_map(|(index, tx)| match tx {
+                Transaction::Note(_) => Some(index),
+                _ => None,
+            })
+            .chain(optimistic_note_indices)
+            .next()
+            .unwrap_or(latest_account_index)
+    }
+
     /// Returns user's total balance (account + available notes).
     pub fn total_balance(&self) -> Num<P::Fr> {
         self.account_balance() + self.note_balance()
