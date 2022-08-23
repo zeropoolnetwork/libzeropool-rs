@@ -18,7 +18,7 @@ use libzeropool::{
     },
 };
 use libzeropool_rs::{
-    client::{TxType as NativeTxType, UserAccount as NativeUserAccount},
+    client::{StateFragment, TxType as NativeTxType, UserAccount as NativeUserAccount},
     merkle::{Hash, Node},
 };
 use serde::Serialize;
@@ -152,9 +152,25 @@ impl UserAccount {
     ) -> Result<TransactionData, JsValue> {
         let account = self.inner.clone();
 
+        let extra_state = new_state.map(|s| {
+            let mut joined_notes = vec![];
+            s.new_notes.into_iter().for_each(|notes| {
+                notes.into_iter().for_each(|one_note| {
+                    joined_notes.push(one_note);
+                });
+            });
+
+            StateFragment {
+                new_leafs: s.new_leafs,
+                new_commitments: s.new_commitments,
+                new_accounts: s.new_accounts,
+                new_notes: joined_notes,
+            }
+        });
+
         let tx = account
             .borrow()
-            .create_tx(native_tx, None)
+            .create_tx(native_tx, None, extra_state)
             .map_err(|err| js_err!("{}", err))?;
 
         let (v, e, index, _) = parse_delta(tx.public.delta);
@@ -181,7 +197,7 @@ impl UserAccount {
 
     #[wasm_bindgen(js_name = "createDeposit")]
     pub fn create_deposit(&self, deposit: IDepositData) -> Result<TransactionData, JsValue> {
-        Ok(self.construct_tx_data(deposit.to_native()?, None))
+        self.construct_tx_data(deposit.to_native()?, None)
     }
 
     #[wasm_bindgen(js_name = "createDepositPermittable")]
@@ -189,26 +205,41 @@ impl UserAccount {
         &self,
         deposit: IDepositPermittableData,
     ) -> Result<TransactionData, JsValue> {
-        Ok(self.construct_tx_data(deposit.to_native()?, None))
+        self.construct_tx_data(deposit.to_native()?, None)
     }
 
     #[wasm_bindgen(js_name = "createTransfer")]
     pub fn create_tranfer(&self, transfer: ITransferData) -> Result<TransactionData, JsValue> {
-        Ok(self.construct_tx_data(transfer.to_native()?, None))
+        self.construct_tx_data(transfer.to_native()?, None)
     }
 
     #[wasm_bindgen(js_name = "createTransferOptimistic")]
     pub fn create_tranfer_optimistic(
         &self,
         transfer: ITransferData,
-        new_state: StateUpdate,
+        new_state: &JsValue,
     ) -> Result<TransactionData, JsValue> {
-        Ok(self.construct_tx_data(transfer.to_native()?, new_state.to_native()?))
+        let new_state: StateUpdate = new_state
+            .into_serde()
+            .map_err(|err| js_err!(&err.to_string()))?;
+        self.construct_tx_data(transfer.to_native()?, Some(new_state))
     }
 
     #[wasm_bindgen(js_name = "createWithdraw")]
     pub fn create_withdraw(&self, withdraw: IWithdrawData) -> Result<TransactionData, JsValue> {
-        Ok(self.construct_tx_data(withdraw.to_native()?, None))
+        self.construct_tx_data(withdraw.to_native()?, None)
+    }
+
+    #[wasm_bindgen(js_name = "createWithdrawalOptimistic")]
+    pub fn create_withdraw_optimistic(
+        &self,
+        withdraw: IWithdrawData,
+        new_state: &JsValue,
+    ) -> Result<TransactionData, JsValue> {
+        let new_state: StateUpdate = new_state
+            .into_serde()
+            .map_err(|err| js_err!(&err.to_string()))?;
+        self.construct_tx_data(withdraw.to_native()?, Some(new_state))
     }
 
     #[wasm_bindgen(js_name = "isOwnAddress")]

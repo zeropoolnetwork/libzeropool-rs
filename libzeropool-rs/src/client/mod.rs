@@ -51,16 +51,12 @@ pub enum CreateTxError {
     InsufficientEnergy(String, String),
 }
 
-#[derive(Serialize, Deserialize, Default)]
+#[derive(Serialize, Deserialize, Default, Clone)]
 pub struct StateFragment<Fr: PrimeField> {
     pub new_leafs: Vec<(u64, Vec<Hash<Fr>>)>,
     pub new_commitments: Vec<(u64, Hash<Fr>)>,
     pub new_accounts: Vec<(u64, Account<Fr>)>,
-<<<<<<< HEAD:libzeropool-rs/src/client/mod.rs
-    pub new_notes: Vec<Vec<(u64, Note<Fr>)>>,
-=======
     pub new_notes: Vec<(u64, Note<Fr>)>,
->>>>>>> 66a8d1d (create_tx changes):libzkbob-rs/src/client/mod.rs
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -192,14 +188,12 @@ where
         let keys = self.keys.clone();
         let state = &self.state;
 
-        let extra_state = extra_state.unwrap_or(
-            StateFragment {
-                new_leafs: [].to_vec(),
-                new_commitments: [].to_vec(),
-                new_accounts: [].to_vec(),
-                new_notes: [].to_vec(),
-            }
-        );
+        let extra_state = extra_state.unwrap_or(StateFragment {
+            new_leafs: [].to_vec(),
+            new_commitments: [].to_vec(),
+            new_accounts: [].to_vec(),
+            new_notes: [].to_vec(),
+        });
 
         // initial input account (from optimistic state)
         let (in_account_optimistic_index, in_account_optimistic) = {
@@ -231,20 +225,24 @@ where
         let in_account_index = in_account_optimistic_index.or(state.latest_account_index);
 
         // initial usable note index
-        let next_usable_index = state.earliest_usable_index_optimistic(extra_state.new_accounts, extra_state.new_notes);
+        let next_usable_index = state
+            .earliest_usable_index_optimistic(&extra_state.new_accounts, &extra_state.new_notes);
 
-        let latest_note_index_optimistic = extra_state.new_notes
+        let latest_note_index_optimistic = extra_state
+            .new_notes
             .last()
             .map(|indexed_note| indexed_note.0)
             .unwrap_or(state.latest_note_index);
 
         // Should be provided by relayer together with note proofs, but as a fallback
         // take the next index of the tree (optimistic part included).
-        let delta_index = Num::from(delta_index.unwrap_or_else( || {
-            let next_by_optimistic_leaf = extra_state.new_leafs
+        let delta_index = Num::from(delta_index.unwrap_or_else(|| {
+            let next_by_optimistic_leaf = extra_state
+                .new_leafs
                 .last()
                 .map(|leafs| leafs.0 + (leafs.1.len() as u64) + 1);
-            let next_by_optimistic_commitment = extra_state.new_commitments
+            let next_by_optimistic_commitment = extra_state
+                .new_commitments
                 .last()
                 .map(|commitment| commitment.0 + (constants::OUT as u64) + 1);
             next_by_optimistic_leaf
@@ -290,7 +288,8 @@ where
         };
 
         // Optimistic available notes
-        let optimistic_available_notes = extra_state.new_notes
+        let optimistic_available_notes = extra_state
+            .new_notes
             .into_iter()
             .filter(|indexed_note| indexed_note.0 >= next_usable_index);
 
@@ -309,7 +308,11 @@ where
         let spend_interval_index = in_notes_original
             .last()
             .map(|(index, _)| *index + 1)
-            .unwrap_or(if latest_note_index_optimistic > 0 { latest_note_index_optimistic + 1 } else { 0 });
+            .unwrap_or(if latest_note_index_optimistic > 0 {
+                latest_note_index_optimistic + 1
+            } else {
+                0
+            });
 
         // Calculate total balance (account + constants::IN notes).
         let mut input_value = in_account.b.to_num();
@@ -509,10 +512,15 @@ where
 
         let (eddsa_s, eddsa_r) = tx_sign(keys.sk, tx_hash, &self.params);
 
+        let new_leafs = extra_state.new_leafs.iter().cloned();
+        let new_commitments = extra_state.new_commitments.iter().cloned();
+        let (mut virtual_nodes, update_boundaries) =
+            tree.get_virtual_subtree(new_leafs, new_commitments);
+
         let account_proof = in_account_index.map_or_else(
             || Ok(zero_proof()),
             |i| {
-                tree.get_proof_optimistic_index(i, extra_state.new_leafs, extra_state.new_commitments)
+                tree.get_proof_optimistic_index(i, &mut virtual_nodes, &update_boundaries)
                     .ok_or(CreateTxError::ProofNotFound(i))
             },
         )?;
@@ -520,7 +528,7 @@ where
             .iter()
             .copied()
             .map(|(index, _note)| {
-                tree.get_proof_optimistic_index(index, extra_state.new_leafs, extra_state.new_commitments)
+                tree.get_proof_optimistic_index(index, &mut virtual_nodes, &update_boundaries)
                     .ok_or(CreateTxError::ProofNotFound(index))
             })
             .chain((0..).map(|_| Ok(zero_proof())))

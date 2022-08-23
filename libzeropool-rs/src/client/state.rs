@@ -180,8 +180,8 @@ where
     /// Return an index of a earliest usable note including optimistic state
     pub fn earliest_usable_index_optimistic(
         &self,
-        optimistic_accounts: Vec<(u64, Account<P::Fr>)>,
-        optimistic_notes: Vec<(u64, Note<P::Fr>)>
+        optimistic_accounts: &Vec<(u64, Account<P::Fr>)>,
+        optimistic_notes: &Vec<(u64, Note<P::Fr>)>
     ) -> u64 {
         let latest_account_index = optimistic_accounts
             .last()
@@ -198,16 +198,14 @@ where
             .map(|indexed_note| indexed_note.0)
             .unwrap_or(self.latest_note_index);
 
-        let notes_range = latest_account_index..=latest_note_index_optimistic;
-
         let optimistic_note_indices = optimistic_notes
             .iter()
             .map(|indexed_note| indexed_note.0)
-            .filter(move |index| notes_range.contains(index));
+            .filter(move |index| (latest_account_index..=latest_note_index_optimistic).contains(index));
 
         
         self.txs
-            .iter_slice(notes_range)
+            .iter_slice(latest_account_index..=latest_note_index_optimistic)
             .filter_map(|(index, tx)| match tx {
                 Transaction::Note(_) => Some(index),
                 _ => None,

@@ -456,12 +456,12 @@ impl<D: KeyValueDB, P: PoolParams> MerkleTree<D, P> {
         Some(self.get_proof_virtual(index, &mut virtual_nodes, &update_boundaries))
     }
 
-    pub fn get_proof_optimistic_index<I1, I2>(
+
+    pub fn get_virtual_subtree<I1, I2>(
         &self,
-        index: u64,
         new_hashes: I1,
         new_commitments: I2,
-    ) -> Option<MerkleProof<P::Fr, { constants::HEIGHT }>>
+    ) -> (HashMap<(u32, u64), Hash<P::Fr>>, UpdateBoundaries)
     where
         I1: IntoIterator<Item = (u64, Vec<Hash<P::Fr>>)>,
         I2: IntoIterator<Item = (u64, Hash<P::Fr>)>,
@@ -491,9 +491,6 @@ impl<D: KeyValueDB, P: PoolParams> MerkleTree<D, P> {
             });
         });
 
-        let original_next_index = self.next_index;
-        self.update_next_index_from_node(0, next_index);
-
         let update_boundaries = UpdateBoundaries {
             updated_range_left_index: self.next_index,
             updated_range_right_index: Self::calc_next_index(next_index),
@@ -509,7 +506,18 @@ impl<D: KeyValueDB, P: PoolParams> MerkleTree<D, P> {
             &update_boundaries,
         );
 
-        Some(self.get_proof_virtual(index, &mut virtual_nodes, &update_boundaries))
+        (virtual_nodes, update_boundaries)
+    }
+    
+
+    pub fn get_proof_optimistic_index(
+        &self,
+        index: u64,
+        virtual_nodes: &mut HashMap<(u32, u64), Hash<P::Fr>>,
+        update_boundaries: &UpdateBoundaries,
+    ) -> Option<MerkleProof<P::Fr, { constants::HEIGHT }>>
+    {
+        Some(self.get_proof_virtual(index, virtual_nodes, update_boundaries))
     }
 
     fn get_proof_virtual<const H: usize>(
@@ -947,7 +955,7 @@ pub struct Node<F: PrimeField> {
     pub value: Num<F>,
 }
 
-struct UpdateBoundaries {
+pub struct UpdateBoundaries {
     updated_range_left_index: u64,
     updated_range_right_index: u64,
     new_hashes_left_index: u64,

@@ -10,7 +10,7 @@ use wasm_bindgen::{prelude::*, JsCast};
 
 use crate::{Fr, Fs, IndexedNote, IndexedTx, ParseTxsResult, PoolParams, POOL_PARAMS};
 
-#[derive(Serialize, Deserialize, Default)]
+#[derive(Serialize, Deserialize, Clone, Default)]
 pub struct StateUpdate {
     #[serde(rename = "newLeafs")]
     pub new_leafs: Vec<(u64, Vec<Hash<Fr>>)>,
