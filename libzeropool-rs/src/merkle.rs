@@ -327,6 +327,15 @@ impl<D: KeyValueDB, P: PoolParams> MerkleTree<D, P> {
         )
     }
 
+    pub fn get_root_optimistic(
+        &self,
+        virtual_nodes: &mut HashMap<(u32, u64), Hash<P::Fr>>,
+        update_boundaries: &UpdateBoundaries,
+    ) -> Hash<P::Fr>
+    {
+        self.get_virtual_node_full(constants::HEIGHT as u32, 0, virtual_nodes, &update_boundaries)
+    }
+
     pub fn get_opt(&self, height: u32, index: u64) -> Option<Hash<P::Fr>> {
         assert!(height <= constants::HEIGHT as u32);
 
