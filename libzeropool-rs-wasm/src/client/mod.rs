@@ -22,6 +22,7 @@ use libzeropool_rs::{
     merkle::{Hash, Node},
 };
 use serde::Serialize;
+use serde_wasm_bindgen::Serializer;
 use wasm_bindgen::{prelude::*, JsCast};
 
 use crate::database::Database;
@@ -190,9 +191,10 @@ impl UserAccount {
             parsed_delta,
         };
 
-        Ok(serde_wasm_bindgen::to_value(&tx)
-            .unwrap()
-            .unchecked_into::<TransactionData>())
+        let serializer = Serializer::new().serialize_large_number_types_as_bigints(true);
+        let value: JsValue = tx.serialize(&serializer).unwrap();
+
+        Ok(value.unchecked_into::<TransactionData>())
     }
 
     #[wasm_bindgen(js_name = "createDeposit")]
