@@ -322,8 +322,10 @@ where
 
         let mut output_value = Num::ZERO;
 
-        let (num_real_out_notes, out_notes): (_, SizedVec<_, { constants::OUT }>) =
-            if let TxType::Transfer(_, _, outputs) = &tx {
+        let (num_real_out_notes, out_notes) = match &tx {
+            TxType::Transfer(_, _, outputs)
+            | TxType::Deposit(_, _, _, outputs)
+            | TxType::DepositPermittable(_, _, _, _, _, outputs) => {
                 if outputs.len() >= constants::OUT {
                     return Err(CreateTxError::TooManyOutputs {
                         max: constants::OUT,
@@ -351,9 +353,9 @@ where
                     .collect::<Result<SizedVec<_, { constants::OUT }>, AddressParseError>>()?;
 
                 (outputs.len(), out_notes)
-            } else {
-                (0, (0..).map(|_| zero_note()).take(constants::OUT).collect())
-            };
+            }
+            _ => (0, (0..).map(|_| zero_note()).take(constants::OUT).collect()),
+        };
 
         let mut delta_value = -fee.as_num();
         // By default all account energy will be withdrawn on withdraw tx
@@ -404,7 +406,15 @@ where
             TxType::Deposit(_, _, amount, _)
             | TxType::DepositPermittable(_, _, amount, _, _, _) => {
                 delta_value += amount.to_num();
-                input_value + delta_value
+                let new_total_balance = input_value + delta_value;
+                if new_total_balance.to_uint() >= output_value.to_uint() {
+                    new_total_balance - output_value
+                } else {
+                    return Err(CreateTxError::InsufficientBalance(
+                        output_value.to_string(),
+                        new_total_balance.to_string(),
+                    ));
+                }
             }
         };
 
