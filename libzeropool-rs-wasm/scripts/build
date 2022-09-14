@@ -19,10 +19,10 @@ function build () {
   if [ "$3" = true ] ; then
     RUSTFLAGS='-C target-feature=+atomics,+bulk-memory,+mutable-globals' \
       rustup run nightly \
-      wasm-pack build --release --target web -d $1 \
+      wasm-pack build --release --target web -d $1 --out-name $1 \
       -- --features $2 -Z build-std=panic_abort,std
   else
-    wasm-pack build --release --target web -d $1 -- --features $2
+    wasm-pack build --release --target web -d $1 --out-name $1 -- --features $2
   fi
 
   # Optimize the binary, since wasm-pack refuses to see wasm-opt
