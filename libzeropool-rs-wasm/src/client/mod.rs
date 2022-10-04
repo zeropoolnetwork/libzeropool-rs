@@ -1,6 +1,4 @@
-use std::collections::HashMap;
-use std::rc::Rc;
-use std::{cell::RefCell, convert::TryInto};
+use std::{cell::RefCell, collections::HashMap, convert::TryInto, rc::Rc};
 
 use js_sys::Array;
 use libzeropool::{
@@ -8,8 +6,7 @@ use libzeropool::{
     fawkes_crypto::{
         borsh::BorshDeserialize,
         core::sizedvec::SizedVec,
-        ff_uint::Num,
-        ff_uint::{NumRepr, Uint},
+        ff_uint::{Num, NumRepr, Uint},
     },
     native::{
         account::Account as NativeAccount,
@@ -25,15 +22,13 @@ use serde::Serialize;
 use serde_wasm_bindgen::Serializer;
 use wasm_bindgen::{prelude::*, JsCast};
 
-use crate::database::Database;
-use crate::ts_types::Hash as JsHash;
 use crate::{
-    keys::reduce_sk, Account, Fr, Fs, Hashes, IDepositData, IDepositPermittableData,
-    IMultiDepositData, IMultiDepositPermittableData, ITransferData, IWithdrawData, IndexedNote,
+    database::Database, keys::reduce_sk, ts_types::Hash as JsHash, Account, Fr, Fs, Hashes,
+    IDepositData, IDepositPermittableData, IMultiDepositData, IMultiDepositPermittableData,
+    IMultiTransferData, IMultiWithdrawData, ITransferData, IWithdrawData, IndexedNote,
     IndexedNotes, MerkleProof, Pair, PoolParams, Transaction, TransactionData, TransactionDataList,
     UserState, POOL_PARAMS,
 };
-use crate::{IMultiTransferData, IMultiWithdrawData};
 
 mod tx_types;
 use tx_types::{JsMultiTxType, JsTxType};
@@ -211,12 +206,12 @@ impl UserAccount {
     }
 
     #[wasm_bindgen(js_name = "createTransfer")]
-    pub fn create_tranfer(&self, transfer: ITransferData) -> Result<TransactionData, JsValue> {
+    pub fn create_transfer(&self, transfer: ITransferData) -> Result<TransactionData, JsValue> {
         self.construct_tx_data(transfer.to_native()?, None)
     }
 
     #[wasm_bindgen(js_name = "createTransferOptimistic")]
-    pub fn create_tranfer_optimistic(
+    pub fn create_transfer_optimistic(
         &self,
         transfer: ITransferData,
         new_state: &JsValue,

@@ -6,8 +6,7 @@ use libzeropool_rs::client::state::{State, Transaction as InnerTransaction};
 use serde::{Deserialize, Serialize};
 use wasm_bindgen::prelude::*;
 
-use crate::database::Database;
-use crate::{utils, Fr, PoolParams, POOL_PARAMS};
+use crate::{database::Database, utils, Fr, PoolParams, POOL_PARAMS};
 
 #[derive(Debug, PartialEq, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
 pub enum Transaction {

@@ -1,13 +1,13 @@
 use std::str::FromStr;
 
-use crate::ts_types::RawHashes;
-use crate::Fr;
 use libzeropool::{fawkes_crypto::ff_uint::Num, native::tx::out_commitment_hash};
-use libzeropool_rs::{
-    libzeropool::fawkes_crypto::borsh::{BorshDeserialize, BorshSerialize},
-    libzeropool::POOL_PARAMS,
+use libzeropool_rs::libzeropool::{
+    fawkes_crypto::borsh::{BorshDeserialize, BorshSerialize},
+    POOL_PARAMS,
 };
 use wasm_bindgen::prelude::*;
+
+use crate::{ts_types::RawHashes, Fr};
 
 #[wasm_bindgen]
 pub struct Helpers {}

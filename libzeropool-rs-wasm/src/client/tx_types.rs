@@ -1,10 +1,11 @@
+use libzeropool_rs::client::{TokenAmount, TxOutput, TxType as NativeTxType};
+use serde::Deserialize;
+use wasm_bindgen::prelude::*;
+
 use crate::{
     Fr, IDepositData, IDepositPermittableData, IMultiDepositData, IMultiDepositPermittableData,
     IMultiTransferData, IMultiWithdrawData, ITransferData, IWithdrawData,
 };
-use libzeropool_rs::client::{TokenAmount, TxOutput, TxType as NativeTxType};
-use serde::Deserialize;
-use wasm_bindgen::prelude::*;
 
 #[allow(clippy::manual_non_exhaustive)]
 #[wasm_bindgen]

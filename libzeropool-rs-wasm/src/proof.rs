@@ -1,13 +1,16 @@
 use libzeropool::{
-    circuit::tree::tree_update,
-    circuit::tx::c_transfer,
+    circuit::{tree::tree_update, tx::c_transfer},
     fawkes_crypto::{
-        backend::bellman_groth16::prover::{prove, Proof as SnarkProof},
-        backend::bellman_groth16::verifier::{verify, VK},
+        backend::bellman_groth16::{
+            prover::{prove, Proof as SnarkProof},
+            verifier::{verify, VK},
+        },
         ff_uint::Num,
     },
-    native::tree::{TreePub as NativeTreePub, TreeSec as NativeTreeSec},
-    native::tx::{TransferPub as NativeTransferPub, TransferSec as NativeTransferSec},
+    native::{
+        tree::{TreePub as NativeTreePub, TreeSec as NativeTreeSec},
+        tx::{TransferPub as NativeTransferPub, TransferSec as NativeTransferSec},
+    },
     POOL_PARAMS,
 };
 use serde::{Deserialize, Serialize};

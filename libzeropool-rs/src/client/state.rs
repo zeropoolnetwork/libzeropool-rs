@@ -6,9 +6,13 @@ use kvdb_memorydb::InMemory as MemoryDatabase;
 use kvdb_web::Database as WebDatabase;
 use libzeropool::{
     constants,
-    fawkes_crypto::{ff_uint::Num, ff_uint::PrimeField, BorshDeserialize, BorshSerialize},
+    fawkes_crypto::{
+        ff_uint::{Num, PrimeField},
+        BorshDeserialize, BorshSerialize,
+    },
     native::{
-        account::Account, account::Account as NativeAccount, note::Note, note::Note as NativeNote,
+        account::{Account, Account as NativeAccount},
+        note::{Note, Note as NativeNote},
         params::PoolParams,
     },
 };
@@ -181,7 +185,7 @@ where
     pub fn earliest_usable_index_optimistic(
         &self,
         optimistic_accounts: &Vec<(u64, Account<P::Fr>)>,
-        optimistic_notes: &Vec<(u64, Note<P::Fr>)>
+        optimistic_notes: &Vec<(u64, Note<P::Fr>)>,
     ) -> u64 {
         let latest_account_index = optimistic_accounts
             .last()
@@ -192,7 +196,6 @@ where
             .try_into()
             .unwrap();
 
-        
         let latest_note_index_optimistic = optimistic_notes
             .last()
             .map(|indexed_note| indexed_note.0)
@@ -201,9 +204,10 @@ where
         let optimistic_note_indices = optimistic_notes
             .iter()
             .map(|indexed_note| indexed_note.0)
-            .filter(move |index| (latest_account_index..=latest_note_index_optimistic).contains(index));
+            .filter(move |index| {
+                (latest_account_index..=latest_note_index_optimistic).contains(index)
+            });
 
-        
         self.txs
             .iter_slice(latest_account_index..=latest_note_index_optimistic)
             .filter_map(|(index, tx)| match tx {

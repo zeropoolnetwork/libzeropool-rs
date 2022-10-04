@@ -1,11 +1,11 @@
+use std::{convert::TryInto, io::Write};
+
 use kvdb::KeyValueDB;
 use libzeropool::{
     constants,
-    fawkes_crypto::ff_uint::PrimeField,
     fawkes_crypto::{
         core::sizedvec::SizedVec,
-        ff_uint::Num,
-        ff_uint::{NumRepr, Uint},
+        ff_uint::{Num, NumRepr, PrimeField, Uint},
         rand::Rng,
     },
     native::{
@@ -21,9 +21,7 @@ use libzeropool::{
         },
     },
 };
-
 use serde::{Deserialize, Serialize};
-use std::{convert::TryInto, io::Write};
 use thiserror::Error;
 
 use self::state::{State, Transaction};
@@ -566,8 +564,9 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use libzeropool::POOL_PARAMS;
+
+    use super::*;
 
     #[test]
     fn test_create_tx_deposit_zero() {

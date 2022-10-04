@@ -1,15 +1,25 @@
 use std::sync::Arc;
 
-use libzeropool_rs::libzeropool::fawkes_crypto::backend::bellman_groth16::prover::Proof as NativeProof;
-use libzeropool_rs::libzeropool::fawkes_crypto::backend::bellman_groth16::verifier::{verify, VK};
-use libzeropool_rs::libzeropool::fawkes_crypto::ff_uint::Num;
-use libzeropool_rs::libzeropool::POOL_PARAMS;
-use libzeropool_rs::proof::{prove_tree as prove_tree_native, prove_tx as prove_tx_native};
+use libzeropool_rs::{
+    libzeropool::{
+        fawkes_crypto::{
+            backend::bellman_groth16::{
+                prover::Proof as NativeProof,
+                verifier::{verify, VK},
+            },
+            ff_uint::Num,
+        },
+        POOL_PARAMS,
+    },
+    proof::{prove_tree as prove_tree_native, prove_tx as prove_tx_native},
+};
 use neon::prelude::*;
 use serde::{Deserialize, Serialize};
 
-use crate::params::{BoxedParams, Params};
-use crate::{Engine, Fr};
+use crate::{
+    params::{BoxedParams, Params},
+    Engine, Fr,
+};
 
 #[derive(Serialize, Deserialize)]
 pub struct SnarkProof {

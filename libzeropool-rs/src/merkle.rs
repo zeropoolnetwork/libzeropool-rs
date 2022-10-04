@@ -1,6 +1,5 @@
 use std::collections::HashMap;
 
-use crate::utils::zero_note;
 use borsh::{BorshDeserialize, BorshSerialize};
 use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
 use kvdb::{DBTransaction, KeyValueDB};
@@ -11,12 +10,16 @@ use kvdb_rocksdb::{Database as NativeDatabase, DatabaseConfig};
 use kvdb_web::Database as WebDatabase;
 use libzeropool::{
     constants,
-    fawkes_crypto::core::sizedvec::SizedVec,
-    fawkes_crypto::ff_uint::{Num, PrimeField},
-    fawkes_crypto::native::poseidon::{poseidon, MerkleProof},
+    fawkes_crypto::{
+        core::sizedvec::SizedVec,
+        ff_uint::{Num, PrimeField},
+        native::poseidon::{poseidon, MerkleProof},
+    },
     native::params::PoolParams,
 };
 use serde::{Deserialize, Serialize};
+
+use crate::utils::zero_note;
 
 pub type Hash<F> = Num<F>;
 
@@ -1000,15 +1003,13 @@ pub struct UpdateBoundaries {
 
 #[cfg(test)]
 mod tests {
+    use kvdb_memorydb::create;
+    use libzeropool::{fawkes_crypto::ff_uint::rand::Rng, native::tx, POOL_PARAMS};
+    use rand::{seq::SliceRandom, thread_rng};
+    use test_case::test_case;
+
     use super::*;
     use crate::random::CustomRng;
-    use kvdb_memorydb::create;
-    use libzeropool::fawkes_crypto::ff_uint::rand::Rng;
-    use libzeropool::native::tx;
-    use libzeropool::POOL_PARAMS;
-    use rand::seq::SliceRandom;
-    use rand::thread_rng;
-    use test_case::test_case;
 
     #[test]
     fn test_add_hashes_first_3() {

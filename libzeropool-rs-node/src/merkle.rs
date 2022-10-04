@@ -1,16 +1,14 @@
-use std::collections::HashMap;
-use std::sync::RwLock;
-use std::vec::Vec;
+use std::{collections::HashMap, sync::RwLock, vec::Vec};
 
-use libzeropool_rs::libzeropool::fawkes_crypto::borsh::BorshDeserialize;
-use libzeropool_rs::libzeropool::fawkes_crypto::ff_uint::Num;
-use libzeropool_rs::libzeropool::{
-    constants::{HEIGHT, OUTPLUSONELOG},
-    POOL_PARAMS,
+use libzeropool_rs::{
+    libzeropool::{
+        constants::{HEIGHT, OUTPLUSONELOG},
+        fawkes_crypto::{borsh::BorshDeserialize, ff_uint::Num},
+        POOL_PARAMS,
+    },
+    merkle::NativeMerkleTree,
 };
-use libzeropool_rs::merkle::NativeMerkleTree;
-use neon::prelude::*;
-use neon::types::buffer::TypedArray;
+use neon::{prelude::*, types::buffer::TypedArray};
 
 use crate::PoolParams;
 

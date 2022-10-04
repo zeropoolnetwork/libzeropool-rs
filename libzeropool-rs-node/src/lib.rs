@@ -1,6 +1,8 @@
-use libzeropool_rs::libzeropool::constants;
-use libzeropool_rs::libzeropool::fawkes_crypto::backend::bellman_groth16::engines::Bn256;
-use libzeropool_rs::libzeropool::native::params::{PoolBN256, PoolParams as PoolParamsTrait};
+use libzeropool_rs::libzeropool::{
+    constants,
+    fawkes_crypto::backend::bellman_groth16::engines::Bn256,
+    native::params::{PoolBN256, PoolParams as PoolParamsTrait},
+};
 use neon::prelude::*;
 use serde::Serialize;
 

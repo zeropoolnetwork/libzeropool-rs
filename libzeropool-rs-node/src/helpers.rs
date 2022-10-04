@@ -1,14 +1,15 @@
-use std::convert::TryInto;
-use std::str::FromStr;
+use std::{convert::TryInto, str::FromStr};
 
-use libzeropool_rs::libzeropool::constants::OUT;
-use libzeropool_rs::libzeropool::fawkes_crypto::borsh::{BorshDeserialize, BorshSerialize};
-use libzeropool_rs::libzeropool::fawkes_crypto::ff_uint::Num;
-use libzeropool_rs::libzeropool::native::tx::{out_commitment_hash, parse_delta};
-use libzeropool_rs::libzeropool::POOL_PARAMS;
-
-use neon::prelude::*;
-use neon::types::buffer::TypedArray;
+use libzeropool_rs::libzeropool::{
+    constants::OUT,
+    fawkes_crypto::{
+        borsh::{BorshDeserialize, BorshSerialize},
+        ff_uint::Num,
+    },
+    native::tx::{out_commitment_hash, parse_delta},
+    POOL_PARAMS,
+};
+use neon::{prelude::*, types::buffer::TypedArray};
 
 use crate::Fr;
 

@@ -1,12 +1,16 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
-use libzeropool::fawkes_crypto::backend::bellman_groth16::engines::Bn256;
-use libzeropool::fawkes_crypto::backend::bellman_groth16::Parameters;
-use libzeropool::fawkes_crypto::ff_uint::Num;
-use libzeropool::native::boundednum::BoundedNum;
-use libzeropool::POOL_PARAMS;
-use libzeropool_rs::client::state::State;
-use libzeropool_rs::client::{TxType, UserAccount};
-use libzeropool_rs::proof::prove_tx;
+use libzeropool::{
+    fawkes_crypto::{
+        backend::bellman_groth16::{engines::Bn256, Parameters},
+        ff_uint::Num,
+    },
+    native::boundednum::BoundedNum,
+    POOL_PARAMS,
+};
+use libzeropool_rs::{
+    client::{state::State, TxType, UserAccount},
+    proof::prove_tx,
+};
 
 fn prove_tx_benchmark(c: &mut Criterion) {
     let state = State::init_test(POOL_PARAMS.clone());

@@ -1,8 +1,9 @@
 use libzeropool::{
-    fawkes_crypto::ff_uint::PrimeField,
-    fawkes_crypto::ff_uint::{Num, NumRepr, Uint},
-    native::key::{derive_key_a, derive_key_eta},
-    native::params::PoolParams,
+    fawkes_crypto::ff_uint::{Num, NumRepr, PrimeField, Uint},
+    native::{
+        key::{derive_key_a, derive_key_eta},
+        params::PoolParams,
+    },
 };
 
 pub fn reduce_sk<Fs: PrimeField>(seed: &[u8]) -> Num<Fs> {

@@ -1,5 +1,4 @@
-use std::path::PathBuf;
-use std::sync::Arc;
+use std::{path::PathBuf, sync::Arc};
 
 use libzeropool_rs::libzeropool::fawkes_crypto::backend::bellman_groth16::Parameters;
 use neon::{prelude::*, types::buffer::TypedArray};

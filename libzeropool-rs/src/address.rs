@@ -1,14 +1,14 @@
-use crate::utils::keccak256;
 use libzeropool::{
     constants,
     fawkes_crypto::{
         borsh::{BorshDeserialize, BorshSerialize},
         ff_uint::Num,
     },
-    native::boundednum::BoundedNum,
-    native::params::PoolParams,
+    native::{boundednum::BoundedNum, params::PoolParams},
 };
 use thiserror::Error;
+
+use crate::utils::keccak256;
 
 const ADDR_LEN: usize = 46;
 
