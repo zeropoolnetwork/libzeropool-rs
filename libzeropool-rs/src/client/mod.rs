@@ -77,28 +77,33 @@ pub struct TxOutput<Fr: PrimeField> {
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub enum TxType<Fr: PrimeField> {
-    // fee, data, tx_outputs
-    Transfer(TokenAmount<Fr>, Vec<u8>, Vec<TxOutput<Fr>>),
-    // fee, data, deposit_amount, tx_outputs
-    Deposit(TokenAmount<Fr>, Vec<u8>, TokenAmount<Fr>, Vec<TxOutput<Fr>>),
-    // fee, data, deposit_amount, deadline, holder
-    DepositPermittable(
-        TokenAmount<Fr>,
-        Vec<u8>,
-        TokenAmount<Fr>,
-        u64,
-        Vec<u8>,
-        Vec<TxOutput<Fr>>,
-    ),
-    // fee, data, withdraw_amount, to, native_amount, energy_amount
-    Withdraw(
-        TokenAmount<Fr>,
-        Vec<u8>,
-        TokenAmount<Fr>,
-        Vec<u8>,
-        TokenAmount<Fr>,
-        TokenAmount<Fr>,
-    ),
+    Transfer {
+        fee: TokenAmount<Fr>,
+        data: Vec<u8>,
+        outputs: Vec<TxOutput<Fr>>,
+    },
+    Deposit {
+        fee: TokenAmount<Fr>,
+        data: Vec<u8>,
+        deposit_amount: TokenAmount<Fr>,
+        outputs: Vec<TxOutput<Fr>>,
+    },
+    DepositPermittable {
+        fee: TokenAmount<Fr>,
+        data: Vec<u8>,
+        deposit_amount: TokenAmount<Fr>,
+        deadline: u64,
+        holder: Vec<u8>,
+        outputs: Vec<TxOutput<Fr>>,
+    },
+    Withdraw {
+        fee: TokenAmount<Fr>,
+        data: Vec<u8>,
+        withdraw_amount: TokenAmount<Fr>,
+        to: Vec<u8>,
+        native_amount: TokenAmount<Fr>,
+        energy_amount: TokenAmount<Fr>,
+    },
 }
 
 pub struct UserAccount<D: KeyValueDB, P: PoolParams> {
@@ -253,34 +258,46 @@ where
         let (fee, tx_data, user_data) = {
             let mut tx_data: Vec<u8> = vec![];
             match &tx {
-                TxType::Deposit(fee, user_data, _, _) => {
+                TxType::Deposit { fee, data, .. } => {
                     let raw_fee: u64 = fee.to_num().try_into().unwrap();
                     tx_data.write_all(&raw_fee.to_be_bytes()).unwrap();
-                    (fee, tx_data, user_data)
+                    (fee, tx_data, data)
                 }
-                TxType::DepositPermittable(fee, user_data, _, deadline, holder, _) => {
+                TxType::DepositPermittable {
+                    fee,
+                    data,
+                    deadline,
+                    holder,
+                    ..
+                } => {
                     let raw_fee: u64 = fee.to_num().try_into().unwrap();
 
                     tx_data.write_all(&raw_fee.to_be_bytes()).unwrap();
                     tx_data.write_all(&deadline.to_be_bytes()).unwrap();
                     tx_data.append(&mut holder.clone());
 
-                    (fee, tx_data, user_data)
+                    (fee, tx_data, data)
                 }
-                TxType::Transfer(fee, user_data, _) => {
+                TxType::Transfer { fee, data, .. } => {
                     let raw_fee: u64 = fee.to_num().try_into().unwrap();
                     tx_data.write_all(&raw_fee.to_be_bytes()).unwrap();
-                    (fee, tx_data, user_data)
+                    (fee, tx_data, data)
                 }
-                TxType::Withdraw(fee, user_data, _, reciever, native_amount, _) => {
+                TxType::Withdraw {
+                    fee,
+                    data,
+                    to,
+                    native_amount,
+                    ..
+                } => {
                     let raw_fee: u64 = fee.to_num().try_into().unwrap();
                     let raw_native_amount: u64 = native_amount.to_num().try_into().unwrap();
 
                     tx_data.write_all(&raw_fee.to_be_bytes()).unwrap();
                     tx_data.write_all(&raw_native_amount.to_be_bytes()).unwrap();
-                    tx_data.append(&mut reciever.clone());
+                    tx_data.append(&mut to.clone());
 
-                    (fee, tx_data, user_data)
+                    (fee, tx_data, data)
                 }
             }
         };
@@ -321,9 +338,9 @@ where
         let mut output_value = Num::ZERO;
 
         let (num_real_out_notes, out_notes) = match &tx {
-            TxType::Transfer(_, _, outputs)
-            | TxType::Deposit(_, _, _, outputs)
-            | TxType::DepositPermittable(_, _, _, _, _, outputs) => {
+            TxType::Transfer { outputs, .. }
+            | TxType::Deposit { outputs, .. }
+            | TxType::DepositPermittable { outputs, .. } => {
                 if outputs.len() >= constants::OUT {
                     return Err(CreateTxError::TooManyOutputs {
                         max: constants::OUT,
@@ -368,7 +385,7 @@ where
             input_energy += note.b.to_num() * (delta_index - Num::from(*note_index));
         }
         let new_balance = match &tx {
-            TxType::Transfer(_, _, _) => {
+            TxType::Transfer { .. } => {
                 if input_value.to_uint() >= (output_value + fee.as_num()).to_uint() {
                     input_value - output_value - fee.as_num()
                 } else {
@@ -378,9 +395,13 @@ where
                     ));
                 }
             }
-            TxType::Withdraw(_, _, amount, _, _, energy) => {
-                let amount = amount.to_num();
-                let energy = energy.to_num();
+            TxType::Withdraw {
+                withdraw_amount,
+                energy_amount,
+                ..
+            } => {
+                let amount = withdraw_amount.to_num();
+                let energy = energy_amount.to_num();
 
                 if energy.to_uint() > input_energy.to_uint() {
                     return Err(CreateTxError::InsufficientEnergy(
@@ -401,9 +422,9 @@ where
                     ));
                 }
             }
-            TxType::Deposit(_, _, amount, _)
-            | TxType::DepositPermittable(_, _, amount, _, _, _) => {
-                delta_value += amount.to_num();
+            TxType::Deposit { deposit_amount, .. }
+            | TxType::DepositPermittable { deposit_amount, .. } => {
+                delta_value += deposit_amount.to_num();
                 let new_total_balance = input_value + delta_value;
                 if new_total_balance.to_uint() >= output_value.to_uint() {
                     new_total_balance - output_value
@@ -574,12 +595,12 @@ mod tests {
         let acc = UserAccount::new(Num::ZERO, state, POOL_PARAMS.clone());
 
         acc.create_tx(
-            TxType::Deposit(
-                BoundedNum::new(Num::ZERO),
-                vec![],
-                BoundedNum::new(Num::ZERO),
-                vec![],
-            ),
+            TxType::Deposit {
+                fee: BoundedNum::new(Num::ZERO),
+                data: vec![],
+                deposit_amount: BoundedNum::new(Num::ZERO),
+                outputs: vec![],
+            },
             None,
             None,
         )
@@ -592,12 +613,12 @@ mod tests {
         let acc = UserAccount::new(Num::ZERO, state, POOL_PARAMS.clone());
 
         acc.create_tx(
-            TxType::Deposit(
-                BoundedNum::new(Num::ZERO),
-                vec![],
-                BoundedNum::new(Num::ONE),
-                vec![],
-            ),
+            TxType::Deposit {
+                fee: BoundedNum::new(Num::ZERO),
+                data: vec![],
+                deposit_amount: BoundedNum::new(Num::ONE),
+                outputs: vec![],
+            },
             None,
             None,
         )
@@ -618,7 +639,11 @@ mod tests {
         };
 
         acc.create_tx(
-            TxType::Transfer(BoundedNum::new(Num::ZERO), vec![], vec![out]),
+            TxType::Transfer {
+                fee: BoundedNum::new(Num::ZERO),
+                data: vec![],
+                outputs: vec![out],
+            },
             None,
             None,
         )
@@ -639,7 +664,11 @@ mod tests {
         };
 
         acc.create_tx(
-            TxType::Transfer(BoundedNum::new(Num::ZERO), vec![], vec![out]),
+            TxType::Transfer {
+                fee: BoundedNum::new(Num::ZERO),
+                data: vec![],
+                outputs: vec![out],
+            },
             None,
             None,
         )

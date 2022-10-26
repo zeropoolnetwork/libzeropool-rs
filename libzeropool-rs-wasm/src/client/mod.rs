@@ -24,14 +24,12 @@ use wasm_bindgen::{prelude::*, JsCast};
 
 use crate::{
     database::Database, keys::reduce_sk, ts_types::Hash as JsHash, Account, Fr, Fs, Hashes,
-    IDepositData, IDepositPermittableData, IMultiDepositData, IMultiDepositPermittableData,
-    IMultiTransferData, IMultiWithdrawData, ITransferData, IWithdrawData, IndexedNote,
-    IndexedNotes, MerkleProof, Pair, PoolParams, Transaction, TransactionData, TransactionDataList,
-    UserState, POOL_PARAMS,
+    IDepositData, IDepositPermittableData, ITransferData, IWithdrawData, IndexedNote, IndexedNotes,
+    MerkleProof, Pair, PoolParams, Transaction, TransactionData, UserState, POOL_PARAMS,
 };
 
 mod tx_types;
-use tx_types::{JsMultiTxType, JsTxType};
+use tx_types::JsTxType;
 
 use self::tx_parser::StateUpdate;
 

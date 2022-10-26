@@ -60,12 +60,12 @@ impl JsTxType for IDepositData {
             })
             .unwrap_or_default();
 
-        Ok(NativeTxType::Deposit(
-            base_fields.fee,
-            base_fields.data.unwrap_or_default(),
-            amount,
+        Ok(NativeTxType::Deposit {
+            fee: base_fields.fee,
+            data: base_fields.data.unwrap_or_default(),
+            deposit_amount: amount,
             outputs,
-        ))
+        })
     }
 }
 
@@ -89,12 +89,12 @@ impl JsMultiTxType for IMultiDepositData {
                     })
                     .unwrap_or_default();
 
-                NativeTxType::Deposit(
-                    tx.base_fields.fee,
-                    tx.base_fields.data.unwrap_or_default(),
-                    tx.amount,
+                NativeTxType::Deposit {
+                    fee: tx.base_fields.fee,
+                    data: tx.base_fields.data.unwrap_or_default(),
+                    deposit_amount: tx.amount,
                     outputs,
-                )
+                }
             })
             .collect();
 
@@ -135,14 +135,14 @@ impl JsTxType for IDepositPermittableData {
             })
             .unwrap_or_default();
 
-        Ok(NativeTxType::DepositPermittable(
-            base_fields.fee,
-            base_fields.data.unwrap_or_default(),
-            amount,
-            deadline.parse::<u64>().unwrap_or(0),
+        Ok(NativeTxType::DepositPermittable {
+            fee: base_fields.fee,
+            data: base_fields.data.unwrap_or_default(),
+            deposit_amount: amount,
+            deadline: deadline.parse::<u64>().unwrap_or(0),
             holder,
             outputs,
-        ))
+        })
     }
 }
 
@@ -165,14 +165,14 @@ impl JsMultiTxType for IMultiDepositPermittableData {
                             .collect::<Vec<_>>()
                     })
                     .unwrap_or_default();
-                NativeTxType::DepositPermittable(
-                    tx.base_fields.fee,
-                    tx.base_fields.data.unwrap_or_default(),
-                    tx.amount,
-                    tx.deadline.parse::<u64>().unwrap_or(0),
-                    tx.holder,
+                NativeTxType::DepositPermittable {
+                    fee: tx.base_fields.fee,
+                    data: tx.base_fields.data.unwrap_or_default(),
+                    deposit_amount: tx.amount,
+                    deadline: tx.deadline.parse::<u64>().unwrap_or(0),
+                    holder: tx.holder,
                     outputs,
-                )
+                }
             })
             .collect();
 
@@ -209,11 +209,11 @@ impl JsTxType for ITransferData {
             })
             .collect::<Vec<_>>();
 
-        Ok(NativeTxType::Transfer(
-            base_fields.fee,
-            base_fields.data.unwrap_or_default(),
+        Ok(NativeTxType::Transfer {
+            fee: base_fields.fee,
+            data: base_fields.data.unwrap_or_default(),
             outputs,
-        ))
+        })
     }
 }
 
@@ -233,11 +233,11 @@ impl JsMultiTxType for IMultiTransferData {
                     })
                     .collect::<Vec<_>>();
 
-                NativeTxType::Transfer(
-                    tx.base_fields.fee,
-                    tx.base_fields.data.unwrap_or_default(),
+                NativeTxType::Transfer {
+                    fee: tx.base_fields.fee,
+                    data: tx.base_fields.data.unwrap_or_default(),
                     outputs,
-                )
+                }
             })
             .collect();
 
@@ -266,14 +266,14 @@ impl JsTxType for IWithdrawData {
             energy_amount,
         } = serde_wasm_bindgen::from_value(self.into())?;
 
-        Ok(NativeTxType::Withdraw(
-            base_fields.fee,
-            base_fields.data.unwrap_or_default(),
-            amount,
+        Ok(NativeTxType::Withdraw {
+            fee: base_fields.fee,
+            data: base_fields.data.unwrap_or_default(),
+            withdraw_amount: amount,
             to,
             native_amount,
             energy_amount,
-        ))
+        })
     }
 }
 
@@ -283,15 +283,13 @@ impl JsMultiTxType for IMultiWithdrawData {
 
         let tx_array = array
             .into_iter()
-            .map(|tx| {
-                NativeTxType::Withdraw(
-                    tx.base_fields.fee,
-                    tx.base_fields.data.unwrap_or_default(),
-                    tx.amount,
-                    tx.to,
-                    tx.native_amount,
-                    tx.energy_amount,
-                )
+            .map(|tx| NativeTxType::Withdraw {
+                fee: tx.base_fields.fee,
+                data: tx.base_fields.data.unwrap_or_default(),
+                withdraw_amount: tx.amount,
+                to: tx.to,
+                native_amount: tx.native_amount,
+                energy_amount: tx.energy_amount,
             })
             .collect();
 
