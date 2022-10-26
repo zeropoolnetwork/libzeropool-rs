@@ -38,10 +38,11 @@ mod tx_parser;
 // TODO: Find a way to expose MerkleTree,
 
 #[derive(Serialize)]
-struct ParsedDelta {
-    v: i64,
-    e: i64,
-    index: u64,
+pub struct ParsedDelta {
+    pub v: i64,
+    pub e: i64,
+    pub index: u64,
+    pub pool_id: u64,
 }
 
 #[derive(Serialize)]
@@ -167,11 +168,12 @@ impl UserAccount {
             .create_tx(native_tx, None, extra_state)
             .map_err(|err| js_err!("{}", err))?;
 
-        let (v, e, index, _) = parse_delta(tx.public.delta);
+        let (v, e, index, pool_id) = parse_delta(tx.public.delta);
         let parsed_delta = ParsedDelta {
             v: v.try_into().unwrap(),
             e: e.try_into().unwrap(),
             index: index.try_into().unwrap(),
+            pool_id: pool_id.try_into().unwrap(),
         };
 
         let tx = TransactionDataSer {

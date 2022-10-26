@@ -1,4 +1,4 @@
-use std::str::FromStr;
+use std::{convert::TryInto, str::FromStr};
 
 use libzeropool::{
     constants,
@@ -6,6 +6,7 @@ use libzeropool::{
     native::{
         boundednum::BoundedNum,
         params::{PoolBN256, PoolParams as PoolParamsTrait},
+        tx::parse_delta,
     },
     POOL_PARAMS,
 };
@@ -85,4 +86,22 @@ pub fn assemble_address(d: &str, p_d: &str) -> String {
     let p_d = Num::from_str(p_d).unwrap();
 
     format_address::<PoolParams>(d, p_d)
+}
+
+#[wasm_bindgen(js_name = "parseDelta")]
+pub fn parse_delta_(delta: &str) -> IParsedDelta {
+    let delta = Num::<Fr>::from_str(delta).unwrap();
+
+    let (token_amount, energy_amount, transfer_index, pool_id) = parse_delta(delta);
+
+    let parsed_delta = ParsedDelta {
+        v: token_amount.try_into().unwrap(),
+        e: energy_amount.try_into().unwrap(),
+        index: transfer_index.try_into().unwrap(),
+        pool_id: pool_id.try_into().unwrap(),
+    };
+
+    serde_wasm_bindgen::to_value(&parsed_delta)
+        .unwrap()
+        .unchecked_into::<IParsedDelta>()
 }

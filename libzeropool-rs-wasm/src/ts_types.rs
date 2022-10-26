@@ -44,6 +44,13 @@ export interface TransferSec {
     eddsa_a: string;
 }
 
+export interface ParsedDelta {
+    v: string;
+    e: string;
+    index: string;
+    pool_id: string;
+}
+
 export interface TransactionData {
     public: TransferPub;
     secret: TransferSec;
@@ -51,7 +58,7 @@ export interface TransactionData {
     memo: string;
     out_hashes: string[];
     commitment_root: string;
-    parsed_delta: { v: string; e: string; index: string; };
+    parsed_delta: ParsedDelta;
 }
 
 export interface TreePub {
@@ -207,6 +214,9 @@ extern "C" {
 
     #[wasm_bindgen(typescript_type = "VK")]
     pub type VK;
+
+    #[wasm_bindgen(typescript_type = "ParsedDelta")]
+    pub type IParsedDelta;
 
     #[wasm_bindgen(typescript_type = "TransactionData")]
     pub type TransactionData;
