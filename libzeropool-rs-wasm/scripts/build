@@ -32,6 +32,15 @@ function build () {
     wasm-opt -o $PARENT_DIR/$1/wasm-opt.wasm -O3 $PARENT_DIR/$1/libzeropool_rs_wasm_bg.wasm && mv $PARENT_DIR/$1/wasm-opt.wasm $PARENT_DIR/$1/libzeropool_rs_wasm_bg.wasm
   fi
 
+  # Patch typings for async methods
+  sed -i.bak -E 's/(createDeposit\(.*\)):.*$/\1: Promise<TransactionData>;/g' $PARENT_DIR/$1/libzeropool_rs_wasm.d.ts
+  sed -i.bak -E 's/(createDepositOptimistic\(.*\)):.*$/\1: Promise<TransactionData>;/g' $PARENT_DIR/$1/libzeropool_rs_wasm.d.ts
+  sed -i.bak -E 's/(createDepositPermittable\(.*\)):.*$/\1: Promise<TransactionData>;/g' $PARENT_DIR/$1/libzeropool_rs_wasm.d.ts
+  sed -i.bak -E 's/(createTransfer\(.*\)):.*$/\1: Promise<TransactionData>;/g' $PARENT_DIR/$1/libzeropool_rs_wasm.d.ts
+  sed -i.bak -E 's/(createTransferOptimistic\(.*\)):.*$/\1: Promise<TransactionData[]>;/g' $PARENT_DIR/$1/libzeropool_rs_wasm.d.ts
+  sed -i.bak -E 's/(createWithdraw\(.*\)):.*$/\1: Promise<TransactionData>;/g' $PARENT_DIR/$1/libzeropool_rs_wasm.d.ts
+  sed -i.bak -E 's/(createWithdrawalOptimistic\(.*\)):.*$/\1: Promise<TransactionData[]>;/g' $PARENT_DIR/$1/libzeropool_rs_wasm.d.ts
+
   # Remove invalid typings
   sed -i.bak -E '/BroccoliDestroyInstance/d' $PARENT_DIR/$1/libzeropool_rs_wasm.d.ts
   sed -i.bak -E '/BroccoliDestroyInstance/d' $PARENT_DIR/$1/libzeropool_rs_wasm_bg.wasm.d.ts

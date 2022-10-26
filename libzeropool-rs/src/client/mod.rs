@@ -1,4 +1,4 @@
-use std::{convert::TryInto, io::Write};
+use std::{convert::TryInto, future::Future, io::Write};
 
 use kvdb::KeyValueDB;
 use libzeropool::{
@@ -181,12 +181,17 @@ where
     }
 
     /// Constructs a transaction.
-    pub fn create_tx(
+    pub async fn create_tx<Fut, F>(
         &self,
         tx: TxType<P::Fr>,
         delta_index: Option<u64>,
         extra_state: Option<StateFragment<P::Fr>>,
-    ) -> Result<TransactionData<P::Fr>, CreateTxError> {
+        sign: Option<F>,
+    ) -> Result<TransactionData<P::Fr>, CreateTxError>
+    where
+        Fut: Future<Output = Vec<u8>>,
+        F: FnOnce(&[u8]) -> Fut,
+    {
         let mut rng = CustomRng;
         let keys = self.keys.clone();
         let state = &self.state;
@@ -515,18 +520,25 @@ where
 
         let root: Num<P::Fr> = tree.get_root_optimistic(&mut virtual_nodes, &update_boundaries);
 
+        let nullifier_signature = if let Some(sign) = sign {
+            sign(&nullifier.to_uint().0.to_big_endian()).await
+        } else {
+            vec![]
+        };
+
         // memo = tx_specific_data, ciphertext, user_defined_data
         let mut memo_data = {
             let tx_data_size = tx_data.len();
             let ciphertext_size = ciphertext.len();
+            let signature_size = nullifier_signature.len();
             let user_data_size = user_data.len();
-            Vec::with_capacity(tx_data_size + ciphertext_size + user_data_size)
+            Vec::with_capacity(tx_data_size + ciphertext_size + signature_size + user_data_size)
         };
 
-        #[allow(clippy::redundant_clone)]
-        memo_data.append(&mut tx_data.clone());
+        memo_data.extend(&tx_data);
         memo_data.extend(&ciphertext);
-        memo_data.append(&mut user_data.clone());
+        memo_data.extend(&nullifier_signature);
+        memo_data.extend(user_data);
 
         let memo_hash = keccak256(&memo_data);
         let memo = Num::from_uint_reduced(NumRepr(Uint::from_big_endian(&memo_hash)));

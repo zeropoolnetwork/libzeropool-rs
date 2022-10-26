@@ -1,6 +1,7 @@
 use std::{cell::RefCell, collections::HashMap, convert::TryInto, rc::Rc};
 
-use js_sys::Array;
+use futures::FutureExt;
+use js_sys::{Array, Promise};
 use libzeropool::{
     constants,
     fawkes_crypto::{
@@ -21,11 +22,12 @@ use libzeropool_rs::{
 use serde::Serialize;
 use serde_wasm_bindgen::Serializer;
 use wasm_bindgen::{prelude::*, JsCast};
+use wasm_bindgen_futures::future_to_promise;
 
 use crate::{
     database::Database, keys::reduce_sk, ts_types::Hash as JsHash, Account, Fr, Fs, Hashes,
     IDepositData, IDepositPermittableData, ITransferData, IWithdrawData, IndexedNote, IndexedNotes,
-    MerkleProof, Pair, PoolParams, Transaction, TransactionData, UserState, POOL_PARAMS,
+    MerkleProof, Pair, PoolParams, Transaction, UserState, POOL_PARAMS,
 };
 
 mod tx_types;
@@ -61,6 +63,77 @@ struct TransactionDataSer {
 #[wasm_bindgen]
 pub struct UserAccount {
     inner: Rc<RefCell<NativeUserAccount<Database, PoolParams>>>,
+}
+
+impl UserAccount {
+    fn construct_tx_data(
+        &self,
+        native_tx: NativeTxType<Fr>,
+        new_state: Option<StateUpdate>,
+        sign: Option<js_sys::Function>,
+    ) -> Promise {
+        let account = self.inner.clone();
+
+        let extra_state = new_state.map(|s| {
+            let mut joined_notes = vec![];
+            s.new_notes.into_iter().for_each(|notes| {
+                notes.into_iter().for_each(|one_note| {
+                    joined_notes.push(one_note);
+                });
+            });
+
+            StateFragment {
+                new_leafs: s.new_leafs,
+                new_commitments: s.new_commitments,
+                new_accounts: s.new_accounts,
+                new_notes: joined_notes,
+            }
+        });
+
+        future_to_promise(async move {
+            let sign = sign.map(|sign| {
+                move |data: &[u8]| {
+                    let this = JsValue::NULL;
+                    let data = js_sys::Uint8Array::from(data);
+                    let promise = sign
+                        .call1(&this, &data)
+                        .unwrap()
+                        .unchecked_into::<Promise>();
+                    wasm_bindgen_futures::JsFuture::from(promise)
+                        .map(|res| res.unwrap().unchecked_into::<js_sys::Uint8Array>().to_vec())
+                }
+            });
+
+            let tx = account
+                .borrow()
+                .create_tx(native_tx, None, extra_state, sign)
+                .await
+                .map_err(|err| js_err!("{}", err))?;
+
+            let (v, e, index, pool_id) = parse_delta(tx.public.delta);
+            let parsed_delta = ParsedDelta {
+                v: v.try_into().unwrap(),
+                e: e.try_into().unwrap(),
+                index: index.try_into().unwrap(),
+                pool_id: pool_id.try_into().unwrap(),
+            };
+
+            let tx = TransactionDataSer {
+                public: tx.public,
+                secret: tx.secret,
+                ciphertext: tx.ciphertext,
+                memo: tx.memo,
+                out_hashes: tx.out_hashes,
+                commitment_root: tx.commitment_root,
+                parsed_delta,
+            };
+
+            let serializer = Serializer::new().serialize_large_number_types_as_bigints(true);
+            let value: JsValue = tx.serialize(&serializer).unwrap();
+
+            Ok(value)
+        })
+    }
 }
 
 #[wasm_bindgen]
@@ -140,74 +213,39 @@ impl UserAccount {
         Ok(pair)
     }
 
-    fn construct_tx_data(
+    #[wasm_bindgen(js_name = "createDeposit")]
+    pub fn create_deposit(
         &self,
-        native_tx: NativeTxType<Fr>,
-        new_state: Option<StateUpdate>,
-    ) -> Result<TransactionData, JsValue> {
-        let account = self.inner.clone();
-
-        let extra_state = new_state.map(|s| {
-            let mut joined_notes = vec![];
-            s.new_notes.into_iter().for_each(|notes| {
-                notes.into_iter().for_each(|one_note| {
-                    joined_notes.push(one_note);
-                });
-            });
-
-            StateFragment {
-                new_leafs: s.new_leafs,
-                new_commitments: s.new_commitments,
-                new_accounts: s.new_accounts,
-                new_notes: joined_notes,
-            }
-        });
-
-        let tx = account
-            .borrow()
-            .create_tx(native_tx, None, extra_state)
-            .map_err(|err| js_err!("{}", err))?;
-
-        let (v, e, index, pool_id) = parse_delta(tx.public.delta);
-        let parsed_delta = ParsedDelta {
-            v: v.try_into().unwrap(),
-            e: e.try_into().unwrap(),
-            index: index.try_into().unwrap(),
-            pool_id: pool_id.try_into().unwrap(),
-        };
-
-        let tx = TransactionDataSer {
-            public: tx.public,
-            secret: tx.secret,
-            ciphertext: tx.ciphertext,
-            memo: tx.memo,
-            out_hashes: tx.out_hashes,
-            commitment_root: tx.commitment_root,
-            parsed_delta,
-        };
-
-        let serializer = Serializer::new().serialize_large_number_types_as_bigints(true);
-        let value: JsValue = tx.serialize(&serializer).unwrap();
-
-        Ok(value.unchecked_into::<TransactionData>())
+        deposit: IDepositData,
+        sign: js_sys::Function,
+    ) -> Result<Promise, JsValue> {
+        Ok(self.construct_tx_data(deposit.to_native()?, None, Some(sign)))
     }
 
-    #[wasm_bindgen(js_name = "createDeposit")]
-    pub fn create_deposit(&self, deposit: IDepositData) -> Result<TransactionData, JsValue> {
-        self.construct_tx_data(deposit.to_native()?, None)
+    #[wasm_bindgen(js_name = "createDepositOptimistic")]
+    pub fn create_deposit_optimistic(
+        &self,
+        deposit: IDepositData,
+        sign: js_sys::Function,
+        new_state: &JsValue,
+    ) -> Result<Promise, JsValue> {
+        let new_state: StateUpdate = new_state
+            .into_serde()
+            .map_err(|err| js_err!(&err.to_string()))?;
+        Ok(self.construct_tx_data(deposit.to_native()?, Some(new_state), Some(sign)))
     }
 
     #[wasm_bindgen(js_name = "createDepositPermittable")]
     pub fn create_deposit_permittable(
         &self,
         deposit: IDepositPermittableData,
-    ) -> Result<TransactionData, JsValue> {
-        self.construct_tx_data(deposit.to_native()?, None)
+    ) -> Result<Promise, JsValue> {
+        Ok(self.construct_tx_data(deposit.to_native()?, None, None))
     }
 
     #[wasm_bindgen(js_name = "createTransfer")]
-    pub fn create_transfer(&self, transfer: ITransferData) -> Result<TransactionData, JsValue> {
-        self.construct_tx_data(transfer.to_native()?, None)
+    pub fn create_transfer(&self, transfer: ITransferData) -> Result<Promise, JsValue> {
+        Ok(self.construct_tx_data(transfer.to_native()?, None, None))
     }
 
     #[wasm_bindgen(js_name = "createTransferOptimistic")]
@@ -215,16 +253,16 @@ impl UserAccount {
         &self,
         transfer: ITransferData,
         new_state: &JsValue,
-    ) -> Result<TransactionData, JsValue> {
+    ) -> Result<Promise, JsValue> {
         let new_state: StateUpdate = new_state
             .into_serde()
             .map_err(|err| js_err!(&err.to_string()))?;
-        self.construct_tx_data(transfer.to_native()?, Some(new_state))
+        Ok(self.construct_tx_data(transfer.to_native()?, Some(new_state), None))
     }
 
     #[wasm_bindgen(js_name = "createWithdraw")]
-    pub fn create_withdraw(&self, withdraw: IWithdrawData) -> Result<TransactionData, JsValue> {
-        self.construct_tx_data(withdraw.to_native()?, None)
+    pub fn create_withdraw(&self, withdraw: IWithdrawData) -> Result<Promise, JsValue> {
+        Ok(self.construct_tx_data(withdraw.to_native()?, None, None))
     }
 
     #[wasm_bindgen(js_name = "createWithdrawalOptimistic")]
@@ -232,11 +270,11 @@ impl UserAccount {
         &self,
         withdraw: IWithdrawData,
         new_state: &JsValue,
-    ) -> Result<TransactionData, JsValue> {
+    ) -> Result<Promise, JsValue> {
         let new_state: StateUpdate = new_state
             .into_serde()
             .map_err(|err| js_err!(&err.to_string()))?;
-        self.construct_tx_data(withdraw.to_native()?, Some(new_state))
+        Ok(self.construct_tx_data(withdraw.to_native()?, Some(new_state), None))
     }
 
     #[wasm_bindgen(js_name = "isOwnAddress")]
