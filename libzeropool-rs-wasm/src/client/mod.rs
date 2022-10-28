@@ -71,6 +71,7 @@ impl UserAccount {
         native_tx: NativeTxType<Fr>,
         new_state: Option<StateUpdate>,
         sign: Option<js_sys::Function>,
+        tx_version: u8,
     ) -> Promise {
         let account = self.inner.clone();
 
@@ -104,9 +105,13 @@ impl UserAccount {
                 }
             });
 
+            let version = tx_version
+                .try_into()
+                .map_err(|_| js_err!("Invalid transaction version"))?;
+
             let tx = account
                 .borrow()
-                .create_tx(native_tx, None, extra_state, sign)
+                .create_tx(native_tx, None, extra_state, sign, version)
                 .await
                 .map_err(|err| js_err!("{}", err))?;
 
@@ -218,8 +223,14 @@ impl UserAccount {
         &self,
         deposit: IDepositData,
         sign: js_sys::Function,
+        tx_version: Option<u8>,
     ) -> Result<Promise, JsValue> {
-        Ok(self.construct_tx_data(deposit.to_native()?, None, Some(sign)))
+        Ok(self.construct_tx_data(
+            deposit.to_native()?,
+            None,
+            Some(sign),
+            tx_version.unwrap_or(1),
+        ))
     }
 
     #[wasm_bindgen(js_name = "createDepositOptimistic")]
@@ -228,24 +239,35 @@ impl UserAccount {
         deposit: IDepositData,
         sign: js_sys::Function,
         new_state: &JsValue,
+        tx_version: Option<u8>,
     ) -> Result<Promise, JsValue> {
         let new_state: StateUpdate = new_state
             .into_serde()
             .map_err(|err| js_err!(&err.to_string()))?;
-        Ok(self.construct_tx_data(deposit.to_native()?, Some(new_state), Some(sign)))
+        Ok(self.construct_tx_data(
+            deposit.to_native()?,
+            Some(new_state),
+            Some(sign),
+            tx_version.unwrap_or(1),
+        ))
     }
 
     #[wasm_bindgen(js_name = "createDepositPermittable")]
     pub fn create_deposit_permittable(
         &self,
         deposit: IDepositPermittableData,
+        tx_version: Option<u8>,
     ) -> Result<Promise, JsValue> {
-        Ok(self.construct_tx_data(deposit.to_native()?, None, None))
+        Ok(self.construct_tx_data(deposit.to_native()?, None, None, tx_version.unwrap_or(1)))
     }
 
     #[wasm_bindgen(js_name = "createTransfer")]
-    pub fn create_transfer(&self, transfer: ITransferData) -> Result<Promise, JsValue> {
-        Ok(self.construct_tx_data(transfer.to_native()?, None, None))
+    pub fn create_transfer(
+        &self,
+        transfer: ITransferData,
+        tx_version: Option<u8>,
+    ) -> Result<Promise, JsValue> {
+        Ok(self.construct_tx_data(transfer.to_native()?, None, None, tx_version.unwrap_or(1)))
     }
 
     #[wasm_bindgen(js_name = "createTransferOptimistic")]
@@ -253,16 +275,26 @@ impl UserAccount {
         &self,
         transfer: ITransferData,
         new_state: &JsValue,
+        tx_version: Option<u8>,
     ) -> Result<Promise, JsValue> {
         let new_state: StateUpdate = new_state
             .into_serde()
             .map_err(|err| js_err!(&err.to_string()))?;
-        Ok(self.construct_tx_data(transfer.to_native()?, Some(new_state), None))
+        Ok(self.construct_tx_data(
+            transfer.to_native()?,
+            Some(new_state),
+            None,
+            tx_version.unwrap_or(1),
+        ))
     }
 
     #[wasm_bindgen(js_name = "createWithdraw")]
-    pub fn create_withdraw(&self, withdraw: IWithdrawData) -> Result<Promise, JsValue> {
-        Ok(self.construct_tx_data(withdraw.to_native()?, None, None))
+    pub fn create_withdraw(
+        &self,
+        withdraw: IWithdrawData,
+        tx_version: Option<u8>,
+    ) -> Result<Promise, JsValue> {
+        Ok(self.construct_tx_data(withdraw.to_native()?, None, None, tx_version.unwrap_or(1)))
     }
 
     #[wasm_bindgen(js_name = "createWithdrawalOptimistic")]
@@ -270,11 +302,17 @@ impl UserAccount {
         &self,
         withdraw: IWithdrawData,
         new_state: &JsValue,
+        tx_version: Option<u8>,
     ) -> Result<Promise, JsValue> {
         let new_state: StateUpdate = new_state
             .into_serde()
             .map_err(|err| js_err!(&err.to_string()))?;
-        Ok(self.construct_tx_data(withdraw.to_native()?, Some(new_state), None))
+        Ok(self.construct_tx_data(
+            withdraw.to_native()?,
+            Some(new_state),
+            None,
+            tx_version.unwrap_or(1),
+        ))
     }
 
     #[wasm_bindgen(js_name = "isOwnAddress")]

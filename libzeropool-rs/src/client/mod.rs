@@ -1,4 +1,8 @@
-use std::{convert::TryInto, future::Future, io::Write};
+use std::{
+    convert::{TryFrom, TryInto},
+    future::Future,
+    io::Write,
+};
 
 use kvdb::KeyValueDB;
 use libzeropool::{
@@ -34,6 +38,27 @@ use crate::{
 };
 
 pub mod state;
+
+#[derive(Debug, PartialEq, Eq)]
+#[repr(u8)]
+pub enum TxVersion {
+    /// Original evm contract compatible version
+    V1 = 1,
+    /// Version with ciphertext length and nullifier signature
+    V2,
+}
+
+impl TryFrom<u8> for TxVersion {
+    type Error = ();
+
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        match value {
+            1 => Ok(TxVersion::V1),
+            2 => Ok(TxVersion::V2),
+            _ => Err(()),
+        }
+    }
+}
 
 #[derive(Debug, Error)]
 pub enum CreateTxError {
@@ -187,6 +212,7 @@ where
         delta_index: Option<u64>,
         extra_state: Option<StateFragment<P::Fr>>,
         sign: Option<F>,
+        tx_version: TxVersion,
     ) -> Result<TransactionData<P::Fr>, CreateTxError>
     where
         Fut: Future<Output = Vec<u8>>,
@@ -536,8 +562,13 @@ where
         };
 
         memo_data.extend(&tx_data);
+        if tx_version == TxVersion::V2 {
+            memo_data.extend(&(ciphertext.len() as u32).to_le_bytes());
+        }
         memo_data.extend(&ciphertext);
-        memo_data.extend(&nullifier_signature);
+        if tx_version == TxVersion::V2 {
+            memo_data.extend(&nullifier_signature);
+        }
         memo_data.extend(user_data);
 
         let memo_hash = keccak256(&memo_data);
