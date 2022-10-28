@@ -1,7 +1,7 @@
 [package]
 name = "libzeropool-rs-wasm"
 description = "A higher level zeropool API for Wasm"
-version = "0.7.3"
+version = "0.6.5"
 authors = ["Dmitry Vdovin <voidxnull@gmail.com>"]
 repository = "https://github.com/zeropoolnetwork/libzeropool-rs/"
 license = "MIT OR Apache-2.0"
@@ -52,8 +52,6 @@ hex = { version = "0.4.3", features = ["serde"] }
 js-sys = "0.3.55"
 rayon = "1.5.3"
 wasm-bindgen-rayon = { version = "1.0.3", optional = true }
-futures = "0.3.25"
-serde_with = { version = "2.0.1", features = ["hex"] }
 
 [dev-dependencies]
 wasm-bindgen-test = "0.3.24"

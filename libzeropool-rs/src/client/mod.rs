@@ -1,8 +1,4 @@
-use std::{
-    convert::{TryFrom, TryInto},
-    future::Future,
-    io::Write,
-};
+use std::{convert::TryInto, io::Write};
 
 use kvdb::KeyValueDB;
 use libzeropool::{
@@ -38,27 +34,6 @@ use crate::{
 };
 
 pub mod state;
-
-#[derive(Debug, PartialEq, Eq)]
-#[repr(u8)]
-pub enum TxVersion {
-    /// Original evm contract compatible version
-    V1 = 1,
-    /// Version with ciphertext length and nullifier signature
-    V2,
-}
-
-impl TryFrom<u8> for TxVersion {
-    type Error = ();
-
-    fn try_from(value: u8) -> Result<Self, Self::Error> {
-        match value {
-            1 => Ok(TxVersion::V1),
-            2 => Ok(TxVersion::V2),
-            _ => Err(()),
-        }
-    }
-}
 
 #[derive(Debug, Error)]
 pub enum CreateTxError {
@@ -206,18 +181,12 @@ where
     }
 
     /// Constructs a transaction.
-    pub async fn create_tx<Fut, F>(
+    pub fn create_tx(
         &self,
         tx: TxType<P::Fr>,
         delta_index: Option<u64>,
         extra_state: Option<StateFragment<P::Fr>>,
-        sign: Option<F>,
-        tx_version: TxVersion,
-    ) -> Result<TransactionData<P::Fr>, CreateTxError>
-    where
-        Fut: Future<Output = Vec<u8>>,
-        F: FnOnce(&[u8]) -> Fut,
-    {
+    ) -> Result<TransactionData<P::Fr>, CreateTxError> {
         let mut rng = CustomRng;
         let keys = self.keys.clone();
         let state = &self.state;
@@ -546,30 +515,18 @@ where
 
         let root: Num<P::Fr> = tree.get_root_optimistic(&mut virtual_nodes, &update_boundaries);
 
-        let nullifier_signature = if let Some(sign) = sign {
-            sign(&nullifier.to_uint().0.to_big_endian()).await
-        } else {
-            vec![]
-        };
-
         // memo = tx_specific_data, ciphertext, user_defined_data
         let mut memo_data = {
             let tx_data_size = tx_data.len();
             let ciphertext_size = ciphertext.len();
-            let signature_size = nullifier_signature.len();
             let user_data_size = user_data.len();
-            Vec::with_capacity(tx_data_size + ciphertext_size + signature_size + user_data_size)
+            Vec::with_capacity(tx_data_size + ciphertext_size + user_data_size)
         };
 
-        memo_data.extend(&tx_data);
-        if tx_version == TxVersion::V2 {
-            memo_data.extend(&(ciphertext.len() as u32).to_le_bytes());
-        }
+        #[allow(clippy::redundant_clone)]
+        memo_data.append(&mut tx_data.clone());
         memo_data.extend(&ciphertext);
-        if tx_version == TxVersion::V2 {
-            memo_data.extend(&nullifier_signature);
-        }
-        memo_data.extend(user_data);
+        memo_data.append(&mut user_data.clone());
 
         let memo_hash = keccak256(&memo_data);
         let memo = Num::from_uint_reduced(NumRepr(Uint::from_big_endian(&memo_hash)));

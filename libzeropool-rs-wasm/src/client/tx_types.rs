@@ -1,6 +1,5 @@
 use libzeropool_rs::client::{TokenAmount, TxOutput, TxType as NativeTxType};
 use serde::Deserialize;
-use serde_with::{hex::Hex, serde_as};
 use wasm_bindgen::prelude::*;
 
 use crate::{
@@ -25,12 +24,10 @@ pub trait JsMultiTxType {
     fn to_native_array(&self) -> Result<Vec<NativeTxType<Fr>>, JsValue>;
 }
 
-#[serde_as]
 #[wasm_bindgen]
 #[derive(Deserialize)]
 pub struct TxBaseFields {
     fee: TokenAmount<Fr>,
-    #[serde_as(as = "Option<Hex>")]
     data: Option<Vec<u8>>,
 }
 
