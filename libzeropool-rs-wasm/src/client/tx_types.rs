@@ -28,7 +28,6 @@ pub trait JsMultiTxType {
 #[derive(Deserialize)]
 pub struct TxBaseFields {
     fee: TokenAmount<Fr>,
-    data: Option<Vec<u8>>,
 }
 
 #[wasm_bindgen]
@@ -62,7 +61,6 @@ impl JsTxType for IDepositData {
 
         Ok(NativeTxType::Deposit {
             fee: base_fields.fee,
-            data: base_fields.data.unwrap_or_default(),
             deposit_amount: amount,
             outputs,
         })
@@ -91,7 +89,6 @@ impl JsMultiTxType for IMultiDepositData {
 
                 NativeTxType::Deposit {
                     fee: tx.base_fields.fee,
-                    data: tx.base_fields.data.unwrap_or_default(),
                     deposit_amount: tx.amount,
                     outputs,
                 }
@@ -137,7 +134,6 @@ impl JsTxType for IDepositPermittableData {
 
         Ok(NativeTxType::DepositPermittable {
             fee: base_fields.fee,
-            data: base_fields.data.unwrap_or_default(),
             deposit_amount: amount,
             deadline: deadline.parse::<u64>().unwrap_or(0),
             holder,
@@ -167,7 +163,6 @@ impl JsMultiTxType for IMultiDepositPermittableData {
                     .unwrap_or_default();
                 NativeTxType::DepositPermittable {
                     fee: tx.base_fields.fee,
-                    data: tx.base_fields.data.unwrap_or_default(),
                     deposit_amount: tx.amount,
                     deadline: tx.deadline.parse::<u64>().unwrap_or(0),
                     holder: tx.holder,
@@ -211,7 +206,6 @@ impl JsTxType for ITransferData {
 
         Ok(NativeTxType::Transfer {
             fee: base_fields.fee,
-            data: base_fields.data.unwrap_or_default(),
             outputs,
         })
     }
@@ -235,7 +229,6 @@ impl JsMultiTxType for IMultiTransferData {
 
                 NativeTxType::Transfer {
                     fee: tx.base_fields.fee,
-                    data: tx.base_fields.data.unwrap_or_default(),
                     outputs,
                 }
             })
@@ -268,7 +261,6 @@ impl JsTxType for IWithdrawData {
 
         Ok(NativeTxType::Withdraw {
             fee: base_fields.fee,
-            data: base_fields.data.unwrap_or_default(),
             withdraw_amount: amount,
             to,
             native_amount,
@@ -285,7 +277,6 @@ impl JsMultiTxType for IMultiWithdrawData {
             .into_iter()
             .map(|tx| NativeTxType::Withdraw {
                 fee: tx.base_fields.fee,
-                data: tx.base_fields.data.unwrap_or_default(),
                 withdraw_amount: tx.amount,
                 to: tx.to,
                 native_amount: tx.native_amount,

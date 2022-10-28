@@ -108,7 +108,6 @@ export interface VK {
 
 export interface ITxBaseFields {
     fee: string;
-    data?: Uint8Array;
 }
 
 export interface IDepositData extends ITxBaseFields {

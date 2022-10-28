@@ -79,18 +79,15 @@ pub struct TxOutput<Fr: PrimeField> {
 pub enum TxType<Fr: PrimeField> {
     Transfer {
         fee: TokenAmount<Fr>,
-        data: Vec<u8>,
         outputs: Vec<TxOutput<Fr>>,
     },
     Deposit {
         fee: TokenAmount<Fr>,
-        data: Vec<u8>,
         deposit_amount: TokenAmount<Fr>,
         outputs: Vec<TxOutput<Fr>>,
     },
     DepositPermittable {
         fee: TokenAmount<Fr>,
-        data: Vec<u8>,
         deposit_amount: TokenAmount<Fr>,
         deadline: u64,
         holder: Vec<u8>,
@@ -98,7 +95,6 @@ pub enum TxType<Fr: PrimeField> {
     },
     Withdraw {
         fee: TokenAmount<Fr>,
-        data: Vec<u8>,
         withdraw_amount: TokenAmount<Fr>,
         to: Vec<u8>,
         native_amount: TokenAmount<Fr>,
@@ -255,17 +251,16 @@ where
                 .unwrap_or(self.state.tree.next_index())
         }));
 
-        let (fee, tx_data, user_data) = {
+        let (fee, tx_data) = {
             let mut tx_data: Vec<u8> = vec![];
             match &tx {
-                TxType::Deposit { fee, data, .. } => {
+                TxType::Deposit { fee, .. } => {
                     let raw_fee: u64 = fee.to_num().try_into().unwrap();
                     tx_data.write_all(&raw_fee.to_be_bytes()).unwrap();
-                    (fee, tx_data, data)
+                    (fee, tx_data)
                 }
                 TxType::DepositPermittable {
                     fee,
-                    data,
                     deadline,
                     holder,
                     ..
@@ -276,16 +271,15 @@ where
                     tx_data.write_all(&deadline.to_be_bytes()).unwrap();
                     tx_data.append(&mut holder.clone());
 
-                    (fee, tx_data, data)
+                    (fee, tx_data)
                 }
-                TxType::Transfer { fee, data, .. } => {
+                TxType::Transfer { fee, .. } => {
                     let raw_fee: u64 = fee.to_num().try_into().unwrap();
                     tx_data.write_all(&raw_fee.to_be_bytes()).unwrap();
-                    (fee, tx_data, data)
+                    (fee, tx_data)
                 }
                 TxType::Withdraw {
                     fee,
-                    data,
                     to,
                     native_amount,
                     ..
@@ -297,7 +291,7 @@ where
                     tx_data.write_all(&raw_native_amount.to_be_bytes()).unwrap();
                     tx_data.append(&mut to.clone());
 
-                    (fee, tx_data, data)
+                    (fee, tx_data)
                 }
             }
         };
@@ -519,14 +513,11 @@ where
         let mut memo_data = {
             let tx_data_size = tx_data.len();
             let ciphertext_size = ciphertext.len();
-            let user_data_size = user_data.len();
-            Vec::with_capacity(tx_data_size + ciphertext_size + user_data_size)
+            Vec::with_capacity(tx_data_size + ciphertext_size)
         };
 
-        #[allow(clippy::redundant_clone)]
-        memo_data.append(&mut tx_data.clone());
+        memo_data.extend(&tx_data);
         memo_data.extend(&ciphertext);
-        memo_data.append(&mut user_data.clone());
 
         let memo_hash = keccak256(&memo_data);
         let memo = Num::from_uint_reduced(NumRepr(Uint::from_big_endian(&memo_hash)));
@@ -597,7 +588,6 @@ mod tests {
         acc.create_tx(
             TxType::Deposit {
                 fee: BoundedNum::new(Num::ZERO),
-                data: vec![],
                 deposit_amount: BoundedNum::new(Num::ZERO),
                 outputs: vec![],
             },
@@ -615,7 +605,6 @@ mod tests {
         acc.create_tx(
             TxType::Deposit {
                 fee: BoundedNum::new(Num::ZERO),
-                data: vec![],
                 deposit_amount: BoundedNum::new(Num::ONE),
                 outputs: vec![],
             },
@@ -641,7 +630,6 @@ mod tests {
         acc.create_tx(
             TxType::Transfer {
                 fee: BoundedNum::new(Num::ZERO),
-                data: vec![],
                 outputs: vec![out],
             },
             None,
@@ -666,7 +654,6 @@ mod tests {
         acc.create_tx(
             TxType::Transfer {
                 fee: BoundedNum::new(Num::ZERO),
-                data: vec![],
                 outputs: vec![out],
             },
             None,
