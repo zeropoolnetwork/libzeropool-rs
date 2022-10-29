@@ -197,6 +197,18 @@ impl UserAccount {
         self.construct_tx_data(deposit.to_native()?, None)
     }
 
+    #[wasm_bindgen(js_name = "createDepositOptimistic")]
+    pub fn create_deposit_optimistic(
+        &self,
+        deposit: IDepositData,
+        new_state: &JsValue,
+    ) -> Result<TransactionData, JsValue> {
+        let new_state: StateUpdate = new_state
+            .into_serde()
+            .map_err(|err| js_err!(&err.to_string()))?;
+        self.construct_tx_data(deposit.to_native()?, Some(new_state))
+    }
+
     #[wasm_bindgen(js_name = "createDepositPermittable")]
     pub fn create_deposit_permittable(
         &self,
