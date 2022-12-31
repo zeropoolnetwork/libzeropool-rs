@@ -4,7 +4,10 @@ members = [
     "libzeropool-rs",
     "libzeropool-rs-node",
     "libs/kvdb-web",
+#    "libs/kvdb-redb",
+    "libs/kvdb-persy",
 ]
 
 [patch.crates-io]
 fawkes-crypto-bellman_ce = { git = "https://github.com/zeropoolnetwork/phase2-bn254.git", branch = "feature/rayon-support" }
+#fawkes-crypto-bellman_ce = { git = "https://github.com/zkbob/phase2-bn254.git", branch = "multicore-wasm" }
