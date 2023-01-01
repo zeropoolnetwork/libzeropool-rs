@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 
-use kvdb::{DBKeyValue, DBOp, DBTransaction, DBValue, KeyValueDB};
+use kvdb::{DBKey, DBKeyValue, DBOp, DBTransaction, DBValue, KeyValueDB};
 use persy::{Config, Persy, PersyError, PersyId, ValueMode, PE};
 use smallvec::SmallVec;
 
@@ -17,17 +17,22 @@ fn decode_key(key: &str) -> Vec<u8> {
     hex::decode(key).unwrap()
 }
 
+fn prefix_index(col: u32, prefix: &[u8]) -> String {
+    format!("p:{}:{}", col, encode_key(prefix))
+}
+
+fn id_index(col: u32) -> String {
+    format!("i:{}", col)
+}
+
+fn key_index(col: u32) -> String {
+    format!("k:{}", col)
+}
+
 pub struct PersyDatabase {
     db: Persy,
     prefixes: HashSet<String>,
 }
-
-// #[cfg(test)]
-// impl Drop for PersyDatabase {
-//     fn drop(&mut self) {
-//         self.db.free_file_lock().unwrap();
-//     }
-// }
 
 impl PersyDatabase {
     pub fn open(path: &str, prefixes: &[&[u8]]) -> std::io::Result<Self> {
@@ -39,13 +44,6 @@ impl PersyDatabase {
             .collect::<HashSet<_>>();
 
         let mut tx = persy.begin().map_err(persy_to_io)?;
-
-        for prefix in &prefixes {
-            if !tx.exists_index(prefix).map_err(persy_to_io)? {
-                tx.create_index::<String, PersyId>(prefix, ValueMode::Replace)
-                    .map_err(persy_to_io)?;
-            }
-        }
 
         tx.prepare()
             .map_err(persy_to_io)?
@@ -77,7 +75,19 @@ impl KeyValueDB for PersyDatabase {
     }
 
     fn get_by_prefix(&self, col: u32, prefix: &[u8]) -> std::io::Result<Option<DBValue>> {
-        todo!()
+        let prefix = prefix_index(col, prefix);
+        let mut rec_ids = self
+            .db
+            .range::<String, PersyId, _>(&prefix, ..)
+            .map_err(persy_to_io)?;
+
+        let Some((_, mut values)) = rec_ids.next() else {
+            return Ok(None);
+        };
+
+        let rec_id = values.next().unwrap();
+
+        self.db.read(&col.to_string(), &rec_id).map_err(persy_to_io)
     }
 
     fn write(&self, transaction: DBTransaction) -> std::io::Result<()> {
@@ -88,8 +98,8 @@ impl KeyValueDB for PersyDatabase {
                 DBOp::Insert { col, key, value } => {
                     let key = encode_key(key.as_slice());
                     let segment = col.to_string();
-                    let index_k_to_id = format!("k{col}");
-                    let index_id_to_k = format!("id{col}");
+                    let index_k_to_id = key_index(col);
+                    let index_id_to_k = id_index(col);
 
                     if !tx.exists_segment(&segment).map_err(persy_to_io)? {
                         tx.create_segment(&segment).map_err(persy_to_io)?;
@@ -105,12 +115,28 @@ impl KeyValueDB for PersyDatabase {
                             .map_err(persy_to_io)?;
                     }
 
-                    // FIXME: check if the key exists before inserting
+                    if tx
+                        .one::<String, PersyId>(&index_k_to_id, &key)
+                        .map_err(persy_to_io)?
+                        .is_some()
+                    {
+                        return Ok(());
+                    }
+
                     let rec_id = tx.insert(&segment, &value).map_err(persy_to_io)?;
 
                     for prefix in &self.prefixes {
+                        let prefix_bytes = decode_key(prefix);
+                        let prefix_key = prefix_index(col, &prefix_bytes);
+                        if !tx.exists_index(&prefix_key).map_err(persy_to_io)? {
+                            tx.create_index::<String, PersyId>(&prefix_key, ValueMode::Replace)
+                                .map_err(persy_to_io)?;
+                            // TODO: Add existing records to the prefix index
+                        }
+
                         if key.starts_with(prefix) {
-                            tx.put(prefix, key.clone(), rec_id).map_err(persy_to_io)?;
+                            tx.put(&prefix_key, key.clone(), rec_id)
+                                .map_err(persy_to_io)?;
                         }
                     }
 
@@ -121,8 +147,8 @@ impl KeyValueDB for PersyDatabase {
                 DBOp::Delete { col, key } => {
                     let key = encode_key(key.as_slice());
                     let segment = col.to_string();
-                    let index_k_to_id = format!("k{col}");
-                    let index_id_to_k = format!("id{col}");
+                    let index_k_to_id = key_index(col);
+                    let index_id_to_k = id_index(col);
 
                     let rec_id = tx
                         .one::<String, PersyId>(&index_k_to_id, &key)
@@ -152,9 +178,9 @@ impl KeyValueDB for PersyDatabase {
 
     fn iter<'a>(&'a self, col: u32) -> Box<dyn Iterator<Item = std::io::Result<DBKeyValue>> + 'a> {
         let segment = col.to_string();
-        let index_id_to_k = format!("id{col}");
+        let index_id_to_k = id_index(col);
 
-        Box::new(self.db.scan(&segment).unwrap().map(move |(id, data)| {
+        let iter = self.db.scan(&segment).unwrap().map(move |(id, data)| {
             let key = self
                 .db
                 .one::<PersyId, String>(&index_id_to_k, &id)
@@ -162,7 +188,9 @@ impl KeyValueDB for PersyDatabase {
                 .unwrap(); // FIXME
             let key = SmallVec::from_slice(&decode_key(&key));
             Ok((key, data))
-        }))
+        });
+
+        Box::new(iter)
     }
 
     fn iter_with_prefix<'a>(
@@ -170,28 +198,65 @@ impl KeyValueDB for PersyDatabase {
         col: u32,
         prefix: &'a [u8],
     ) -> Box<dyn Iterator<Item = std::io::Result<DBKeyValue>> + 'a> {
-        todo!()
+        // 1. Retrieve all PersyId for the given prefix.
+        let pairs = self
+            .db
+            .range::<String, PersyId, _>(&prefix_index(col, prefix), ..)
+            .unwrap(); // TODO: Create an iterator over the error?
+
+        let ids = pairs
+            .filter_map(|(key, mut ids)| {
+                ids.next()
+                    .map(|id| (SmallVec::from_slice(&decode_key(&key)), id))
+            })
+            .collect::<Vec<(DBKey, PersyId)>>();
+
+        let final_pairs = ids.into_iter().map(move |(key, id)| {
+            let data = self
+                .db
+                .read(&col.to_string(), &id)
+                .map_err(persy_to_io)?
+                .unwrap(); // FIXME
+            Ok((key, data))
+        });
+
+        Box::new(final_pairs)
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use std::hint::black_box;
+
     use super::*;
+
+    const FILE: &str = "test.persy";
+
+    fn cleanup() {
+        let _ = std::fs::remove_file(FILE);
+    }
+
+    fn setup() -> PersyDatabase {
+        cleanup();
+        PersyDatabase::open(FILE, &[]).unwrap()
+    }
 
     #[test]
     fn test_open() {
-        let db = PersyDatabase::open("./test.persy", &[]).unwrap();
-        // for _ in 0..10 {
-        //     let db = PersyDatabase::open("./test.persy", &[]).unwrap();
-        //     drop(db);
-        // }
+        for _ in 0..10 {
+            let db = PersyDatabase::open(FILE, &[]).unwrap();
+            black_box(db);
+        }
+
+        cleanup();
     }
 
     #[test]
     fn test_put() {
-        let db = PersyDatabase::open("./test.persy", &[]).unwrap();
+        let db = setup();
         let mut tx = db.transaction();
-        tx.put(0, &[1, 2, 3, 4], &[1, 1, 1, 1]);
+        tx.put(0, &[1], &[1, 1, 1, 1]);
+        tx.put(0, &[2], &[2, 2, 2, 2]);
         db.write(tx).unwrap();
 
         let results = db.iter(0).collect::<Result<Vec<_>, _>>().unwrap();
