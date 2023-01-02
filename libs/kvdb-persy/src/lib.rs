@@ -40,10 +40,11 @@ impl PersyDatabase {
         let persy = Persy::open(path, Config::new()).map_err(persy_to_io)?;
         let prefixes = prefixes
             .iter()
+            .filter(|prefix| !prefix.is_empty())
             .map(|prefix| encode_key(prefix))
             .collect::<HashSet<_>>();
 
-        let mut tx = persy.begin().map_err(persy_to_io)?;
+        let tx = persy.begin().map_err(persy_to_io)?;
 
         tx.prepare()
             .map_err(persy_to_io)?
@@ -226,40 +227,111 @@ impl KeyValueDB for PersyDatabase {
 
 #[cfg(test)]
 mod tests {
-    use std::hint::black_box;
+    use std::sync::atomic::AtomicUsize;
+
+    use kvdb_shared_tests as st;
 
     use super::*;
 
-    const FILE: &str = "test.persy";
+    // kvdb-shared-tests prefixes
+    const PREFIXES: &[&[u8]] = &[
+        b"04c0",
+        b"",
+        b"a",
+        b"abc",
+        b"abcde",
+        b"0",
+        &[1],
+        &[1, 2],
+        &[1, 255, 255],
+        &[255],
+        &[255, 255],
+        &[8],
+    ];
 
-    fn cleanup() {
-        let _ = std::fs::remove_file(FILE);
+    const FILE_N: AtomicUsize = AtomicUsize::new(0);
+
+    struct TestContext {
+        file_name: String,
+        db: PersyDatabase,
     }
 
-    fn setup() -> PersyDatabase {
-        cleanup();
-        PersyDatabase::open(FILE, &[]).unwrap()
-    }
-
-    #[test]
-    fn test_open() {
-        for _ in 0..10 {
-            let db = PersyDatabase::open(FILE, &[]).unwrap();
-            black_box(db);
+    impl Drop for TestContext {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_file(&self.file_name);
         }
+    }
 
-        cleanup();
+    fn setup() -> TestContext {
+        let file_n = FILE_N.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        let file_name = format!("test-{file_n}.persy");
+        let _ = std::fs::remove_file(&file_name);
+        let db = PersyDatabase::open(&file_name, PREFIXES).unwrap();
+
+        TestContext { file_name, db }
     }
 
     #[test]
     fn test_put() {
-        let db = setup();
-        let mut tx = db.transaction();
+        let ctx = setup();
+        let mut tx = ctx.db.transaction();
         tx.put(0, &[1], &[1, 1, 1, 1]);
         tx.put(0, &[2], &[2, 2, 2, 2]);
-        db.write(tx).unwrap();
+        ctx.db.write(tx).unwrap();
 
-        let results = db.iter(0).collect::<Result<Vec<_>, _>>().unwrap();
+        let results = ctx.db.iter(0).collect::<Result<Vec<_>, _>>().unwrap();
         assert_eq!(results.len(), 2);
+    }
+    #[test]
+    pub fn test_put_and_get() {
+        let ctx = setup();
+        st::test_put_and_get(&ctx.db).unwrap();
+    }
+
+    #[test]
+    pub fn test_delete_and_get() {
+        let ctx = setup();
+        st::test_delete_and_get(&ctx.db).unwrap();
+    }
+
+    #[test]
+    pub fn test_get_fails_with_non_existing_column() {
+        let ctx = setup();
+        st::test_get_fails_with_non_existing_column(&ctx.db).unwrap();
+    }
+
+    #[test]
+    pub fn test_write_clears_buffered_ops() {
+        let ctx = setup();
+        st::test_write_clears_buffered_ops(&ctx.db).unwrap();
+    }
+    #[test]
+    pub fn test_iter() {
+        let ctx = setup();
+        st::test_iter(&ctx.db).unwrap();
+    }
+
+    #[test]
+    pub fn test_iter_with_prefix() {
+        let ctx = setup();
+        st::test_iter_with_prefix(&ctx.db).unwrap();
+    }
+
+    // #[test]
+    // pub fn test_io_stats() {
+    //     let ctx = setup();
+    //     st::test_io_stats(&ctx.db).unwrap();
+    // }
+
+    #[test]
+    pub fn test_delete_prefix() {
+        let ctx = setup();
+        st::test_delete_prefix(&ctx.db).unwrap();
+    }
+
+    #[test]
+    pub fn test_complex() {
+        let ctx = setup();
+        st::test_complex(&ctx.db).unwrap();
     }
 }
