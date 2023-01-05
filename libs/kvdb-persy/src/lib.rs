@@ -35,7 +35,7 @@ pub struct PersyDatabase {
 }
 
 impl PersyDatabase {
-    pub fn open(path: &str, prefixes: &[&[u8]]) -> std::io::Result<Self> {
+    pub fn open(path: &str, columns: u32, prefixes: &[&[u8]]) -> std::io::Result<Self> {
         let _ = Persy::create(path);
         let persy = Persy::open(path, Config::new()).map_err(persy_to_io)?;
         let prefixes = prefixes
@@ -44,7 +44,27 @@ impl PersyDatabase {
             .map(|prefix| encode_key(prefix))
             .collect::<HashSet<_>>();
 
-        let tx = persy.begin().map_err(persy_to_io)?;
+        let mut tx = persy.begin().map_err(persy_to_io)?;
+
+        for column in 0..columns {
+            let segment = column.to_string();
+            let id_index = id_index(column);
+            let key_index = key_index(column);
+
+            if !tx.exists_segment(&segment).map_err(persy_to_io)? {
+                tx.create_segment(&segment).map_err(persy_to_io)?;
+            }
+
+            if !tx.exists_index(&id_index).map_err(persy_to_io)? {
+                tx.create_index::<PersyId, String>(&id_index, ValueMode::Replace)
+                    .map_err(persy_to_io)?;
+            }
+
+            if !tx.exists_index(&key_index).map_err(persy_to_io)? {
+                tx.create_index::<String, PersyId>(&key_index, ValueMode::Replace)
+                    .map_err(persy_to_io)?;
+            }
+        }
 
         tx.prepare()
             .map_err(persy_to_io)?
@@ -104,20 +124,6 @@ impl KeyValueDB for PersyDatabase {
                     let index_k_to_id = key_index(col);
                     let index_id_to_k = id_index(col);
 
-                    if !tx.exists_segment(&segment).map_err(persy_to_io)? {
-                        tx.create_segment(&segment).map_err(persy_to_io)?;
-                    }
-
-                    if !tx.exists_index(&index_k_to_id).map_err(persy_to_io)? {
-                        tx.create_index::<String, PersyId>(&index_k_to_id, ValueMode::Replace)
-                            .map_err(persy_to_io)?;
-                    }
-
-                    if !tx.exists_index(&index_id_to_k).map_err(persy_to_io)? {
-                        tx.create_index::<PersyId, String>(&index_id_to_k, ValueMode::Replace)
-                            .map_err(persy_to_io)?;
-                    }
-
                     if let Some(rec_id) = tx
                         .one::<String, PersyId>(&index_k_to_id, &key)
                         .map_err(persy_to_io)?
@@ -152,15 +158,16 @@ impl KeyValueDB for PersyDatabase {
                     let index_k_to_id = key_index(col);
                     let index_id_to_k = id_index(col);
 
-                    let rec_id = tx
+                    if let Some(rec_id) = tx
                         .one::<String, PersyId>(&index_k_to_id, &key)
                         .map_err(persy_to_io)?
-                        .unwrap(); // FIXME
-                    tx.remove::<String, PersyId>(&index_k_to_id, key, None)
-                        .map_err(persy_to_io)?;
-                    tx.remove::<PersyId, String>(&index_id_to_k, rec_id, None)
-                        .map_err(persy_to_io)?;
-                    tx.delete(&segment, &rec_id).map_err(persy_to_io)?;
+                    {
+                        tx.remove::<String, PersyId>(&index_k_to_id, key, None)
+                            .map_err(persy_to_io)?;
+                        tx.remove::<PersyId, String>(&index_id_to_k, rec_id, None)
+                            .map_err(persy_to_io)?;
+                        tx.delete(&segment, &rec_id).map_err(persy_to_io)?;
+                    }
                 }
                 DBOp::DeletePrefix { col, prefix } => {
                     let prefix_index = prefix_index(col, &prefix);
@@ -205,6 +212,10 @@ impl KeyValueDB for PersyDatabase {
         let segment = col.to_string();
         let index_id_to_k = id_index(col);
 
+        if !self.db.exists_segment(&segment).unwrap() {
+            return Box::new(std::iter::empty());
+        }
+
         let iter = self.db.scan(&segment).unwrap().map(move |(id, data)| {
             let key = self
                 .db
@@ -227,10 +238,13 @@ impl KeyValueDB for PersyDatabase {
             return self.iter(col);
         }
 
-        let pairs = self
+        let prefix_index = prefix_index(col, prefix);
+
+        let Ok(pairs) = self
             .db
-            .range::<String, PersyId, _>(&prefix_index(col, prefix), ..)
-            .unwrap(); // TODO: Create an iterator over the error?
+            .range::<String, PersyId, _>(&prefix_index, ..) else {
+            return Box::new(std::iter::empty());
+        };
 
         let ids = pairs
             .filter_map(|(key, mut ids)| {
@@ -295,18 +309,17 @@ mod tests {
         format!("test-{file_n}.persy")
     }
 
-    fn setup() -> TestContext {
+    fn setup(num_cols: u32) -> TestContext {
         let file_name = new_file_name();
         let _ = std::fs::remove_file(&file_name);
-        println!("{file_name}");
-        let db = PersyDatabase::open(&file_name, PREFIXES).unwrap();
+        let db = PersyDatabase::open(&file_name, num_cols, PREFIXES).unwrap();
 
         TestContext { file_name, db }
     }
 
     #[test]
     fn test_put() {
-        let ctx = setup();
+        let ctx = setup(1);
         let mut tx = ctx.db.transaction();
         tx.put(0, &[1], &[1, 1, 1, 1]);
         tx.put(0, &[2], &[2, 2, 2, 2]);
@@ -322,49 +335,49 @@ mod tests {
 
     #[test]
     pub fn test_put_and_get() {
-        let ctx = setup();
+        let ctx = setup(1);
         st::test_put_and_get(&ctx.db).unwrap();
     }
 
     #[test]
     pub fn test_delete_and_get() {
-        let ctx = setup();
+        let ctx = setup(1);
         st::test_delete_and_get(&ctx.db).unwrap();
     }
 
     #[test]
     pub fn test_get_fails_with_non_existing_column() {
-        let ctx = setup();
+        let ctx = setup(1);
         st::test_get_fails_with_non_existing_column(&ctx.db).unwrap();
     }
 
     #[test]
     pub fn test_write_clears_buffered_ops() {
-        let ctx = setup();
+        let ctx = setup(1);
         st::test_write_clears_buffered_ops(&ctx.db).unwrap();
     }
 
     #[test]
     pub fn test_iter() {
-        let ctx = setup();
+        let ctx = setup(1);
         st::test_iter(&ctx.db).unwrap();
     }
 
     #[test]
     pub fn test_iter_with_prefix() {
-        let ctx = setup();
+        let ctx = setup(1);
         st::test_iter_with_prefix(&ctx.db).unwrap();
     }
 
     #[test]
     pub fn test_delete_prefix() {
-        let ctx = setup();
+        let ctx = setup(7);
         st::test_delete_prefix(&ctx.db).unwrap();
     }
 
     #[test]
     pub fn test_complex() {
-        let ctx = setup();
+        let ctx = setup(1);
         st::test_complex(&ctx.db).unwrap();
     }
 }

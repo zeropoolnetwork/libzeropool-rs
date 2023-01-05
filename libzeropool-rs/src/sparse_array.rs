@@ -41,7 +41,7 @@ where
     T: BorshSerialize + BorshDeserialize,
 {
     pub fn new_native(path: &str) -> std::io::Result<SparseArray<NativeDatabase, T>> {
-        let db = NativeDatabase::open(path, &[])?;
+        let db = NativeDatabase::open(path, 1, &[])?;
 
         Ok(SparseArray {
             db,

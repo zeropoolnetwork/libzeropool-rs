@@ -61,7 +61,7 @@ impl<P: PoolParams> MerkleTree<WebDatabase, P> {
 impl<P: PoolParams> MerkleTree<NativeDatabase, P> {
     pub fn new_native(path: &str, params: P) -> std::io::Result<MerkleTree<NativeDatabase, P>> {
         let prefix = (0u32).to_be_bytes();
-        let db = NativeDatabase::open(path, &[&prefix])?;
+        let db = NativeDatabase::open(path, 4, &[&prefix])?;
 
         Ok(Self::new(db, params))
     }
