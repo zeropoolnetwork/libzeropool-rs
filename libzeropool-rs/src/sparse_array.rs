@@ -4,7 +4,7 @@ use borsh::{BorshDeserialize, BorshSerialize};
 use kvdb::{DBTransaction, KeyValueDB};
 use kvdb_memorydb::InMemory as MemoryDatabase;
 #[cfg(feature = "native")]
-use kvdb_rocksdb::{Database as NativeDatabase, DatabaseConfig};
+use kvdb_persy::PersyDatabase as NativeDatabase;
 #[cfg(feature = "web")]
 use kvdb_web::Database as WebDatabase;
 
@@ -40,11 +40,8 @@ impl<T> SparseArray<NativeDatabase, T>
 where
     T: BorshSerialize + BorshDeserialize,
 {
-    pub fn new_native(
-        config: &DatabaseConfig,
-        path: &str,
-    ) -> std::io::Result<SparseArray<NativeDatabase, T>> {
-        let db = NativeDatabase::open(config, path)?;
+    pub fn new_native(path: &str) -> std::io::Result<SparseArray<NativeDatabase, T>> {
+        let db = NativeDatabase::open(path, &[])?;
 
         Ok(SparseArray {
             db,
@@ -90,7 +87,7 @@ where
 
     pub fn iter(&self) -> SparseArrayIter<T> {
         SparseArrayIter {
-            inner: self.db.iter(0),
+            inner: Box::new(self.db.iter(0).map(|res| res.unwrap())),
             _phantom: Default::default(),
         }
     }
@@ -153,7 +150,7 @@ where
 }
 
 pub struct SparseArrayIter<'a, T: BorshDeserialize> {
-    inner: Box<dyn Iterator<Item = (Box<[u8]>, Box<[u8]>)> + 'a>,
+    inner: Box<dyn Iterator<Item = (smallvec::SmallVec<[u8; 32]>, Vec<u8>)> + 'a>,
     _phantom: PhantomData<T>,
 }
 

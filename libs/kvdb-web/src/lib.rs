@@ -16,16 +16,14 @@
 mod error;
 mod indexed_db;
 
-use kvdb::{DBTransaction, DBValue};
-use kvdb_memorydb::{self as in_memory, InMemory};
-use send_wrapper::SendWrapper;
 use std::io;
 
 pub use error::Error;
-pub use kvdb::KeyValueDB;
-
 use futures::prelude::*;
-
+pub use kvdb::KeyValueDB;
+use kvdb::{DBKeyValue, DBTransaction, DBValue};
+use kvdb_memorydb::{self as in_memory, InMemory};
+use send_wrapper::SendWrapper;
 use web_sys::IdbDatabase;
 
 /// Database backed by both IndexedDB and in memory implementation.
@@ -106,7 +104,7 @@ impl KeyValueDB for Database {
         self.in_memory.get(col, key)
     }
 
-    fn get_by_prefix(&self, col: u32, prefix: &[u8]) -> Option<Box<[u8]>> {
+    fn get_by_prefix(&self, col: u32, prefix: &[u8]) -> io::Result<Option<Vec<u8>>> {
         self.in_memory.get_by_prefix(col, prefix)
     }
 
@@ -115,22 +113,15 @@ impl KeyValueDB for Database {
         self.in_memory.write(transaction)
     }
 
-    // NOTE: clones the whole db
-    fn iter<'a>(&'a self, col: u32) -> Box<dyn Iterator<Item = (Box<[u8]>, Box<[u8]>)> + 'a> {
+    fn iter<'a>(&'a self, col: u32) -> Box<dyn Iterator<Item = io::Result<DBKeyValue>> + 'a> {
         self.in_memory.iter(col)
     }
 
-    // NOTE: clones the whole db
     fn iter_with_prefix<'a>(
         &'a self,
         col: u32,
         prefix: &'a [u8],
-    ) -> Box<dyn Iterator<Item = (Box<[u8]>, Box<[u8]>)> + 'a> {
+    ) -> Box<dyn Iterator<Item = io::Result<DBKeyValue>> + 'a> {
         self.in_memory.iter_with_prefix(col, prefix)
-    }
-
-    // NOTE: not supported
-    fn restore(&self, _new_db: &str) -> std::io::Result<()> {
-        Err(io::Error::new(io::ErrorKind::Other, "Not supported yet"))
     }
 }

@@ -16,7 +16,7 @@ pub fn tx_storage_new(mut cx: FunctionContext) -> JsResult<BoxedTxStorage> {
         path.value(&mut cx)
     };
 
-    let inner = NativeSparseArray::new_native(&Default::default(), &path).unwrap();
+    let inner = NativeSparseArray::new_native(&path).unwrap();
 
     Ok(cx.boxed(TxStorage { inner }))
 }
