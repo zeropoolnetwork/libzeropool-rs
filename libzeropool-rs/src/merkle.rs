@@ -1010,18 +1010,62 @@ pub struct UpdateBoundaries {
 
 #[cfg(test)]
 mod tests {
-    use kvdb_memorydb::create;
-    use libzeropool::{fawkes_crypto::ff_uint::rand::Rng, native::tx, POOL_PARAMS};
+    use std::sync::atomic::AtomicUsize;
+
+    #[cfg(not(feature = "native"))]
+    use kvdb_memorydb::InMemory as Database;
+    #[cfg(feature = "native")]
+    use kvdb_persy::PersyDatabase as Database;
+    use libzeropool::{
+        fawkes_crypto::ff_uint::rand::Rng,
+        native::{params::PoolBN256, tx},
+        POOL_PARAMS,
+    };
     use rand::{seq::SliceRandom, thread_rng};
     use test_case::test_case;
 
     use super::*;
     use crate::random::CustomRng;
 
+    struct TestContext {
+        tree: MerkleTree<Database, PoolBN256>,
+        #[cfg(feature = "native")]
+        db_path: String,
+    }
+
+    #[cfg(feature = "native")]
+    impl Drop for TestContext {
+        fn drop(&mut self) {
+            std::fs::remove_file(&self.db_path).unwrap();
+        }
+    }
+
+    #[cfg(feature = "native")]
+    fn init() -> TestContext {
+        static FILE_COUNTER: AtomicUsize = AtomicUsize::new(0);
+        let file_counter = FILE_COUNTER.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        let path = format!("merkle-test-{}.persy", file_counter);
+        let tree = MerkleTree::new_native(&path, POOL_PARAMS.clone()).unwrap();
+
+        TestContext {
+            tree,
+            db_path: path,
+        }
+    }
+
+    #[cfg(not(feature = "native"))]
+    fn init() -> TestContext {
+        let db = kvdb_memorydb::create(3);
+
+        TestContext {
+            tree: MerkleTree::new(db, POOL_PARAMS.clone()),
+        }
+    }
+
     #[test]
     fn test_add_hashes_first_3() {
         let mut rng = CustomRng;
-        let mut tree = MerkleTree::new(create(3), POOL_PARAMS.clone());
+        let tree = &mut init().tree;
         let hashes: Vec<_> = (0..3).map(|_| rng.gen()).collect();
         tree.add_hashes(0, hashes.clone());
 
@@ -1040,7 +1084,7 @@ mod tests {
     #[test]
     fn test_add_hashes_last_3() {
         let mut rng = CustomRng;
-        let mut tree = MerkleTree::new(create(3), POOL_PARAMS.clone());
+        let mut tree = &mut init().tree;
 
         let max_index = (1 << constants::HEIGHT) - 1;
         let hashes: Vec<_> = (0..3).map(|_| rng.gen()).collect();
@@ -1061,8 +1105,8 @@ mod tests {
 
     #[test]
     fn test_add_hashes() {
-        let mut tree_expected = MerkleTree::new(create(3), POOL_PARAMS.clone());
-        let mut tree_actual = MerkleTree::new(create(3), POOL_PARAMS.clone());
+        let mut tree_expected = &mut init().tree;
+        let mut tree_actual = &mut init().tree;
 
         // add first subtree
         add_hashes_to_test_trees(&mut tree_expected, &mut tree_actual, 0, 3);
@@ -1079,8 +1123,8 @@ mod tests {
 
     #[test]
     fn test_add_hashes_with_gap() {
-        let mut tree_expected = MerkleTree::new(create(3), POOL_PARAMS.clone());
-        let mut tree_actual = MerkleTree::new(create(3), POOL_PARAMS.clone());
+        let mut tree_expected = &mut init().tree;
+        let mut tree_actual = &mut init().tree;
 
         // add first subtree
         add_hashes_to_test_trees(&mut tree_expected, &mut tree_actual, 0, 3);
@@ -1134,7 +1178,7 @@ mod tests {
     // #[test]
     // fn test_unnecessary_temporary_nodes_are_removed() {
     //     let mut rng = CustomRng;
-    //     let mut tree = MerkleTree::new(create(3), POOL_PARAMS.clone());
+    //     let mut tree = create_tree();
     //
     //     let mut hashes: Vec<_> = (0..6).map(|_| rng.gen()).collect();
     //
@@ -1161,7 +1205,7 @@ mod tests {
     #[test]
     fn test_get_leaf_proof() {
         let mut rng = CustomRng;
-        let mut tree = MerkleTree::new(create(3), POOL_PARAMS.clone());
+        let mut tree = &mut init().tree;
         let proof = tree.get_leaf_proof(123);
 
         assert!(proof.is_none());
@@ -1176,7 +1220,7 @@ mod tests {
     #[test]
     fn test_get_proof_unchecked() {
         let mut rng = CustomRng;
-        let mut tree = MerkleTree::new(create(3), POOL_PARAMS.clone());
+        let mut tree = &mut init().tree;
 
         // Get proof for the right child of the root of the tree
         const SUBROOT_HEIGHT: usize = 1;
@@ -1210,7 +1254,7 @@ mod tests {
     #[test]
     fn test_temporary_nodes_are_used_to_calculate_hashes_first() {
         let mut rng = CustomRng;
-        let mut tree = MerkleTree::new(create(3), POOL_PARAMS.clone());
+        let mut tree = &mut init().tree;
 
         let hash0: Hash<_> = rng.gen();
         let hash1: Hash<_> = rng.gen();
@@ -1244,7 +1288,7 @@ mod tests {
         let mut subtree_indexes: Vec<_> = (0..subtrees_count).map(|i| start_index + i).collect();
         subtree_indexes.shuffle(&mut thread_rng());
 
-        let mut tree = MerkleTree::new(create(3), POOL_PARAMS.clone());
+        let mut tree = &mut init().tree;
         for subtree_index in subtree_indexes {
             tree.add_subtree_root(subtree_height, subtree_index, rng.gen());
         }
@@ -1264,7 +1308,7 @@ mod tests {
         let remove_size: u64 = 24;
 
         let mut rng = CustomRng;
-        let mut tree = MerkleTree::new(create(3), POOL_PARAMS.clone());
+        let mut tree = &mut init().tree;
 
         let original_root = tree.get_root();
 
@@ -1285,7 +1329,7 @@ mod tests {
     #[test_case(11, 7)]
     fn test_rollback_removes_nodes_correctly(keep_size: u64, remove_size: u64) {
         let mut rng = CustomRng;
-        let mut tree = MerkleTree::new(create(3), POOL_PARAMS.clone());
+        let mut tree = &mut init().tree;
 
         for index in 0..keep_size {
             let leaf = rng.gen();
@@ -1308,7 +1352,7 @@ mod tests {
     // #[test]
     // fn test_rollback_works_correctly_after_clean() {
     //     let mut rng = CustomRng;
-    //     let mut tree = MerkleTree::new(create(3), POOL_PARAMS.clone());
+    //     let mut tree = create_tree();
     //
     //     for index in 0..4 {
     //         let leaf = rng.gen();
@@ -1340,7 +1384,7 @@ mod tests {
     // #[test]
     // fn test_rollback_of_cleaned_nodes() {
     //     let mut rng = CustomRng;
-    //     let mut tree = MerkleTree::new(create(3), POOL_PARAMS.clone());
+    //     let mut tree = create_tree();
     //
     //     for index in 0..4 {
     //         let leaf = rng.gen();
@@ -1372,7 +1416,7 @@ mod tests {
     #[test]
     fn test_get_leaves() {
         let mut rng = CustomRng;
-        let mut tree = MerkleTree::new(create(3), POOL_PARAMS.clone());
+        let mut tree = &mut init().tree;
 
         let leaves_count = 6;
 
@@ -1392,7 +1436,7 @@ mod tests {
     #[test]
     fn test_get_leaves_after() {
         let mut rng = CustomRng;
-        let mut tree = MerkleTree::new(create(3), POOL_PARAMS.clone());
+        let mut tree = &mut init().tree;
 
         let leaves_count = 6;
         let skip_count = 2;
@@ -1413,7 +1457,7 @@ mod tests {
     #[test]
     fn test_get_proof_after() {
         let mut rng = CustomRng;
-        let mut tree = MerkleTree::new(create(3), POOL_PARAMS.clone());
+        let mut tree = &mut init().tree;
 
         let tree_size = 6;
         let new_hashes_size = 3;
@@ -1441,7 +1485,7 @@ mod tests {
     #[test_case(4, 16)]
     fn test_get_proof_after_virtual(tree_size: u64, new_hashes_size: u64) {
         let mut rng = CustomRng;
-        let mut tree = MerkleTree::new(create(3), POOL_PARAMS.clone());
+        let mut tree = &mut init().tree;
 
         for index in 0..tree_size {
             let leaf = rng.gen();
@@ -1478,7 +1522,7 @@ mod tests {
     #[test]
     fn test_default_hashes_are_added_correctly() {
         let mut rng = CustomRng;
-        let mut tree = MerkleTree::new(create(3), POOL_PARAMS.clone());
+        let mut tree = &mut init().tree;
 
         // Empty tree contains default hashes.
         assert_eq!(tree.get(0, 0), tree.default_hashes[0]);
@@ -1525,8 +1569,8 @@ mod tests {
         commitments_probability: f64,
     ) {
         let mut rng = CustomRng;
-        let mut first_tree = MerkleTree::new(create(3), POOL_PARAMS.clone());
-        let mut second_tree = MerkleTree::new(create(3), POOL_PARAMS.clone());
+        let mut first_tree = &mut init().tree;
+        let mut second_tree = &mut init().tree;
 
         let leafs: Vec<(u64, Vec<_>)> = (0..tx_count)
             .map(|i| {
@@ -1610,7 +1654,7 @@ mod tests {
     #[test_case(15, 7, 1.0)]
     fn test_get_root_optimistic(tx_count: u64, max_leafs_count: u32, commitments_probability: f64) {
         let mut rng = CustomRng;
-        let mut tree = MerkleTree::new(create(3), POOL_PARAMS.clone());
+        let mut tree = &mut init().tree;
 
         let leafs: Vec<(u64, Vec<_>)> = (0..tx_count)
             .map(|i| {
