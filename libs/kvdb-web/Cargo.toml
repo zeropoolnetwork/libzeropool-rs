@@ -1,6 +1,6 @@
 [package]
 name = "zp-kvdb-web"
-version = "0.11.0"
+version = "0.12.0"
 authors = ["Parity Technologies <admin@parity.io>"]
 repository = "https://github.com/paritytech/parity-common"
 description = "A key-value database for use in browsers"
