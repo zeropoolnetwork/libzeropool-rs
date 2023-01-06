@@ -1,6 +1,6 @@
 [package]
 name = "libzeropool-rs-node"
-version = "0.2.1"
+version = "0.3.0"
 authors = ["Dmitry Vdovin <voidxnull@gmail.com>"]
 repository = "https://github.com/zeropoolnetwork/libzeropool-rs/"
 license = "MIT OR Apache-2.0"
@@ -11,7 +11,7 @@ exclude = ["index.node"]
 crate-type = ["cdylib"]
 
 [dependencies]
-libzeropool-rs = { path = "../libzeropool-rs", version = "0.8.1", features = ["native", "multicore"] }
+libzeropool-rs = { path = "../libzeropool-rs", version = "0.9.0", features = ["native", "multicore"] }
 neon = { version = "0.10.0", default-features = false, features = ["channel-api", "napi-6", "promise-api"] }
 # FIXME: Using a random fork for now
 neon-serde = { git = "https://github.com/NZXTCorp/neon-serde.git", branch = "refactor/update-neon-0.10" }
