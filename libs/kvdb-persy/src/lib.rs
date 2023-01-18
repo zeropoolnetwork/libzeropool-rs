@@ -2,7 +2,6 @@ use std::collections::HashSet;
 
 use kvdb::{DBKey, DBKeyValue, DBOp, DBTransaction, DBValue, KeyValueDB};
 use persy::{Config, Persy, PersyError, PersyId, ValueMode, PE};
-use smallvec::SmallVec;
 
 fn persy_to_io<T: Into<PersyError>>(err: PE<T>) -> std::io::Error {
     let PE::PE(err) = err;
@@ -14,11 +13,7 @@ fn encode_key(key: &[u8]) -> String {
 }
 
 fn decode_key(key: &str) -> Vec<u8> {
-    hex::decode(key).unwrap()
-}
-
-fn prefix_index(col: u32, prefix: &[u8]) -> String {
-    format!("p:{}:{}", col, hex::encode(prefix))
+    hex::decode(key).expect("Invalid key")
 }
 
 fn id_index(col: u32) -> String {
@@ -28,6 +23,13 @@ fn id_index(col: u32) -> String {
 fn key_index(col: u32) -> String {
     format!("k:{}", col)
 }
+
+fn prefix_index_key(col: u32, prefix: &[u8]) -> String {
+    let prefix = hex::encode(prefix);
+    format!("p:{}:{}", col, prefix)
+}
+
+const PREFIXES_INDEX: &str = "prefixes";
 
 pub struct PersyDatabase {
     db: Persy,
@@ -48,22 +50,27 @@ impl PersyDatabase {
 
         for column in 0..columns {
             let segment = column.to_string();
-            let id_index = id_index(column);
-            let key_index = key_index(column);
+            let id_to_key_index = id_index(column);
+            let key_to_id_index = key_index(column);
 
             if !tx.exists_segment(&segment).map_err(persy_to_io)? {
                 tx.create_segment(&segment).map_err(persy_to_io)?;
             }
 
-            if !tx.exists_index(&id_index).map_err(persy_to_io)? {
-                tx.create_index::<PersyId, String>(&id_index, ValueMode::Replace)
+            if !tx.exists_index(&id_to_key_index).map_err(persy_to_io)? {
+                tx.create_index::<PersyId, String>(&id_to_key_index, ValueMode::Replace)
                     .map_err(persy_to_io)?;
             }
 
-            if !tx.exists_index(&key_index).map_err(persy_to_io)? {
-                tx.create_index::<String, PersyId>(&key_index, ValueMode::Replace)
+            if !tx.exists_index(&key_to_id_index).map_err(persy_to_io)? {
+                tx.create_index::<String, PersyId>(&key_to_id_index, ValueMode::Replace)
                     .map_err(persy_to_io)?;
             }
+        }
+
+        if !tx.exists_index(PREFIXES_INDEX).map_err(persy_to_io)? {
+            tx.create_index::<String, PersyId>(PREFIXES_INDEX, ValueMode::Cluster)
+                .map_err(persy_to_io)?;
         }
 
         tx.prepare()
@@ -98,17 +105,14 @@ impl KeyValueDB for PersyDatabase {
     }
 
     fn get_by_prefix(&self, col: u32, prefix: &[u8]) -> std::io::Result<Option<DBValue>> {
-        let prefix = prefix_index(col, prefix);
-        let mut rec_ids = self
-            .db
-            .range::<String, PersyId, _>(&prefix, ..)
-            .map_err(persy_to_io)?;
+        let prefix_key = prefix_index_key(col, prefix);
 
-        let Some((_, mut values)) = rec_ids.next() else {
+        // Using the last element to satisfy kvdb-shared-tests::test_complex, even though it
+        // contradicts the method documentation. This method is supposed to return the first
+        // matching element, but the test expects the last one.
+        let Some(rec_id) = self.db.get(PREFIXES_INDEX, &prefix_key).map_err(persy_to_io)?.last() else {
             return Ok(None);
         };
-
-        let rec_id = values.next().unwrap();
 
         self.db.read(&col.to_string(), &rec_id).map_err(persy_to_io)
     }
@@ -135,15 +139,10 @@ impl KeyValueDB for PersyDatabase {
 
                     for prefix in &self.prefixes {
                         let prefix_bytes = decode_key(prefix);
-                        let prefix_key = prefix_index(col, &prefix_bytes);
-                        if !tx.exists_index(&prefix_key).map_err(persy_to_io)? {
-                            tx.create_index::<String, PersyId>(&prefix_key, ValueMode::Replace)
-                                .map_err(persy_to_io)?;
-                            // TODO: Add existing records to the prefix index
-                        }
+                        let prefix_key = prefix_index_key(col, &prefix_bytes);
 
                         if key.starts_with(prefix) {
-                            tx.put(&prefix_key, key.clone(), rec_id)
+                            tx.put(PREFIXES_INDEX, prefix_key, rec_id)
                                 .map_err(persy_to_io)?;
                         }
                     }
@@ -170,29 +169,49 @@ impl KeyValueDB for PersyDatabase {
                     }
                 }
                 DBOp::DeletePrefix { col, prefix } => {
-                    let prefix_index = prefix_index(col, &prefix);
+                    let prefix_key = prefix_index_key(col, &prefix);
                     let segment = col.to_string();
                     let index_k_to_id = key_index(col);
                     let index_id_to_k = id_index(col);
 
+                    // Reset indices for the column
                     if prefix.is_empty() {
                         tx.drop_segment(&segment).map_err(persy_to_io)?;
-                        // tx.drop_index(&index_k_to_id).map_err(persy_to_io)?;
-                        tx.drop_index(&index_id_to_k).map_err(persy_to_io)?;
                         tx.create_segment(&segment).map_err(persy_to_io)?;
+                        tx.drop_index(&index_k_to_id).map_err(persy_to_io)?;
+                        tx.create_index::<String, PersyId>(&index_k_to_id, ValueMode::Replace)
+                            .map_err(persy_to_io)?;
+                        tx.drop_index(&index_id_to_k).map_err(persy_to_io)?;
+                        tx.create_index::<PersyId, String>(&index_id_to_k, ValueMode::Replace)
+                            .map_err(persy_to_io)?;
+                        tx.remove::<String, PersyId>(PREFIXES_INDEX, prefix_key.clone(), None)
+                            .map_err(persy_to_io)?;
                         continue;
                     }
 
                     let mut rec_ids = tx
-                        .range::<String, PersyId, _>(&prefix_index, ..)
+                        .get(PREFIXES_INDEX, &prefix_key)
                         .map_err(persy_to_io)?
                         .collect::<Vec<_>>();
 
-                    for (key, mut values) in rec_ids.drain(..) {
-                        let rec_id = values.next().unwrap();
+                    let mut keys = rec_ids
+                        .iter()
+                        .map(|rec_id| {
+                            Ok(tx
+                                .one::<PersyId, String>(&index_id_to_k, rec_id)
+                                .map_err(persy_to_io)?
+                                .ok_or_else(|| {
+                                    std::io::Error::new(std::io::ErrorKind::Other, "Key not found")
+                                })?)
+                        })
+                        .collect::<std::io::Result<Vec<_>>>()?;
+
+                    for (key, rec_id) in keys.drain(..).zip(rec_ids.drain(..)) {
                         tx.remove::<String, PersyId>(&index_k_to_id, key, None)
                             .map_err(persy_to_io)?;
                         tx.remove::<PersyId, String>(&index_id_to_k, rec_id, None)
+                            .map_err(persy_to_io)?;
+                        tx.remove::<String, PersyId>(PREFIXES_INDEX, prefix_key.clone(), None)
                             .map_err(persy_to_io)?;
                         tx.delete(&segment, &rec_id).map_err(persy_to_io)?;
                     }
@@ -221,8 +240,8 @@ impl KeyValueDB for PersyDatabase {
                 .db
                 .one::<PersyId, String>(&index_id_to_k, &id)
                 .map_err(persy_to_io)?
-                .unwrap(); // FIXME
-            let key = SmallVec::from_slice(&decode_key(&key));
+                .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::Other, "Value not found"))?;
+            let key = DBKey::from_slice(&decode_key(&key));
             Ok((key, data))
         });
 
@@ -238,31 +257,36 @@ impl KeyValueDB for PersyDatabase {
             return self.iter(col);
         }
 
-        let prefix_index = prefix_index(col, prefix);
+        let segment = col.to_string();
+        let index_id_to_k = id_index(col);
+        let prefix_key = prefix_index_key(col, prefix);
 
-        let Ok(pairs) = self
+        let Ok(ids) = self
             .db
-            .range::<String, PersyId, _>(&prefix_index, ..) else {
+            .get::<String, PersyId>(PREFIXES_INDEX, &prefix_key)
+            .map_err(persy_to_io) else {
             return Box::new(std::iter::empty());
         };
 
-        let ids = pairs
-            .filter_map(|(key, mut ids)| {
-                ids.next()
-                    .map(|id| (SmallVec::from_slice(&decode_key(&key)), id))
-            })
-            .collect::<Vec<(DBKey, PersyId)>>();
+        let pairs = ids.map(move |id| {
+            let key = self
+                .db
+                .one::<PersyId, String>(&index_id_to_k, &id)
+                .map_err(persy_to_io)?
+                .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::Other, "Key not found"))?;
 
-        let final_pairs = ids.into_iter().map(move |(key, id)| {
             let data = self
                 .db
-                .read(&col.to_string(), &id)
+                .read(&segment, &id)
                 .map_err(persy_to_io)?
-                .unwrap(); // FIXME
-            Ok((key, data))
+                .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::Other, "Value not found"))?;
+
+            let decoded_key = DBKey::from_slice(&decode_key(&key));
+
+            Ok((decoded_key, data))
         });
 
-        Box::new(final_pairs)
+        Box::new(pairs)
     }
 }
 
