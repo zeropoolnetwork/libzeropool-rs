@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 
 PARENT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )/.." &> /dev/null && pwd )"
+TARGET_DIR="$PARENT_DIR/target"
 
 if ! command -v jq &> /dev/null
 then
@@ -9,9 +10,9 @@ then
 fi
 
 function patch_package_json () {
-  sed -i.bak -E "s/\"name\": \"libzeropool-rs-wasm\"/\"name\": \"libzeropool-rs-wasm-$1\"/g" $PARENT_DIR/$1/package.json
-  jq '.files |= . + ["snippets"]' $PARENT_DIR/$1/package.json > $PARENT_DIR/$1/tmp.json \
-    && mv $PARENT_DIR/$1/tmp.json $PARENT_DIR/$1/package.json
+  sed -i.bak -E "s/\"name\": \"libzeropool-rs-wasm\"/\"name\": \"libzeropool-rs-wasm-$1\"/g" "$TARGET_DIR/$1/package.json"
+  jq '.files |= . + ["snippets"]' "$TARGET_DIR/$1/package.json" > "$TARGET_DIR/$1/tmp.json" \
+    && mv "$TARGET_DIR/$1/tmp.json" "$TARGET_DIR/$1/package.json"
 }
 
 # build $name $features $is_mt
@@ -27,14 +28,14 @@ function build () {
 
   # Optimize the binary, since wasm-pack refuses to see wasm-opt
   if [ "$4" = debug ] ; then
-    wasm-opt -o $PARENT_DIR/$1/wasm-opt.wasm --debuginfo -O3 $PARENT_DIR/$1/libzeropool_rs_wasm_bg.wasm && mv $PARENT_DIR/$1/wasm-opt.wasm $PARENT_DIR/$1/libzeropool_rs_wasm_bg.wasm
+    wasm-opt -o "$TARGET_DIR/$1/wasm-opt.wasm" --debuginfo -O3 "$TARGET_DIR/$1/libzeropool_rs_wasm_bg.wasm" && mv "$TARGET_DIR/$1/wasm-opt.wasm" "$TARGET_DIR/$1/libzeropool_rs_wasm_bg.wasm"
   else
-    wasm-opt -o $PARENT_DIR/$1/wasm-opt.wasm -O3 $PARENT_DIR/$1/libzeropool_rs_wasm_bg.wasm && mv $PARENT_DIR/$1/wasm-opt.wasm $PARENT_DIR/$1/libzeropool_rs_wasm_bg.wasm
+    wasm-opt -o "$TARGET_DIR/$1/wasm-opt.wasm" -O3 "$TARGET_DIR/$1/libzeropool_rs_wasm_bg.wasm" && mv "$TARGET_DIR/$1/wasm-opt.wasm" "$TARGET_DIR/$1/libzeropool_rs_wasm_bg.wasm"
   fi
 
   # Remove invalid typings
-  sed -i.bak -E '/BroccoliDestroyInstance/d' $PARENT_DIR/$1/libzeropool_rs_wasm.d.ts
-  sed -i.bak -E '/BroccoliDestroyInstance/d' $PARENT_DIR/$1/libzeropool_rs_wasm_bg.wasm.d.ts
+  sed -i.bak -E '/BroccoliDestroyInstance/d' "$TARGET_DIR/$1/libzeropool_rs_wasm.d.ts"
+  sed -i.bak -E '/BroccoliDestroyInstance/d' "$TARGET_DIR/$1/libzeropool_rs_wasm_bg.wasm.d.ts"
   # Patch package.json, since wasm-pack doesn't allow renaming packages
   patch_package_json $1
 }

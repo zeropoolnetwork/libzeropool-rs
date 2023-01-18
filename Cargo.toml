@@ -4,7 +4,6 @@ members = [
     "libzeropool-rs",
     "libzeropool-rs-node",
     "libs/kvdb-web",
-#    "libs/kvdb-redb",
     "libs/kvdb-persy",
 ]
 
