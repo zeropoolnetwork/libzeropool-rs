@@ -11,7 +11,10 @@ use libzeropool_rs::{
         },
         POOL_PARAMS,
     },
-    proof::{prove_tree as prove_tree_native, prove_tx as prove_tx_native},
+    proof::{
+        prove_delegated_deposit as prove_delegated_deposit_native, prove_tree as prove_tree_native,
+        prove_tx as prove_tx_native,
+    },
 };
 use neon::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -79,6 +82,29 @@ pub fn prove_tree_async(mut cx: FunctionContext) -> JsResult<JsPromise> {
     Ok(promise)
 }
 
+pub fn prove_delegated_deposit_async(mut cx: FunctionContext) -> JsResult<JsPromise> {
+    let params: Arc<Params> = (*cx.argument::<BoxedParams>(0)?).clone();
+    let d_pub_js = cx.argument::<JsValue>(1)?;
+    let d_sec_js = cx.argument::<JsValue>(2)?;
+    let d_pub = neon_serde::from_value(&mut cx, d_pub_js).unwrap();
+    let d_sec = neon_serde::from_value(&mut cx, d_sec_js).unwrap();
+
+    let channel = cx.channel();
+    let (deferred, promise) = cx.promise();
+
+    rayon::spawn(move || {
+        let (inputs, proof) =
+            prove_delegated_deposit_native(&params.inner, &*POOL_PARAMS, d_pub, d_sec);
+        let proof = SnarkProof { inputs, proof };
+
+        deferred.settle_with(&channel, move |mut cx| {
+            neon_serde::to_value(&mut cx, &proof).or_else(|err| cx.throw_error(err.to_string()))
+        });
+    });
+
+    Ok(promise)
+}
+
 pub fn prove_tx(mut cx: FunctionContext) -> JsResult<JsValue> {
     let params = cx.argument::<BoxedParams>(0)?;
 
@@ -113,6 +139,24 @@ pub fn prove_tree(mut cx: FunctionContext) -> JsResult<JsValue> {
         inputs: pair.0,
         proof: pair.1,
     };
+
+    let result = neon_serde::to_value(&mut cx, &proof).unwrap();
+
+    Ok(result)
+}
+
+pub fn prove_delegated_deposit(mut cx: FunctionContext) -> JsResult<JsValue> {
+    let params = cx.argument::<BoxedParams>(0)?;
+
+    let d_pub_js = cx.argument::<JsValue>(1)?;
+    let d_sec_js = cx.argument::<JsValue>(2)?;
+    let d_pub = neon_serde::from_value(&mut cx, d_pub_js).unwrap();
+    let d_sec = neon_serde::from_value(&mut cx, d_sec_js).unwrap();
+
+    let (inputs, proof) =
+        prove_delegated_deposit_native(&params.inner, &*POOL_PARAMS, d_pub, d_sec);
+
+    let proof = SnarkProof { inputs, proof };
 
     let result = neon_serde::to_value(&mut cx, &proof).unwrap();
 

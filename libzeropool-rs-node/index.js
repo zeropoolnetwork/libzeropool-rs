@@ -93,8 +93,10 @@ const Params = {
 const Proof = {
     tx: zp.proveTx,
     tree: zp.proveTree,
+    delegatedDeposit: zp.proveDelegatedDeposit,
     txAsync: zp.proveTxAsync,
     treeAsync: zp.proveTreeAsync,
+    delegatedDepositAsync: zp.proveDelegatedDepositAsync,
     verify: zp.verify,
 };
 

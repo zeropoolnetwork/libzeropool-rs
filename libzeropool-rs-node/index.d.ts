@@ -83,6 +83,22 @@ export interface TreeSec {
     prev_leaf: string;
 }
 
+interface DelegatedDeposit {
+    d: string,
+    p_d: string,
+    b: string,
+}
+
+interface DelegatedDepositBatchPub {
+    keccak_sum: string,
+}
+
+interface DelegatedDepositBatchSec {
+    out_account: Account,
+    out_commitment_hash: string,
+    deposits: DelegatedDeposit[],
+}
+
 export interface MerkleProof {
     sibling: string[];
     path: boolean[];
@@ -113,8 +129,10 @@ declare class Proof {
 
     static tx(params: Params, tr_pub: TransferPub, tr_sec: TransferSec): Proof;
     static tree(params: Params, tr_pub: TreePub, tr_sec: TreeSec): Proof;
+    static delegatedDeposit(params: Params, tr_pub: DelegatedDepositBatchPub, tr_sec: DelegatedDepositBatchSec): Proof;
     static txAsync(params: Params, tr_pub: TransferPub, tr_sec: TransferSec): Promise<Proof>;
     static treeAsync(params: Params, tr_pub: TreePub, tr_sec: TreeSec): Promise<Proof>;
+    static delegatedDepositAsync(params: Params, tr_pub: DelegatedDepositBatchPub, tr_sec: DelegatedDepositBatchSec): Promise<Proof>;
     static verify(vk: VK, proof: SnarkProof, inputs: Array<string>): boolean;
 }
 
