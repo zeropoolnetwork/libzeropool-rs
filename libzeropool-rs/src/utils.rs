@@ -4,7 +4,7 @@ use libzeropool::{
         ff_uint::{Num, PrimeField},
         native::poseidon::MerkleProof,
     },
-    native::{boundednum::BoundedNum, note::Note},
+    native::{account::Account, boundednum::BoundedNum, note::Note},
 };
 
 pub fn keccak256(data: &[u8]) -> [u8; 32] {
@@ -17,6 +17,16 @@ pub fn keccak256(data: &[u8]) -> [u8; 32] {
         .zip(hasher.finalize().into_iter())
         .for_each(|(l, r)| *l = r);
     res
+}
+
+pub fn zero_account<Fr: PrimeField>() -> Account<Fr> {
+    Account {
+        d: BoundedNum::new(Num::ZERO),
+        p_d: Num::ZERO,
+        i: BoundedNum::new(Num::ZERO),
+        b: BoundedNum::new(Num::ZERO),
+        e: BoundedNum::new(Num::ZERO),
+    }
 }
 
 pub fn zero_note<Fr: PrimeField>() -> Note<Fr> {
