@@ -1,21 +1,21 @@
 use std::{cell::RefCell, collections::HashMap, convert::TryInto, rc::Rc};
 
 use js_sys::Array;
-use libzeropool::{
-    constants,
-    fawkes_crypto::{
-        borsh::BorshDeserialize,
-        core::sizedvec::SizedVec,
-        ff_uint::{Num, NumRepr, Uint},
-    },
-    native::{
-        account::Account as NativeAccount,
-        note::Note as NativeNote,
-        tx::{parse_delta, TransferPub as NativeTransferPub, TransferSec as NativeTransferSec},
-    },
-};
 use libzeropool_rs::{
     client::{StateFragment, TxType as NativeTxType, UserAccount as NativeUserAccount},
+    libzeropool::{
+        constants,
+        fawkes_crypto::{
+            borsh::BorshDeserialize,
+            core::sizedvec::SizedVec,
+            ff_uint::{Num, NumRepr, Uint},
+        },
+        native::{
+            account::Account as NativeAccount,
+            note::Note as NativeNote,
+            tx::{parse_delta, TransferPub as NativeTransferPub, TransferSec as NativeTransferSec},
+        },
+    },
     merkle::{Hash, Node},
 };
 use serde::Serialize;

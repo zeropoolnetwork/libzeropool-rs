@@ -1,4 +1,4 @@
-use libzeropool::native::note::Note as NativeNote;
+use libzeropool_rs::libzeropool::native::note::Note as NativeNote;
 use serde::{Deserialize, Serialize};
 use wasm_bindgen::prelude::*;
 

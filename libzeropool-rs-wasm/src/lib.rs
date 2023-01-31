@@ -1,16 +1,18 @@
 use std::{convert::TryInto, str::FromStr};
 
-use libzeropool::{
-    constants,
-    fawkes_crypto::{backend::bellman_groth16::engines::Bn256, ff_uint::Num},
-    native::{
-        boundednum::BoundedNum,
-        params::{PoolBN256, PoolParams as PoolParamsTrait},
-        tx::parse_delta,
+use libzeropool_rs::{
+    address::{format_address, parse_address},
+    libzeropool::{
+        constants,
+        fawkes_crypto::{backend::bellman_groth16::engines::Bn256, ff_uint::Num},
+        native::{
+            boundednum::BoundedNum,
+            params::{PoolBN256, PoolParams as PoolParamsTrait},
+            tx::parse_delta,
+        },
+        POOL_PARAMS,
     },
-    POOL_PARAMS,
 };
-use libzeropool_rs::address::{format_address, parse_address};
 use serde::Serialize;
 use wasm_bindgen::{prelude::*, JsCast};
 #[cfg(feature = "multicore")]
