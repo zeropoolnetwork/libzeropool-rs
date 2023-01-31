@@ -1,8 +1,11 @@
 use std::str::FromStr;
 
-use libzeropool::{fawkes_crypto::ff_uint::Num, native::tx::out_commitment_hash};
 use libzeropool_rs::libzeropool::{
-    fawkes_crypto::borsh::{BorshDeserialize, BorshSerialize},
+    fawkes_crypto::{
+        borsh::{BorshDeserialize, BorshSerialize},
+        ff_uint::Num,
+    },
+    native::tx::out_commitment_hash,
     POOL_PARAMS,
 };
 use wasm_bindgen::prelude::*;

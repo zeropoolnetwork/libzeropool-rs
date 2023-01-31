@@ -1,9 +1,12 @@
 use byteorder::{LittleEndian, ReadBytesExt};
-use libzeropool::{
-    fawkes_crypto::ff_uint::{Num, NumRepr, Uint},
-    native::{account::Account, cipher, key, note::Note},
+use libzeropool_rs::{
+    keys::Keys,
+    libzeropool::{
+        fawkes_crypto::ff_uint::{Num, NumRepr, Uint},
+        native::{account::Account, cipher, key, note::Note},
+    },
+    merkle::Hash,
 };
-use libzeropool_rs::{keys::Keys, merkle::Hash};
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use wasm_bindgen::{prelude::*, JsCast};

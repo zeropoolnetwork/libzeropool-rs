@@ -1,8 +1,10 @@
-use libzeropool::{
-    fawkes_crypto::{borsh, BorshDeserialize, BorshSerialize},
-    native::{account::Account as NativeAccount, note::Note as NativeNote},
+use libzeropool_rs::{
+    client::state::{State, Transaction as InnerTransaction},
+    libzeropool::{
+        fawkes_crypto::{borsh, BorshDeserialize, BorshSerialize},
+        native::{account::Account as NativeAccount, note::Note as NativeNote},
+    },
 };
-use libzeropool_rs::client::state::{State, Transaction as InnerTransaction};
 use serde::{Deserialize, Serialize};
 use wasm_bindgen::prelude::*;
 

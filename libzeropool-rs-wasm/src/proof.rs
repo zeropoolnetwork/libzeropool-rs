@@ -1,4 +1,4 @@
-use libzeropool::{
+use libzeropool_rs::libzeropool::{
     circuit::{tree::tree_update, tx::c_transfer},
     fawkes_crypto::{
         backend::bellman_groth16::{
