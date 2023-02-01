@@ -106,6 +106,11 @@ export interface VK {
     ic: string[][];    // G1[]
 }
 
+export interface IAddressComponents {
+    d: string;
+    p_d: string;
+}
+
 export interface ITxBaseFields {
     fee: string;
 }
@@ -267,6 +272,9 @@ extern "C" {
 
     #[wasm_bindgen(typescript_type = "ParseTxsResult")]
     pub type ParseTxsResult;
+
+    #[wasm_bindgen(typescript_type = "IAddressComponents")]
+    pub type IAddressComponents;
 }
 
 #[derive(Serialize, Deserialize, Clone)]

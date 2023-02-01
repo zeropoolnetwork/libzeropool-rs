@@ -86,6 +86,26 @@ pub fn assemble_address(d: &str, p_d: &str) -> String {
     format_address::<PoolParams>(d, p_d)
 }
 
+#[wasm_bindgen(js_name = "parseAddress")]
+pub fn parse_address_(address: &str) -> IAddressComponents {
+    let (d, p_d) = parse_address::<PoolParams>(address).unwrap();
+
+    #[derive(Serialize)]
+    struct Address {
+        d: String,
+        p_d: String,
+    }
+
+    let address = Address {
+        d: d.to_num().to_string(),
+        p_d: p_d.to_string(),
+    };
+
+    serde_wasm_bindgen::to_value(&address)
+        .unwrap()
+        .unchecked_into::<IAddressComponents>()
+}
+
 #[wasm_bindgen(js_name = "parseDelta")]
 pub fn parse_delta_(delta: &str) -> IParsedDelta {
     let delta = Num::<Fr>::from_str(delta).unwrap();
