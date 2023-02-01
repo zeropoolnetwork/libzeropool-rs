@@ -17,27 +17,28 @@ function patch_package_json () {
 
 # build $name $features $is_mt
 function build () {
+  local PACKAGE_TARGET_DIR="$TARGET_DIR/$1"
   if [ "$3" = true ] ; then
     RUSTFLAGS='-C target-feature=+atomics,+bulk-memory,+mutable-globals' \
       rustup run nightly \
-      wasm-pack build --release --target web -d $1 \
+      wasm-pack build --release --target web -d "$PACKAGE_TARGET_DIR" \
       -- --features $2 -Z build-std=panic_abort,std
   else
-    wasm-pack build --release --target web -d $1 -- --features $2
+    wasm-pack build --release --target web -d "$PACKAGE_TARGET_DIR" -- --features $2
   fi
 
   # Optimize the binary, since wasm-pack refuses to see wasm-opt
   if [ "$4" = debug ] ; then
-    wasm-opt -o "$TARGET_DIR/$1/wasm-opt.wasm" --debuginfo -O3 "$TARGET_DIR/$1/libzeropool_rs_wasm_bg.wasm" && mv "$TARGET_DIR/$1/wasm-opt.wasm" "$TARGET_DIR/$1/libzeropool_rs_wasm_bg.wasm"
+    wasm-opt -o "$PACKAGE_TARGET_DIR/wasm-opt.wasm" --debuginfo -O3 "$PACKAGE_TARGET_DIR/libzeropool_rs_wasm_bg.wasm" && mv "$PACKAGE_TARGET_DIR/wasm-opt.wasm" "$PACKAGE_TARGET_DIR/libzeropool_rs_wasm_bg.wasm"
   else
-    wasm-opt -o "$TARGET_DIR/$1/wasm-opt.wasm" -O3 "$TARGET_DIR/$1/libzeropool_rs_wasm_bg.wasm" && mv "$TARGET_DIR/$1/wasm-opt.wasm" "$TARGET_DIR/$1/libzeropool_rs_wasm_bg.wasm"
+    wasm-opt -o "$PACKAGE_TARGET_DIR/wasm-opt.wasm" -O3 "$PACKAGE_TARGET_DIR/libzeropool_rs_wasm_bg.wasm" && mv "$PACKAGE_TARGET_DIR/wasm-opt.wasm" "$PACKAGE_TARGET_DIR/libzeropool_rs_wasm_bg.wasm"
   fi
 
   # Remove invalid typings
-  sed -i.bak -E '/BroccoliDestroyInstance/d' "$TARGET_DIR/$1/libzeropool_rs_wasm.d.ts"
-  sed -i.bak -E '/BroccoliDestroyInstance/d' "$TARGET_DIR/$1/libzeropool_rs_wasm_bg.wasm.d.ts"
+  sed -i.bak -E '/BroccoliDestroyInstance/d' "$PACKAGE_TARGET_DIR/libzeropool_rs_wasm.d.ts"
+  sed -i.bak -E '/BroccoliDestroyInstance/d' "$PACKAGE_TARGET_DIR/libzeropool_rs_wasm_bg.wasm.d.ts"
   # Patch package.json, since wasm-pack doesn't allow renaming packages
-  patch_package_json $1
+  patch_package_json "$1"
 }
 
 build web web false
