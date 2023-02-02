@@ -118,9 +118,33 @@ class Helpers {
     }
 }
 
+class Keys {
+    static derive(sk) {
+        return zp.keysDerive(sk);
+    }
+}
+
+class TransactionData {
+    static createDelegatedDeposit(
+        deposits,
+        root,
+        keys,
+        poolId,
+    ) {
+        return zp.createDelegatedDepositTx(
+            deposits,
+            root,
+            keys,
+            poolId,
+        );
+    }
+}
+
 zp.MerkleTree = MerkleTree;
 zp.TxStorage = TxStorage;
 zp.Params = Params;
 zp.Proof = Proof
 zp.Helpers = Helpers;
+zp.Keys = Keys;
+zp.TransactionData = TransactionData;
 module.exports = zp;

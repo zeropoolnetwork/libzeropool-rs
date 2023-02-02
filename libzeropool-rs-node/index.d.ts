@@ -142,3 +142,27 @@ declare class Helpers {
     static numToStr(num: Buffer): string
     static strToNum(str: string): Buffer
 }
+
+declare class Keys {
+    public sk: string;
+    public a: string;
+    public eta: string;
+
+    static derive(sk: string): Keys;
+}
+
+declare class TransactionData {
+    public: TransferPub;
+    secret: TransferSec;
+    ciphertext: Buffer;
+    memo: Buffer;
+    commitment_root: string;
+    out_hashes: string[];
+
+    static createDelegatedDeposit(
+        deposits: DelegatedDeposit[],
+        root: string,
+        keys: Keys,
+        poolId: string,
+    );
+}

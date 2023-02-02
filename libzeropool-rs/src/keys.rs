@@ -5,12 +5,13 @@ use libzeropool::{
         params::PoolParams,
     },
 };
+use serde::{Deserialize, Serialize};
 
 pub fn reduce_sk<Fs: PrimeField>(seed: &[u8]) -> Num<Fs> {
     Num::<Fs>::from_uint_reduced(NumRepr(Uint::from_little_endian(seed)))
 }
 
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct Keys<P: PoolParams> {
     pub sk: Num<P::Fs>,
     pub a: Num<P::Fr>,

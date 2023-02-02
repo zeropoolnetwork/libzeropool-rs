@@ -7,10 +7,12 @@ use neon::prelude::*;
 use serde::Serialize;
 
 mod helpers;
+mod keys;
 mod merkle;
 mod params;
 mod proof;
 mod storage;
+mod tx;
 
 pub type PoolParams = PoolBN256;
 pub type Fr = <PoolParams as PoolParamsTrait>::Fr;
@@ -81,6 +83,10 @@ fn main(mut cx: ModuleContext) -> NeonResult<()> {
     cx.export_function("helpersParseDelta", helpers::parse_delta_string)?;
     cx.export_function("helpersNumToStr", helpers::num_to_str)?;
     cx.export_function("helpersStrToNum", helpers::str_to_num)?;
+
+    cx.export_function("keysDerive", keys::keys_derive)?;
+
+    cx.export_function("createDelegatedDepositTx", tx::create_delegated_deposit_tx)?;
 
     Ok(())
 }

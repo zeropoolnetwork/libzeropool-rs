@@ -25,7 +25,7 @@ use crate::{
     utils::{keccak256, zero_account, zero_note, zero_proof},
 };
 
-pub fn create_delegated_deposit_tx<P: PoolParams, D: KeyValueDB>(
+pub fn create_delegated_deposit_tx<P: PoolParams>(
     deposits: &[DelegatedDeposit<P::Fr>],
     root: Num<P::Fr>,
     keys: Keys<P>,
