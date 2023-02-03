@@ -67,6 +67,9 @@ impl JsExt for DelegatedDepositData<Fr> {
         let out_hashes = self.out_hashes.as_slice().to_js(cx)?;
         obj.set(cx, "out_hashes", out_hashes)?;
 
+        let nullifier = self.nullifier.to_js(cx)?;
+        obj.set(cx, "nullifier", nullifier)?;
+
         Ok(obj.upcast())
     }
 }

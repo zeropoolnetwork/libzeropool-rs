@@ -9,7 +9,7 @@ use libzeropool::{
         cipher,
         delegated_deposit::{DelegatedDeposit, DelegatedDepositBatchPub, DelegatedDepositBatchSec},
         params::PoolParams,
-        tx::out_commitment_hash,
+        tx::{nullifier, out_commitment_hash},
     },
 };
 
@@ -27,6 +27,7 @@ pub struct DelegatedDepositData<Fr: PrimeField> {
     pub memo: Vec<u8>,
     pub memo_hash: Num<Fr>,
     pub out_hashes: SizedVec<Num<Fr>, { constants::DELEGATED_DEPOSITS_NUM + 1 }>,
+    pub nullifier: Num<Fr>,
 }
 
 pub fn create_delegated_deposit_tx<P: PoolParams>(
@@ -56,6 +57,8 @@ pub fn create_delegated_deposit_tx<P: PoolParams>(
         .chain((0..).map(|_| zero_note))
         .take(constants::DELEGATED_DEPOSITS_NUM)
         .collect::<SizedVec<_, { constants::DELEGATED_DEPOSITS_NUM }>>();
+
+    let nullifier = nullifier(zero_account_hash, keys.eta, Num::ZERO, params);
 
     let ciphertext = {
         let entropy: [u8; 32] = rng.gen();
@@ -107,5 +110,6 @@ pub fn create_delegated_deposit_tx<P: PoolParams>(
         memo: memo_data,
         memo_hash,
         out_hashes,
+        nullifier,
     })
 }
