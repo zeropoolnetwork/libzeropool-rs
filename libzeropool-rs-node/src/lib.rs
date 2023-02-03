@@ -26,6 +26,7 @@ struct Constants {
     IN: usize,
     OUTLOG: usize,
     OUT: usize,
+    DELEGATED_DEPOSITS_NUM: usize,
 }
 
 #[neon::main]
@@ -37,6 +38,7 @@ fn main(mut cx: ModuleContext) -> NeonResult<()> {
             IN: constants::IN,
             OUTLOG: constants::OUTPLUSONELOG,
             OUT: constants::OUT,
+            DELEGATED_DEPOSITS_NUM: constants::DELEGATED_DEPOSITS_NUM,
         },
     )
     .unwrap();

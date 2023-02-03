@@ -3,6 +3,7 @@ export namespace Constants {
     export const IN: number;
     export const OUTLOG: number;
     export const OUT: number;
+    export const DELEGATED_DEPOSITS_NUM: number;
 }
 
 declare class MerkleTree {
