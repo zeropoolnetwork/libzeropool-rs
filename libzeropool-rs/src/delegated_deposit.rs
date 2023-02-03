@@ -15,6 +15,7 @@ use libzeropool::{
 
 use crate::{
     client::CreateTxError,
+    keys::Keys,
     random::CustomRng,
     utils::{keccak256, zero_account, zero_note},
 };
@@ -30,17 +31,18 @@ pub struct DelegatedDepositData<Fr: PrimeField> {
 
 pub fn create_delegated_deposit_tx<P: PoolParams>(
     deposits: &[DelegatedDeposit<P::Fr>],
-    eta: Num<P::Fr>,
     params: &P,
 ) -> Result<DelegatedDepositData<P::Fr>, CreateTxError> {
-    if deposits.len() > constants::OUT {
+    if deposits.len() > constants::DELEGATED_DEPOSITS_NUM {
         return Err(CreateTxError::TooManyOutputs {
-            max: constants::OUT,
+            max: constants::DELEGATED_DEPOSITS_NUM,
             got: deposits.len(),
         });
     }
 
     let mut rng = CustomRng;
+
+    let keys = Keys::derive(rng.gen(), params);
 
     // Zero account for delegated deposit
     let zero_account = zero_account();
@@ -60,8 +62,7 @@ pub fn create_delegated_deposit_tx<P: PoolParams>(
 
         // No need to include all the zero notes in the encrypted transaction
         let out_notes = &out_notes[0..num_real_out_notes];
-
-        cipher::encrypt(&entropy, eta, zero_account, out_notes, params)
+        cipher::encrypt(&entropy, keys.eta, zero_account, out_notes, params)
     };
 
     let out_note_hashes = out_notes.iter().map(|n| n.hash(params));

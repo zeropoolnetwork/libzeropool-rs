@@ -160,16 +160,6 @@ declare class TransactionData {
     out_hashes: string[];
 }
 
-declare class DelegatedDepositBatchPub {
-    keccak_sum: string;
-}
-
-declare class DelegatedDepositBatchSec {
-    out_account: Account;
-    out_commitment_hash: string;
-    deposits: DelegatedDeposit[];
-}
-
 declare class DelegatedDepositData {
     public: DelegatedDepositBatchPub;
     secret: DelegatedDepositBatchSec;
@@ -180,8 +170,7 @@ declare class DelegatedDepositData {
 
     constructor(
         deposits: DelegatedDeposit[],
-        eta: string,
-    ): DelegatedDepositData;
+    );
 }
 
 

@@ -279,10 +279,7 @@ impl JsExt for Num<Fr> {
 pub fn create_delegated_deposit_tx(mut cx: FunctionContext) -> JsResult<JsValue> {
     let deposits_js = cx.argument::<JsValue>(1)?;
     let deposits: Vec<DelegatedDeposit<Fr>> = neon_serde::from_value(&mut cx, deposits_js).unwrap();
-    let eta_js = cx.argument::<JsString>(2)?;
-    let eta = eta_js.value(&mut cx);
-    let eta = Num::from_str(&eta).unwrap();
-    let tx = create_delegated_deposit_tx_native(&deposits, eta, &*POOL_PARAMS)
+    let tx = create_delegated_deposit_tx_native(&deposits, &*POOL_PARAMS)
         .expect("Failed to create delegated deposit tx");
 
     Ok(tx.to_js(&mut cx)?)
