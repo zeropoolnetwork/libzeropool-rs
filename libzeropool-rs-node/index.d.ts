@@ -158,11 +158,30 @@ declare class TransactionData {
     memo: Buffer;
     commitment_root: string;
     out_hashes: string[];
-
-    static createDelegatedDeposit(
-        deposits: DelegatedDeposit[],
-        root: string,
-        keys: Keys,
-        poolId: string,
-    );
 }
+
+declare class DelegatedDepositBatchPub {
+    keccak_sum: string;
+}
+
+declare class DelegatedDepositBatchSec {
+    out_account: Account;
+    out_commitment_hash: string;
+    deposits: DelegatedDeposit[];
+}
+
+declare class DelegatedDepositData {
+    public: DelegatedDepositBatchPub;
+    secret: DelegatedDepositBatchSec;
+    ciphertext: Buffer;
+    memo: Buffer;
+    memo_hash: string;
+    out_hashes: string[];
+
+    constructor(
+        deposits: DelegatedDeposit[],
+        eta: string,
+    ): DelegatedDepositData;
+}
+
+

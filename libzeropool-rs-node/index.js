@@ -124,18 +124,14 @@ class Keys {
     }
 }
 
-class TransactionData {
-    static createDelegatedDeposit(
+class DelegatedDepositsData {
+    constructor(
         deposits,
-        root,
-        keys,
-        poolId,
+        eta,
     ) {
         return zp.createDelegatedDepositTx(
             deposits,
-            root,
-            keys,
-            poolId,
+            eta,
         );
     }
 }
@@ -146,5 +142,5 @@ zp.Params = Params;
 zp.Proof = Proof
 zp.Helpers = Helpers;
 zp.Keys = Keys;
-zp.TransactionData = TransactionData;
+zp.DelegatedDepositsData = DelegatedDepositsData;
 module.exports = zp;
