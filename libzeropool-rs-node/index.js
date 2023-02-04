@@ -127,11 +127,9 @@ class Keys {
 class DelegatedDepositsData {
     constructor(
         deposits,
-        eta,
     ) {
         return zp.createDelegatedDepositTx(
             deposits,
-            eta,
         );
     }
 }
