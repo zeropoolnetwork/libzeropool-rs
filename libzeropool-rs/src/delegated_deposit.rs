@@ -9,7 +9,10 @@ use libzeropool::{
         cipher,
         delegated_deposit::{DelegatedDeposit, DelegatedDepositBatchPub, DelegatedDepositBatchSec},
         params::PoolParams,
-        tx::{nullifier, out_commitment_hash},
+        tx::{
+            make_delta, nullifier, out_commitment_hash, tx_hash, tx_sign, TransferPub, TransferSec,
+            Tx,
+        },
     },
 };
 
@@ -17,7 +20,7 @@ use crate::{
     client::CreateTxError,
     keys::Keys,
     random::CustomRng,
-    utils::{keccak256, zero_account, zero_note},
+    utils::{keccak256, zero_account, zero_note, zero_proof},
 };
 
 pub struct DelegatedDepositData<Fr: PrimeField> {
@@ -25,13 +28,15 @@ pub struct DelegatedDepositData<Fr: PrimeField> {
     pub secret: DelegatedDepositBatchSec<Fr>,
     pub ciphertext: Vec<u8>,
     pub memo: Vec<u8>,
-    pub memo_hash: Num<Fr>,
     pub out_hashes: SizedVec<Num<Fr>, { constants::DELEGATED_DEPOSITS_NUM + 1 }>,
-    pub nullifier: Num<Fr>,
+    pub tx_public: TransferPub<Fr>,
+    pub tx_secret: TransferSec<Fr>,
 }
 
 pub fn create_delegated_deposit_tx<P: PoolParams>(
     deposits: &[DelegatedDeposit<P::Fr>],
+    root: Num<P::Fr>,
+    pool_id: Num<P::Fr>,
     params: &P,
 ) -> Result<DelegatedDepositData<P::Fr>, CreateTxError> {
     if deposits.len() > constants::DELEGATED_DEPOSITS_NUM {
@@ -49,6 +54,7 @@ pub fn create_delegated_deposit_tx<P: PoolParams>(
     let zero_account = zero_account();
     let zero_account_hash = zero_account.hash(params);
     let zero_note = zero_note();
+    let zero_note_hash = zero_note.hash(params);
 
     let num_real_out_notes = deposits.len();
     let out_notes = deposits
@@ -103,13 +109,64 @@ pub fn create_delegated_deposit_tx<P: PoolParams>(
         deposits: deposits.iter().cloned().collect(),
     };
 
+    // Stuff for generating the general transfer proof
+    let (tx_public, tx_secret) = {
+        let in_notes_tx = (0..).map(|_| zero_note).take(constants::IN).collect();
+        let in_note_hashes_tx = (0..).map(|_| zero_note_hash).take(constants::IN);
+        let out_notes_tx = out_notes
+            .iter()
+            .copied()
+            .chain((0..).map(|_| zero_note))
+            .take(constants::IN)
+            .collect();
+
+        let input_hashes_tx: SizedVec<_, { constants::IN + 1 }> = [zero_account_hash]
+            .iter()
+            .copied()
+            .chain(in_note_hashes_tx)
+            .collect();
+
+        let tx = Tx {
+            input: (zero_account, in_notes_tx),
+            output: (zero_account, out_notes_tx),
+        };
+
+        let tx_hash = tx_hash(input_hashes_tx.as_slice(), out_commitment_hash, params);
+        let (eddsa_s, eddsa_r) = tx_sign(keys.sk, tx_hash, params);
+
+        let delta = make_delta::<P::Fr>(Num::ZERO, Num::ZERO, Num::ZERO, pool_id);
+        let tx_public = TransferPub {
+            root,
+            nullifier,
+            out_commit: out_commitment_hash,
+            delta,
+            memo: memo_hash,
+        };
+
+        let account_proof = zero_proof();
+        let note_proofs = (0..)
+            .map(|_| zero_proof())
+            .take(constants::IN)
+            .collect::<SizedVec<_, { constants::IN }>>();
+
+        let tx_secret = TransferSec {
+            tx,
+            in_proof: (account_proof, note_proofs),
+            eddsa_s: eddsa_s.to_other().unwrap(),
+            eddsa_r,
+            eddsa_a: keys.a,
+        };
+
+        (tx_public, tx_secret)
+    };
+
     Ok(DelegatedDepositData {
         public,
         secret,
         ciphertext,
         memo: memo_data,
-        memo_hash,
         out_hashes,
-        nullifier,
+        tx_public,
+        tx_secret,
     })
 }

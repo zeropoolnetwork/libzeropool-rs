@@ -61,14 +61,14 @@ impl JsExt for DelegatedDepositData<Fr> {
         let memo = JsBuffer::external(cx, self.memo.clone());
         obj.set(cx, "memo", memo)?;
 
-        let memo_hash = self.memo_hash.to_js(cx)?;
-        obj.set(cx, "memo_hash", memo_hash)?;
-
         let out_hashes = self.out_hashes.as_slice().to_js(cx)?;
         obj.set(cx, "out_hashes", out_hashes)?;
 
-        let nullifier = self.nullifier.to_js(cx)?;
-        obj.set(cx, "nullifier", nullifier)?;
+        let tx_public = self.tx_public.to_js(cx)?;
+        obj.set(cx, "tx_public", tx_public)?;
+
+        let tx_secret = self.tx_secret.to_js(cx)?;
+        obj.set(cx, "tx_secret", tx_secret)?;
 
         Ok(obj.upcast())
     }

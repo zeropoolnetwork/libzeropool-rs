@@ -127,9 +127,13 @@ class Keys {
 class DelegatedDepositsData {
     constructor(
         deposits,
+        root,
+        poolId
     ) {
         return zp.createDelegatedDepositTx(
             deposits,
+            root,
+            poolId,
         );
     }
 }

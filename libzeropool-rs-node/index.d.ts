@@ -166,11 +166,14 @@ declare class DelegatedDepositData {
     secret: DelegatedDepositBatchSec;
     ciphertext: Buffer;
     memo: Buffer;
-    memo_hash: string;
     out_hashes: string[];
+    tx_public: TransferPub;
+    tx_secret: TransferSec;
 
     constructor(
         deposits: DelegatedDeposit[],
+        root: string,
+        pool_id: string,
     );
 }
 
