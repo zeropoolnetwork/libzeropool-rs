@@ -180,8 +180,8 @@ declare class DelegatedDepositData {
     tx_public: TransferPub;
     tx_secret: TransferSec;
 
-    static async create(
-        deposits: DelegatedDeposit[],
+    static create(
+        deposits: FullDelegatedDeposit[],
         root: string,
         pool_id: string,
         dd_params: Params,

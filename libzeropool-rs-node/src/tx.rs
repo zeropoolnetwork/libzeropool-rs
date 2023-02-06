@@ -4,7 +4,6 @@ use libzeropool_rs::{
     client::TransactionData,
     delegated_deposit::{
         create_delegated_deposit_tx as create_delegated_deposit_tx_native, DelegatedDepositData,
-        FullDelegatedDeposit,
     },
     libzeropool::{
         fawkes_crypto::{ff_uint::Num, native::poseidon::MerkleProof},
