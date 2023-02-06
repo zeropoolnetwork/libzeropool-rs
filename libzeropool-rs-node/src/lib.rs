@@ -88,7 +88,10 @@ fn main(mut cx: ModuleContext) -> NeonResult<()> {
 
     cx.export_function("keysDerive", keys::keys_derive)?;
 
-    cx.export_function("createDelegatedDepositTx", tx::create_delegated_deposit_tx)?;
+    cx.export_function(
+        "createDelegatedDepositTxAsync",
+        tx::create_delegated_deposit_tx_async,
+    )?;
 
     Ok(())
 }

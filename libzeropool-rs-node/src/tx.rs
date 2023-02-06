@@ -1,9 +1,10 @@
-use std::str::FromStr;
+use std::{str::FromStr, sync::Arc};
 
 use libzeropool_rs::{
     client::TransactionData,
     delegated_deposit::{
         create_delegated_deposit_tx as create_delegated_deposit_tx_native, DelegatedDepositData,
+        FullDelegatedDeposit,
     },
     libzeropool::{
         fawkes_crypto::{ff_uint::Num, native::poseidon::MerkleProof},
@@ -20,21 +21,24 @@ use libzeropool_rs::{
 };
 use neon::prelude::*;
 
-use crate::Fr;
+use crate::{
+    params::{BoxedParams, Params},
+    Fr,
+};
 
 // TODO: How is there no similar trait in neon? Create a PR?
 trait JsExt {
-    fn to_js<'a>(&self, cx: &mut FunctionContext<'a>) -> JsResult<'a, JsValue>;
+    fn to_js<'a, C: Context<'a>>(&self, cx: &mut C) -> JsResult<'a, JsValue>;
 }
 
 impl JsExt for bool {
-    fn to_js<'a>(&self, cx: &mut FunctionContext<'a>) -> JsResult<'a, JsValue> {
+    fn to_js<'a, C: Context<'a>>(&self, cx: &mut C) -> JsResult<'a, JsValue> {
         Ok(cx.boolean(*self).upcast())
     }
 }
 
 impl<T: JsExt> JsExt for &[T] {
-    fn to_js<'a>(&self, cx: &mut FunctionContext<'a>) -> JsResult<'a, JsValue> {
+    fn to_js<'a, C: Context<'a>>(&self, cx: &mut C) -> JsResult<'a, JsValue> {
         let arr = JsArray::new(cx, self.len() as u32);
         for (i, item) in self.iter().enumerate() {
             let item = item.to_js(cx)?;
@@ -46,7 +50,7 @@ impl<T: JsExt> JsExt for &[T] {
 }
 
 impl JsExt for DelegatedDepositData<Fr> {
-    fn to_js<'a>(&self, cx: &mut FunctionContext<'a>) -> JsResult<'a, JsValue> {
+    fn to_js<'a, C: Context<'a>>(&self, cx: &mut C) -> JsResult<'a, JsValue> {
         let obj = cx.empty_object();
 
         let public = self.public.to_js(cx)?;
@@ -75,7 +79,7 @@ impl JsExt for DelegatedDepositData<Fr> {
 }
 
 impl JsExt for DelegatedDepositBatchPub<Fr> {
-    fn to_js<'a>(&self, cx: &mut FunctionContext<'a>) -> JsResult<'a, JsValue> {
+    fn to_js<'a, C: Context<'a>>(&self, cx: &mut C) -> JsResult<'a, JsValue> {
         let obj = cx.empty_object();
 
         let keccak_sum = cx.string(self.keccak_sum.to_string());
@@ -86,7 +90,7 @@ impl JsExt for DelegatedDepositBatchPub<Fr> {
 }
 
 impl JsExt for DelegatedDepositBatchSec<Fr> {
-    fn to_js<'a>(&self, cx: &mut FunctionContext<'a>) -> JsResult<'a, JsValue> {
+    fn to_js<'a, C: Context<'a>>(&self, cx: &mut C) -> JsResult<'a, JsValue> {
         let obj = cx.empty_object();
 
         let out_account = self.out_account.to_js(cx)?;
@@ -103,7 +107,7 @@ impl JsExt for DelegatedDepositBatchSec<Fr> {
 }
 
 impl JsExt for DelegatedDeposit<Fr> {
-    fn to_js<'a>(&self, cx: &mut FunctionContext<'a>) -> JsResult<'a, JsValue> {
+    fn to_js<'a, C: Context<'a>>(&self, cx: &mut C) -> JsResult<'a, JsValue> {
         let obj = cx.empty_object();
 
         let d = cx.string(self.d.to_num().to_string());
@@ -118,7 +122,7 @@ impl JsExt for DelegatedDeposit<Fr> {
 }
 
 impl JsExt for TransactionData<Fr> {
-    fn to_js<'a>(&self, cx: &mut FunctionContext<'a>) -> JsResult<'a, JsValue> {
+    fn to_js<'a, C: Context<'a>>(&self, cx: &mut C) -> JsResult<'a, JsValue> {
         let obj = cx.empty_object();
 
         let public = self.public.to_js(cx)?;
@@ -144,7 +148,7 @@ impl JsExt for TransactionData<Fr> {
 }
 
 impl JsExt for TransferPub<Fr> {
-    fn to_js<'a>(&self, cx: &mut FunctionContext<'a>) -> JsResult<'a, JsValue> {
+    fn to_js<'a, C: Context<'a>>(&self, cx: &mut C) -> JsResult<'a, JsValue> {
         let obj = cx.empty_object();
 
         let root = cx.string(self.root.to_string());
@@ -167,7 +171,7 @@ impl JsExt for TransferPub<Fr> {
 }
 
 impl JsExt for TransferSec<Fr> {
-    fn to_js<'a>(&self, cx: &mut FunctionContext<'a>) -> JsResult<'a, JsValue> {
+    fn to_js<'a, C: Context<'a>>(&self, cx: &mut C) -> JsResult<'a, JsValue> {
         let obj = cx.empty_object();
 
         let tx = self.tx.to_js(cx)?;
@@ -192,7 +196,7 @@ impl JsExt for TransferSec<Fr> {
 }
 
 impl<const L: usize> JsExt for MerkleProof<Fr, L> {
-    fn to_js<'a>(&self, cx: &mut FunctionContext<'a>) -> JsResult<'a, JsValue> {
+    fn to_js<'a, C: Context<'a>>(&self, cx: &mut C) -> JsResult<'a, JsValue> {
         let obj = cx.empty_object();
 
         let sibling = cx.empty_array();
@@ -210,7 +214,7 @@ impl<const L: usize> JsExt for MerkleProof<Fr, L> {
 }
 
 impl JsExt for Tx<Fr> {
-    fn to_js<'a>(&self, cx: &mut FunctionContext<'a>) -> JsResult<'a, JsValue> {
+    fn to_js<'a, C: Context<'a>>(&self, cx: &mut C) -> JsResult<'a, JsValue> {
         let obj = cx.empty_object();
 
         // input
@@ -234,7 +238,7 @@ impl JsExt for Tx<Fr> {
 }
 
 impl JsExt for Account<Fr> {
-    fn to_js<'a>(&self, cx: &mut FunctionContext<'a>) -> JsResult<'a, JsValue> {
+    fn to_js<'a, C: Context<'a>>(&self, cx: &mut C) -> JsResult<'a, JsValue> {
         let obj = cx.empty_object();
 
         let d = cx.string(self.d.to_num().to_string());
@@ -253,7 +257,7 @@ impl JsExt for Account<Fr> {
 }
 
 impl JsExt for Note<Fr> {
-    fn to_js<'a>(&self, cx: &mut FunctionContext<'a>) -> JsResult<'a, JsValue> {
+    fn to_js<'a, C: Context<'a>>(&self, cx: &mut C) -> JsResult<'a, JsValue> {
         let obj = cx.empty_object();
 
         let d = cx.string(self.d.to_num().to_string());
@@ -270,7 +274,7 @@ impl JsExt for Note<Fr> {
 }
 
 impl JsExt for Num<Fr> {
-    fn to_js<'a>(&self, cx: &mut FunctionContext<'a>) -> JsResult<'a, JsValue> {
+    fn to_js<'a, C: Context<'a>>(&self, cx: &mut C) -> JsResult<'a, JsValue> {
         let num = self.to_string();
         let num = cx.string(num);
 
@@ -279,15 +283,33 @@ impl JsExt for Num<Fr> {
 }
 
 // TODO: Proper error handling
-pub fn create_delegated_deposit_tx(mut cx: FunctionContext) -> JsResult<JsValue> {
+pub fn create_delegated_deposit_tx_async(mut cx: FunctionContext) -> JsResult<JsPromise> {
     let deposits_js = cx.argument::<JsValue>(1)?;
-    let deposits: Vec<DelegatedDeposit<Fr>> = neon_serde::from_value(&mut cx, deposits_js).unwrap();
+    let deposits: Vec<_> = neon_serde::from_value(&mut cx, deposits_js).unwrap();
     let root_js = cx.argument::<JsString>(2)?;
     let root = Num::from_str(&root_js.value(&mut cx)).unwrap();
     let pool_id_js = cx.argument::<JsString>(3)?;
     let pool_id = Num::from_str(&pool_id_js.value(&mut cx)).unwrap();
-    let tx = create_delegated_deposit_tx_native(&deposits, root, pool_id, &*POOL_PARAMS)
+    let params: Arc<Params> = (*cx.argument::<BoxedParams>(4)?).clone();
+
+    let channel = cx.channel();
+    let (deferred, promise) = cx.promise();
+
+    rayon::spawn(move || {
+        let tx = create_delegated_deposit_tx_native(
+            &deposits,
+            root,
+            pool_id,
+            &*POOL_PARAMS,
+            &params.inner,
+        )
         .expect("Failed to create delegated deposit tx");
 
-    Ok(tx.to_js(&mut cx)?)
+        deferred.settle_with(&channel, move |mut cx| {
+            tx.to_js(&mut cx)
+                .or_else(|err| cx.throw_error(err.to_string()))
+        });
+    });
+
+    Ok(promise)
 }

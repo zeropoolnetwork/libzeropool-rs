@@ -161,6 +161,16 @@ declare class TransactionData {
     out_hashes: string[];
 }
 
+interface FullDelegatedDeposit {
+    id: string,
+    owner: string,
+    receiver_d: string,
+    receiver_p: string,
+    denominated_amount: string,
+    denominated_fee: string,
+    expired: string,
+}
+
 declare class DelegatedDepositData {
     public: DelegatedDepositBatchPub;
     secret: DelegatedDepositBatchSec;
@@ -170,11 +180,12 @@ declare class DelegatedDepositData {
     tx_public: TransferPub;
     tx_secret: TransferSec;
 
-    constructor(
+    static async create(
         deposits: DelegatedDeposit[],
         root: string,
         pool_id: string,
-    );
+        dd_params: Params,
+    ): Promise<DelegatedDepositData>;
 }
 
 

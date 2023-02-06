@@ -125,15 +125,17 @@ class Keys {
 }
 
 class DelegatedDepositsData {
-    constructor(
+    static async create(
         deposits,
         root,
-        poolId
+        poolId,
+        ddParams,
     ) {
-        return zp.createDelegatedDepositTx(
+        return await zp.createDelegatedDepositTxAsync(
             deposits,
             root,
             poolId,
+            ddParams,
         );
     }
 }

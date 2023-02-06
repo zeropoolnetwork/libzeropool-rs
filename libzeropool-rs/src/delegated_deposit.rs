@@ -1,11 +1,14 @@
+use byteorder::WriteBytesExt;
 use libzeropool::{
     constants,
     fawkes_crypto::{
+        backend::bellman_groth16::{engines::Engine, Parameters},
         core::sizedvec::SizedVec,
         ff_uint::{Num, NumRepr, PrimeField, Uint},
         rand::Rng,
     },
     native::{
+        boundednum::BoundedNum,
         cipher,
         delegated_deposit::{DelegatedDeposit, DelegatedDepositBatchPub, DelegatedDepositBatchSec},
         params::PoolParams,
@@ -15,14 +18,51 @@ use libzeropool::{
         },
     },
 };
+use serde::{Deserialize, Serialize};
 
 use crate::{
     client::CreateTxError,
     keys::Keys,
+    proof::prove_delegated_deposit,
     random::CustomRng,
     utils::{keccak256, zero_account, zero_note, zero_proof},
 };
 
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(bound(serialize = "", deserialize = ""))]
+pub struct FullDelegatedDeposit<Fr: PrimeField> {
+    pub id: u64,
+    #[serde(with = "hex")]
+    pub owner: Vec<u8>,
+    pub receiver_d: BoundedNum<Fr, { constants::DIVERSIFIER_SIZE_BITS }>,
+    pub receiver_p: Num<Fr>,
+    pub denominated_amount: u64,
+    pub denominated_fee: u64,
+    pub expired: u64,
+}
+
+impl<Fr: PrimeField> FullDelegatedDeposit<Fr> {
+    pub fn to_delegated_deposit(&self) -> DelegatedDeposit<Fr> {
+        DelegatedDeposit {
+            d: self.receiver_d,
+            p_d: self.receiver_p,
+            b: BoundedNum::new(Num::from(self.denominated_amount - self.denominated_fee)),
+        }
+    }
+
+    pub fn write<W: std::io::Write>(&self, mut w: W) -> std::io::Result<()> {
+        w.write_all(&self.id.to_be_bytes())?;
+        w.write_all(&self.owner)?;
+        w.write_all(&self.receiver_d.to_num().to_uint().0.to_big_endian()[22..])?;
+        w.write_all(&self.receiver_p.to_uint().0.to_big_endian())?;
+        w.write_all(&self.denominated_amount.to_be_bytes())?;
+        w.write_all(&self.denominated_fee.to_be_bytes())?;
+        w.write_all(&self.expired.to_be_bytes())?;
+        Ok(())
+    }
+}
+
+#[derive(Serialize, Deserialize)]
 pub struct DelegatedDepositData<Fr: PrimeField> {
     pub public: DelegatedDepositBatchPub<Fr>,
     pub secret: DelegatedDepositBatchSec<Fr>,
@@ -33,12 +73,17 @@ pub struct DelegatedDepositData<Fr: PrimeField> {
     pub tx_secret: TransferSec<Fr>,
 }
 
-pub fn create_delegated_deposit_tx<P: PoolParams>(
-    deposits: &[DelegatedDeposit<P::Fr>],
+pub fn create_delegated_deposit_tx<P, E>(
+    deposits: &[FullDelegatedDeposit<P::Fr>],
     root: Num<P::Fr>,
     pool_id: Num<P::Fr>,
     params: &P,
-) -> Result<DelegatedDepositData<P::Fr>, CreateTxError> {
+    dd_params: &Parameters<E>,
+) -> Result<DelegatedDepositData<P::Fr>, CreateTxError>
+where
+    P: PoolParams<Fr = E::Fr>,
+    E: Engine,
+{
     if deposits.len() > constants::DELEGATED_DEPOSITS_NUM {
         return Err(CreateTxError::TooManyOutputs {
             max: constants::DELEGATED_DEPOSITS_NUM,
@@ -57,10 +102,14 @@ pub fn create_delegated_deposit_tx<P: PoolParams>(
     let zero_note_hash = zero_note.hash(params);
 
     let num_real_out_notes = deposits.len();
+    let mut total_fee = Num::<P::Fr>::ZERO;
     let out_notes = deposits
         .iter()
-        .map(DelegatedDeposit::to_note)
-        .chain((0..).map(|_| zero_note))
+        .map(|d| {
+            total_fee += Num::from(d.denominated_fee);
+            d.to_delegated_deposit().to_note()
+        })
+        .chain((0..).map(|_| zero_note)) // Apply fee
         .take(constants::DELEGATED_DEPOSITS_NUM)
         .collect::<SizedVec<_, { constants::DELEGATED_DEPOSITS_NUM }>>();
 
@@ -84,13 +133,11 @@ pub fn create_delegated_deposit_tx<P: PoolParams>(
 
     let out_commitment_hash = out_commitment_hash(out_hashes.as_slice(), params);
 
-    let memo_data = ciphertext.clone();
-    let memo_hash = Num::from_uint_reduced(NumRepr(Uint::from_big_endian(&keccak256(&memo_data))));
-
     let mut data_for_keccak = Vec::new();
     data_for_keccak.extend_from_slice(&out_commitment_hash.to_uint().0.to_big_endian());
     data_for_keccak.extend_from_slice(&zero_account_hash.to_uint().0.to_big_endian());
     for deposit in deposits {
+        let deposit = deposit.to_delegated_deposit();
         data_for_keccak.extend_from_slice(&deposit.d.to_num().to_uint().0.to_big_endian());
         data_for_keccak.extend_from_slice(&deposit.p_d.to_uint().0.to_big_endian());
         data_for_keccak.extend_from_slice(&deposit.b.to_num().to_uint().0.to_big_endian());
@@ -106,8 +153,39 @@ pub fn create_delegated_deposit_tx<P: PoolParams>(
     let secret = DelegatedDepositBatchSec::<P::Fr> {
         out_account: zero_account,
         out_commitment_hash,
-        deposits: deposits.iter().cloned().collect(),
+        deposits: deposits
+            .iter()
+            .map(FullDelegatedDeposit::to_delegated_deposit)
+            .collect(),
     };
+
+    let (_, dd_proof) = prove_delegated_deposit(dd_params, params, public.clone(), secret.clone());
+
+    let memo_data = {
+        let memo_size = 8 + 256 + 4 + 32 + 94 * deposits.len();
+        let mut data = Vec::with_capacity(memo_size);
+        data.extend_from_slice(&total_fee.to_uint().0.to_big_endian());
+
+        // write proof
+        data.extend_from_slice(&dd_proof.a.0.to_uint().0.to_big_endian());
+        data.extend_from_slice(&dd_proof.a.1.to_uint().0.to_big_endian());
+        data.extend_from_slice(&dd_proof.b.0 .0.to_uint().0.to_big_endian());
+        data.extend_from_slice(&dd_proof.b.0 .1.to_uint().0.to_big_endian());
+        data.extend_from_slice(&dd_proof.b.1 .0.to_uint().0.to_big_endian());
+        data.extend_from_slice(&dd_proof.b.1 .1.to_uint().0.to_big_endian());
+        data.extend_from_slice(&dd_proof.c.0.to_uint().0.to_big_endian());
+        data.extend_from_slice(&dd_proof.c.1.to_uint().0.to_big_endian());
+
+        data.extend_from_slice([255u8; 4].as_ref()); // 0xffffffff
+        data.extend_from_slice(&zero_account_hash.to_uint().0.to_big_endian());
+
+        for deposit in deposits {
+            deposit.write(&mut data).unwrap();
+        }
+
+        data
+    };
+    let memo_hash = Num::from_uint_reduced(NumRepr(Uint::from_big_endian(&keccak256(&memo_data))));
 
     // Stuff for generating the general transfer proof
     let (tx_public, tx_secret) = {
