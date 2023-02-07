@@ -1,9 +1,17 @@
 use byteorder::{LittleEndian, ReadBytesExt};
 use libzeropool_rs::{
+    delegated_deposit::{
+        FullDelegatedDeposit, DELEGATED_DEPOSIT_MAGIC, FULL_DELEGATED_DEPOSIT_SIZE,
+    },
     keys::Keys,
     libzeropool::{
         fawkes_crypto::ff_uint::{Num, NumRepr, Uint},
-        native::{account::Account, cipher, key, note::Note},
+        native::{
+            account::Account,
+            cipher,
+            key::{self, derive_key_p_d},
+            note::Note,
+        },
     },
     merkle::Hash,
 };
@@ -78,6 +86,68 @@ impl TxParser {
                 } = tx;
                 let memo = hex::decode(memo).unwrap();
                 let commitment = hex::decode(commitment).unwrap();
+
+                // Special case: transaction contains delegated deposits
+                if &memo[0..4] == &DELEGATED_DEPOSIT_MAGIC {
+                    let account_hash =
+                        Num::from_uint_reduced(NumRepr(Uint::from_big_endian(&memo[4..36])));
+                    let num_deposits = (memo.len() - DELEGATED_DEPOSIT_MAGIC.len() - 32)
+                        / FULL_DELEGATED_DEPOSIT_SIZE;
+
+                    let delegated_deposits = (&memo[36..])
+                        .chunks(FULL_DELEGATED_DEPOSIT_SIZE)
+                        .take(num_deposits)
+                        .map(|data| std::io::Result::Ok(FullDelegatedDeposit::read(data)?))
+                        .collect::<Result<Vec<_>, _>>()
+                        .unwrap();
+
+                    let in_notes_indexed = delegated_deposits
+                        .iter()
+                        .enumerate()
+                        .filter_map(|(i, d)| {
+                            let p_d = derive_key_p_d(d.receiver_d.to_num(), eta, &self.params).x;
+                            if d.receiver_p == p_d {
+                                Some(IndexedNote {
+                                    index: index + 1 + (i as u64), // FIXME: offset index
+                                    note: d.to_delegated_deposit().to_note(),
+                                })
+                            } else {
+                                None
+                            }
+                        })
+                        .collect::<Vec<_>>();
+
+                    let in_notes = in_notes_indexed
+                        .iter()
+                        .map(|n| (n.index, n.note.clone()))
+                        .collect();
+
+                    let hashes = [account_hash]
+                        .iter()
+                        .copied()
+                        .chain(
+                            delegated_deposits
+                                .iter()
+                                .map(|d| d.to_delegated_deposit().to_note().hash(&self.params)),
+                        )
+                        .collect();
+
+                    let parse_result = ParseResult {
+                        decrypted_memos: vec![DecMemo {
+                            index,
+                            in_notes: in_notes_indexed,
+                            ..Default::default()
+                        }],
+                        state_update: StateUpdate {
+                            new_leafs: vec![(index, hashes)],
+                            new_notes: vec![in_notes],
+                            ..Default::default()
+                        },
+                    };
+
+                    return parse_result;
+                }
+
                 let num_hashes = (&memo[0..4]).read_u32::<LittleEndian>().unwrap();
                 let hashes: Vec<_> = (&memo[4..])
                     .chunks(32)

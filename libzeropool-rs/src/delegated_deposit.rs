@@ -1,4 +1,3 @@
-use byteorder::WriteBytesExt;
 use libzeropool::{
     constants,
     fawkes_crypto::{
@@ -27,6 +26,9 @@ use crate::{
     random::CustomRng,
     utils::{keccak256, zero_account, zero_note, zero_proof},
 };
+
+pub const DELEGATED_DEPOSIT_MAGIC: [u8; 4] = [0xff; 4];
+pub const FULL_DELEGATED_DEPOSIT_SIZE: usize = 94;
 
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(bound(serialize = "", deserialize = ""))]
@@ -59,6 +61,34 @@ impl<Fr: PrimeField> FullDelegatedDeposit<Fr> {
         w.write_all(&self.denominated_fee.to_be_bytes())?;
         w.write_all(&self.expired.to_be_bytes())?;
         Ok(())
+    }
+
+    pub fn read<R: std::io::Read>(mut r: R) -> std::io::Result<Self> {
+        let mut id = [0u8; 8];
+        r.read_exact(&mut id)?;
+        let mut owner = vec![0u8; 20];
+        r.read_exact(&mut owner)?;
+        let mut receiver_d = [0u8; 32];
+        r.read_exact(&mut receiver_d)?;
+        let mut receiver_p = [0u8; 32];
+        r.read_exact(&mut receiver_p)?;
+        let mut denominated_amount = [0u8; 8];
+        r.read_exact(&mut denominated_amount)?;
+        let mut denominated_fee = [0u8; 8];
+        r.read_exact(&mut denominated_fee)?;
+        let mut expired = [0u8; 8];
+        r.read_exact(&mut expired)?;
+        Ok(Self {
+            id: u64::from_be_bytes(id),
+            owner,
+            receiver_d: BoundedNum::new(Num::from_uint_reduced(NumRepr(Uint::from_big_endian(
+                &receiver_d,
+            )))),
+            receiver_p: Num::from_uint_reduced(NumRepr(Uint::from_big_endian(&receiver_p))),
+            denominated_amount: u64::from_be_bytes(denominated_amount),
+            denominated_fee: u64::from_be_bytes(denominated_fee),
+            expired: u64::from_be_bytes(expired),
+        })
     }
 }
 
@@ -176,7 +206,7 @@ where
         data.extend_from_slice(&dd_proof.c.0.to_uint().0.to_big_endian());
         data.extend_from_slice(&dd_proof.c.1.to_uint().0.to_big_endian());
 
-        data.extend_from_slice([255u8; 4].as_ref()); // 0xffffffff
+        data.extend_from_slice(&DELEGATED_DEPOSIT_MAGIC);
         data.extend_from_slice(&zero_account_hash.to_uint().0.to_big_endian());
 
         for deposit in deposits {
