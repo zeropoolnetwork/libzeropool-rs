@@ -8,8 +8,8 @@ use libzeropool::{
     },
     native::{
         boundednum::BoundedNum,
-        cipher,
         delegated_deposit::{DelegatedDeposit, DelegatedDepositBatchPub, DelegatedDepositBatchSec},
+        note::Note,
         params::PoolParams,
         tx::{
             make_delta, nullifier, out_commitment_hash, tx_hash, tx_sign, TransferPub, TransferSec,
@@ -96,7 +96,6 @@ impl<Fr: PrimeField> FullDelegatedDeposit<Fr> {
 pub struct DelegatedDepositData<Fr: PrimeField> {
     pub public: DelegatedDepositBatchPub<Fr>,
     pub secret: DelegatedDepositBatchSec<Fr>,
-    pub ciphertext: Vec<u8>,
     pub memo: Vec<u8>,
     pub out_hashes: SizedVec<Num<Fr>, { constants::DELEGATED_DEPOSITS_NUM + 1 }>,
     pub tx_public: TransferPub<Fr>,
@@ -131,7 +130,6 @@ where
     let zero_note = zero_note();
     let zero_note_hash = zero_note.hash(params);
 
-    let num_real_out_notes = deposits.len();
     let mut total_fee = Num::<P::Fr>::ZERO;
     let out_notes = deposits
         .iter()
@@ -141,17 +139,9 @@ where
         })
         .chain((0..).map(|_| zero_note)) // Apply fee
         .take(constants::DELEGATED_DEPOSITS_NUM)
-        .collect::<SizedVec<_, { constants::DELEGATED_DEPOSITS_NUM }>>();
+        .collect::<SizedVec<Note<P::Fr>, { constants::DELEGATED_DEPOSITS_NUM }>>();
 
     let nullifier = nullifier(zero_account_hash, keys.eta, Num::ZERO, params);
-
-    let ciphertext = {
-        let entropy: [u8; 32] = rng.gen();
-
-        // No need to include all the zero notes in the encrypted transaction
-        let out_notes = &out_notes[0..num_real_out_notes];
-        cipher::encrypt(&entropy, keys.eta, zero_account, out_notes, params)
-    };
 
     let out_note_hashes = out_notes.iter().map(|n| n.hash(params));
     let out_hashes: SizedVec<Num<P::Fr>, { constants::DELEGATED_DEPOSITS_NUM + 1 }> =
@@ -271,7 +261,6 @@ where
     Ok(DelegatedDepositData {
         public,
         secret,
-        ciphertext,
         memo: memo_data,
         out_hashes,
         tx_public,

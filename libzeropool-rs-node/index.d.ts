@@ -162,19 +162,18 @@ declare class TransactionData {
 }
 
 interface FullDelegatedDeposit {
-    id: string,
-    owner: string,
-    receiver_d: string,
-    receiver_p: string,
-    denominated_amount: string,
-    denominated_fee: string,
-    expired: string,
+    id: string | number,
+    owner: string | number,
+    receiver_d: string | number,
+    receiver_p: string | number,
+    denominated_amount: string | number,
+    denominated_fee: string | number,
+    expired: string | number,
 }
 
 declare class DelegatedDepositsData {
     public: DelegatedDepositBatchPub;
     secret: DelegatedDepositBatchSec;
-    ciphertext: Buffer;
     memo: Buffer;
     out_hashes: string[];
     tx_public: TransferPub;

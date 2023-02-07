@@ -4,11 +4,13 @@ use libzeropool_rs::{
     client::TransactionData,
     delegated_deposit::{
         create_delegated_deposit_tx as create_delegated_deposit_tx_native, DelegatedDepositData,
+        FullDelegatedDeposit,
     },
     libzeropool::{
         fawkes_crypto::{ff_uint::Num, native::poseidon::MerkleProof},
         native::{
             account::Account,
+            boundednum::BoundedNum,
             delegated_deposit::{
                 DelegatedDeposit, DelegatedDepositBatchPub, DelegatedDepositBatchSec,
             },
@@ -28,6 +30,76 @@ use crate::{
 // TODO: How is there no similar trait in neon? Create a PR?
 trait JsExt {
     fn to_js<'a, C: Context<'a>>(&self, cx: &mut C) -> JsResult<'a, JsValue>;
+}
+
+fn string_or_num_to_u64<'a, C: Context<'a>>(cx: &mut C, value: Handle<'a, JsValue>) -> u64 {
+    if value.is_a::<JsString, _>(cx) {
+        let value = value.downcast::<JsString, _>(cx).unwrap();
+        let value = value.value(cx);
+        let value = u64::from_str(&value).unwrap();
+        value
+    } else {
+        let value = value.downcast::<JsNumber, _>(cx).unwrap();
+        let value = value.value(cx);
+        let value = value as u64;
+        value
+    }
+}
+
+fn string_or_num_to_num<'a, C: Context<'a>>(cx: &mut C, value: Handle<'a, JsValue>) -> Num<Fr> {
+    if value.is_a::<JsString, _>(cx) {
+        let value = value.downcast::<JsString, _>(cx).unwrap();
+        let value = value.value(cx);
+        let value = Num::from_str(&value).unwrap();
+        value
+    } else {
+        let value = value.downcast::<JsNumber, _>(cx).unwrap();
+        let value = value.value(cx);
+        let value = value as u64;
+        let value = Num::from(value);
+        value
+    }
+}
+
+fn full_delegated_deposit_from_js<'a, C: Context<'a>>(
+    cx: &mut C,
+    obj: &JsObject,
+) -> FullDelegatedDeposit<Fr> {
+    let id_js = obj.get_value(cx, "id").unwrap();
+    let id = string_or_num_to_u64(cx, id_js);
+
+    let owner_str = obj.get::<JsString, _, _>(cx, "owner").unwrap().value(cx);
+    let owner_slice = if owner_str.starts_with("0x") {
+        &owner_str[2..]
+    } else {
+        &owner_str
+    };
+    let owner = hex::decode(owner_slice).unwrap();
+
+    let receiver_d_js = obj.get_value(cx, "receiver_d").unwrap();
+    let receiver_d = string_or_num_to_num(cx, receiver_d_js);
+
+    let receiver_p = obj.get_value(cx, "receiver_p").unwrap();
+    let receiver_p = string_or_num_to_num(cx, receiver_p);
+
+    let denominated_amount_js = obj.get_value(cx, "denominated_amount").unwrap();
+    let denominated_amount = string_or_num_to_u64(cx, denominated_amount_js);
+
+    let denominated_fee_js = obj.get_value(cx, "denominated_fee").unwrap();
+    let denominated_fee = string_or_num_to_u64(cx, denominated_fee_js);
+
+    let expired_js = obj.get_value(cx, "expired").unwrap();
+    let expired = string_or_num_to_u64(cx, expired_js);
+
+    FullDelegatedDeposit {
+        id,
+        owner,
+        receiver_d: BoundedNum::new(receiver_d),
+        receiver_p,
+        denominated_amount,
+        denominated_fee,
+        expired,
+    }
 }
 
 impl JsExt for bool {
@@ -57,9 +129,6 @@ impl JsExt for DelegatedDepositData<Fr> {
 
         let secret = self.secret.to_js(cx)?;
         obj.set(cx, "secret", secret)?;
-
-        let ciphertext = JsBuffer::external(cx, self.ciphertext.clone());
-        obj.set(cx, "ciphertext", ciphertext)?;
 
         let memo = JsBuffer::external(cx, self.memo.clone());
         obj.set(cx, "memo", memo)?;
@@ -283,8 +352,14 @@ impl JsExt for Num<Fr> {
 
 // TODO: Proper error handling
 pub fn create_delegated_deposit_tx_async(mut cx: FunctionContext) -> JsResult<JsPromise> {
-    let deposits_js = cx.argument::<JsValue>(0)?;
-    let deposits: Vec<_> = neon_serde::from_value(&mut cx, deposits_js).unwrap();
+    let deposits_js = cx.argument::<JsArray>(0)?.to_vec(&mut cx)?;
+    let deposits: Vec<_> = deposits_js
+        .into_iter()
+        .map(|obj| {
+            let obj = obj.downcast_or_throw::<JsObject, _>(&mut cx).unwrap();
+            full_delegated_deposit_from_js(&mut cx, &*obj)
+        })
+        .collect();
     let root_js = cx.argument::<JsString>(1)?;
     let root = Num::from_str(&root_js.value(&mut cx)).unwrap();
     let pool_id_js = cx.argument::<JsString>(2)?;

@@ -18,4 +18,5 @@ neon = { version = "0.10.0", default-features = false, features = ["channel-api"
 neon-serde = { git = "https://github.com/NZXTCorp/neon-serde.git", branch = "refactor/update-neon-0.10" }
 rayon = "1.5.3"
 serde = "1.0.136"
+hex = "0.4.3"
 
