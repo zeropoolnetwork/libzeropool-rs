@@ -176,6 +176,12 @@ where
         deposits: deposits
             .iter()
             .map(FullDelegatedDeposit::to_delegated_deposit)
+            .chain((0..).map(|_| DelegatedDeposit {
+                d: BoundedNum::new(Num::ZERO),
+                p_d: Num::ZERO,
+                b: BoundedNum::new(Num::ZERO),
+            }))
+            .take(constants::DELEGATED_DEPOSITS_NUM)
             .collect(),
     };
 
@@ -265,4 +271,46 @@ where
         tx_public,
         tx_secret,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use std::str::FromStr;
+
+    use libzeropool::{fawkes_crypto::backend::bellman_groth16::engines::Bn256, POOL_PARAMS};
+
+    use super::*;
+
+    #[test]
+    #[ignore]
+    fn test_create_delegated_deposit() {
+        let data = std::fs::read("../params/delegated_deposit_params.bin").unwrap();
+        let dd_params = Parameters::<Bn256>::read(&mut data.as_slice(), true, true).unwrap();
+
+        let root = Num::from_str(
+            "9405296262516531248577889588869366684428146101055546785269573509451581757964",
+        )
+        .unwrap();
+
+        let d = create_delegated_deposit_tx(
+            &[FullDelegatedDeposit {
+                id: 0,
+                owner: vec![0; 20],
+                receiver_d: BoundedNum::new(Num::from_str("254501365180353910541213").unwrap()),
+                receiver_p: Num::from_str(
+                    "1518610811376102436745659088373274425162017815402814928120935968131387562269",
+                )
+                .unwrap(),
+                denominated_amount: 500000000,
+                denominated_fee: 0,
+                expired: 1675838609,
+            }],
+            root,
+            Num::ZERO,
+            &*POOL_PARAMS,
+            &dd_params,
+        );
+
+        assert!(true);
+    }
 }
