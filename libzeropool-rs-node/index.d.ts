@@ -175,7 +175,6 @@ declare class DelegatedDepositsData {
     public: DelegatedDepositBatchPub;
     secret: DelegatedDepositBatchSec;
     memo: Buffer;
-    out_hashes: string[];
     tx_public: TransferPub;
     tx_secret: TransferSec;
 

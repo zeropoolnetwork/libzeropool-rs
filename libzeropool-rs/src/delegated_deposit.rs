@@ -97,7 +97,6 @@ pub struct DelegatedDepositData<Fr: PrimeField> {
     pub public: DelegatedDepositBatchPub<Fr>,
     pub secret: DelegatedDepositBatchSec<Fr>,
     pub memo: Vec<u8>,
-    pub out_hashes: SizedVec<Num<Fr>, { constants::DELEGATED_DEPOSITS_NUM + 1 }>,
     pub tx_public: TransferPub<Fr>,
     pub tx_secret: TransferSec<Fr>,
 }
@@ -144,12 +143,13 @@ where
     let nullifier = nullifier(zero_account_hash, keys.eta, Num::ZERO, params);
 
     let out_note_hashes = out_notes.iter().map(|n| n.hash(params));
-    let out_hashes: SizedVec<Num<P::Fr>, { constants::DELEGATED_DEPOSITS_NUM + 1 }> =
-        [zero_account_hash]
-            .iter()
-            .copied()
-            .chain(out_note_hashes)
-            .collect();
+    let out_hashes: SizedVec<Num<P::Fr>, { constants::OUT + 1 }> = [zero_account_hash]
+        .iter()
+        .copied()
+        .chain(out_note_hashes)
+        .chain((0..).map(|_| zero_note_hash))
+        .take(constants::OUT + 1)
+        .collect();
 
     let out_commitment_hash = out_commitment_hash(out_hashes.as_slice(), params);
 
@@ -262,7 +262,6 @@ where
         public,
         secret,
         memo: memo_data,
-        out_hashes,
         tx_public,
         tx_secret,
     })
