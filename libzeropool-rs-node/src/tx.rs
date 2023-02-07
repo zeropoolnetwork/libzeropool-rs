@@ -283,13 +283,13 @@ impl JsExt for Num<Fr> {
 
 // TODO: Proper error handling
 pub fn create_delegated_deposit_tx_async(mut cx: FunctionContext) -> JsResult<JsPromise> {
-    let deposits_js = cx.argument::<JsValue>(1)?;
+    let deposits_js = cx.argument::<JsValue>(0)?;
     let deposits: Vec<_> = neon_serde::from_value(&mut cx, deposits_js).unwrap();
-    let root_js = cx.argument::<JsString>(2)?;
+    let root_js = cx.argument::<JsString>(1)?;
     let root = Num::from_str(&root_js.value(&mut cx)).unwrap();
-    let pool_id_js = cx.argument::<JsString>(3)?;
+    let pool_id_js = cx.argument::<JsString>(2)?;
     let pool_id = Num::from_str(&pool_id_js.value(&mut cx)).unwrap();
-    let params: Arc<Params> = (*cx.argument::<BoxedParams>(4)?).clone();
+    let params: Arc<Params> = (*cx.argument::<BoxedParams>(3)?).clone();
 
     let channel = cx.channel();
     let (deferred, promise) = cx.promise();

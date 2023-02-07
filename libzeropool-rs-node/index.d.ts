@@ -171,7 +171,7 @@ interface FullDelegatedDeposit {
     expired: string,
 }
 
-declare class DelegatedDepositData {
+declare class DelegatedDepositsData {
     public: DelegatedDepositBatchPub;
     secret: DelegatedDepositBatchSec;
     ciphertext: Buffer;
@@ -185,7 +185,7 @@ declare class DelegatedDepositData {
         root: string,
         pool_id: string,
         dd_params: Params,
-    ): Promise<DelegatedDepositData>;
+    ): Promise<DelegatedDepositsData>;
 }
 
 
