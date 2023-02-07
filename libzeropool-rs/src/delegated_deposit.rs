@@ -136,7 +136,7 @@ where
             total_fee += Num::from(d.denominated_fee);
             d.to_delegated_deposit().to_note()
         })
-        .chain((0..).map(|_| zero_note)) // Apply fee
+        .chain((0..).map(|_| zero_note))
         .take(constants::DELEGATED_DEPOSITS_NUM)
         .collect::<SizedVec<Note<P::Fr>, { constants::DELEGATED_DEPOSITS_NUM }>>();
 
@@ -215,7 +215,7 @@ where
             .iter()
             .copied()
             .chain((0..).map(|_| zero_note))
-            .take(constants::IN)
+            .take(constants::OUT)
             .collect();
 
         let input_hashes_tx: SizedVec<_, { constants::IN + 1 }> = [zero_account_hash]
