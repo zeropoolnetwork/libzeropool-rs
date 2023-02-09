@@ -56,6 +56,14 @@ impl<Fr: PrimeField> MemoDelegatedDeposit<Fr> {
             denominated_amount: u64::from_be_bytes(denominated_amount),
         })
     }
+
+    pub fn to_delegated_deposit(&self) -> DelegatedDeposit<Fr> {
+        DelegatedDeposit {
+            d: self.receiver_d,
+            p_d: self.receiver_p,
+            b: BoundedNum::new(Num::from(self.denominated_amount)),
+        }
+    }
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -76,7 +84,7 @@ impl<Fr: PrimeField> FullDelegatedDeposit<Fr> {
         DelegatedDeposit {
             d: self.receiver_d,
             p_d: self.receiver_p,
-            b: BoundedNum::new(Num::from(self.denominated_amount - self.denominated_fee)),
+            b: BoundedNum::new(Num::from(self.denominated_amount)),
         }
     }
 

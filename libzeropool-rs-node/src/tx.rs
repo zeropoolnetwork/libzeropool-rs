@@ -2,10 +2,7 @@ use std::{str::FromStr, sync::Arc};
 
 use libzeropool_rs::{
     client::TransactionData,
-    delegated_deposit::{
-        create_delegated_deposit_tx as create_delegated_deposit_tx_native, DelegatedDepositData,
-        FullDelegatedDeposit,
-    },
+    delegated_deposit::{DelegatedDepositData, FullDelegatedDeposit},
     libzeropool::{
         fawkes_crypto::{ff_uint::Num, native::poseidon::MerkleProof},
         native::{
@@ -355,7 +352,7 @@ pub fn create_delegated_deposit_tx_async(mut cx: FunctionContext) -> JsResult<Js
     let (deferred, promise) = cx.promise();
 
     rayon::spawn(move || {
-        let tx = create_delegated_deposit_tx_native(&deposits, &*POOL_PARAMS)
+        let tx = DelegatedDepositData::create(&deposits, &*POOL_PARAMS)
             .expect("Failed to create delegated deposit tx");
 
         deferred.settle_with(&channel, move |mut cx| {
