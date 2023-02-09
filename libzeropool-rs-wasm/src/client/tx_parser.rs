@@ -1,7 +1,7 @@
 use byteorder::{LittleEndian, ReadBytesExt};
 use libzeropool_rs::{
     delegated_deposit::{
-        FullDelegatedDeposit, DELEGATED_DEPOSIT_MAGIC, FULL_DELEGATED_DEPOSIT_SIZE,
+        MemoDelegatedDeposit, DELEGATED_DEPOSIT_MAGIC, FULL_DELEGATED_DEPOSIT_SIZE,
     },
     keys::Keys,
     libzeropool::{
@@ -14,6 +14,7 @@ use libzeropool_rs::{
         },
     },
     merkle::Hash,
+    utils::zero_account,
 };
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -89,15 +90,13 @@ impl TxParser {
 
                 // Special case: transaction contains delegated deposits
                 if &memo[0..4] == &DELEGATED_DEPOSIT_MAGIC {
-                    let account_hash =
-                        Num::from_uint_reduced(NumRepr(Uint::from_big_endian(&memo[4..36])));
-                    let num_deposits = (memo.len() - DELEGATED_DEPOSIT_MAGIC.len() - 32)
-                        / FULL_DELEGATED_DEPOSIT_SIZE;
+                    let num_deposits =
+                        (memo.len() - DELEGATED_DEPOSIT_MAGIC.len()) / FULL_DELEGATED_DEPOSIT_SIZE;
 
-                    let delegated_deposits = (&memo[36..])
+                    let delegated_deposits = (&memo[4..])
                         .chunks(FULL_DELEGATED_DEPOSIT_SIZE)
                         .take(num_deposits)
-                        .map(|data| std::io::Result::Ok(FullDelegatedDeposit::read(data)?))
+                        .map(|data| std::io::Result::Ok(MemoDelegatedDeposit::read(data)?))
                         .collect::<Result<Vec<_>, _>>()
                         .unwrap();
 
@@ -108,7 +107,7 @@ impl TxParser {
                             let p_d = derive_key_p_d(d.receiver_d.to_num(), eta, &self.params).x;
                             if d.receiver_p == p_d {
                                 Some(IndexedNote {
-                                    index: index + 1 + (i as u64), // FIXME: offset index
+                                    index: index + 1 + (i as u64),
                                     note: d.to_delegated_deposit().to_note(),
                                 })
                             } else {
@@ -122,7 +121,7 @@ impl TxParser {
                         .map(|n| (n.index, n.note.clone()))
                         .collect();
 
-                    let hashes = [account_hash]
+                    let hashes = [zero_account().hash(&self.params)]
                         .iter()
                         .copied()
                         .chain(

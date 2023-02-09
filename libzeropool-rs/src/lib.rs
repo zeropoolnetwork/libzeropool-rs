@@ -9,4 +9,4 @@ pub mod proof;
 pub mod random;
 pub mod sparse_array;
 pub mod store;
-mod utils;
+pub mod utils;
