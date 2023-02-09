@@ -127,14 +127,10 @@ class Keys {
 class DelegatedDepositsData {
     static async create(
         deposits,
-        root,
-        poolId,
         ddParams,
     ) {
         return await zp.createDelegatedDepositTxAsync(
             deposits,
-            root,
-            poolId,
             ddParams,
         );
     }

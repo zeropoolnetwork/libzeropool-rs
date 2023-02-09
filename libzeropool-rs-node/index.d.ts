@@ -175,13 +175,9 @@ declare class DelegatedDepositsData {
     public: DelegatedDepositBatchPub;
     secret: DelegatedDepositBatchSec;
     memo: Buffer;
-    tx_public: TransferPub;
-    tx_secret: TransferSec;
 
     static create(
         deposits: FullDelegatedDeposit[],
-        root: string,
-        pool_id: string,
         dd_params: Params,
     ): Promise<DelegatedDepositsData>;
 }

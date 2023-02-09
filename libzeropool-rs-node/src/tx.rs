@@ -133,12 +133,6 @@ impl JsExt for DelegatedDepositData<Fr> {
         let memo = JsBuffer::external(cx, self.memo.clone());
         obj.set(cx, "memo", memo)?;
 
-        let tx_public = self.tx_public.to_js(cx)?;
-        obj.set(cx, "tx_public", tx_public)?;
-
-        let tx_secret = self.tx_secret.to_js(cx)?;
-        obj.set(cx, "tx_secret", tx_secret)?;
-
         Ok(obj.upcast())
     }
 }
@@ -347,7 +341,6 @@ impl JsExt for Num<Fr> {
     }
 }
 
-// TODO: Proper error handling
 pub fn create_delegated_deposit_tx_async(mut cx: FunctionContext) -> JsResult<JsPromise> {
     let deposits_js = cx.argument::<JsArray>(0)?.to_vec(&mut cx)?;
     let deposits: Vec<_> = deposits_js
@@ -357,24 +350,13 @@ pub fn create_delegated_deposit_tx_async(mut cx: FunctionContext) -> JsResult<Js
             full_delegated_deposit_from_js(&mut cx, &*obj)
         })
         .collect();
-    let root_js = cx.argument::<JsString>(1)?;
-    let root = Num::from_str(&root_js.value(&mut cx)).unwrap();
-    let pool_id_js = cx.argument::<JsString>(2)?;
-    let pool_id = Num::from_str(&pool_id_js.value(&mut cx)).unwrap();
-    let params: Arc<Params> = (*cx.argument::<BoxedParams>(3)?).clone();
 
     let channel = cx.channel();
     let (deferred, promise) = cx.promise();
 
     rayon::spawn(move || {
-        let tx = create_delegated_deposit_tx_native(
-            &deposits,
-            root,
-            pool_id,
-            &*POOL_PARAMS,
-            &params.inner,
-        )
-        .expect("Failed to create delegated deposit tx");
+        let tx = create_delegated_deposit_tx_native(&deposits, &*POOL_PARAMS)
+            .expect("Failed to create delegated deposit tx");
 
         deferred.settle_with(&channel, move |mut cx| {
             tx.to_js(&mut cx)

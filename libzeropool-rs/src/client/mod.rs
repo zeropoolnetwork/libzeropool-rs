@@ -39,6 +39,8 @@ pub mod state;
 pub enum CreateTxError {
     #[error("Too many outputs: expected {max} max got {got}")]
     TooManyOutputs { max: usize, got: usize },
+    #[error("Too few outputs: expected {min} min got {got}")]
+    TooFewOutputs { min: usize, got: usize },
     #[error("Could not get merkle proof for leaf {0}")]
     ProofNotFound(u64),
     #[error("Failed to parse address: {0}")]
@@ -47,6 +49,8 @@ pub enum CreateTxError {
     InsufficientBalance(String, String),
     #[error("Insufficient energy: available {0}, received {1}")]
     InsufficientEnergy(String, String),
+    #[error("Failed to serialize transaction: {0}")]
+    IoError(#[from] std::io::Error),
 }
 
 #[derive(Serialize, Deserialize, Default, Clone)]
