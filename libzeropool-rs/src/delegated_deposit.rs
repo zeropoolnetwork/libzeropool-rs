@@ -20,7 +20,7 @@ use crate::{
 };
 
 pub const DELEGATED_DEPOSIT_MAGIC: [u8; 4] = [0xff; 4];
-pub const FULL_DELEGATED_DEPOSIT_SIZE: usize = 8 + constants::DIVERSIFIER_SIZE_BITS / 8 + 32 + 8;
+pub const MEMO_DELEGATED_DEPOSIT_SIZE: usize = 8 + constants::DIVERSIFIER_SIZE_BITS / 8 + 32 + 8;
 
 pub struct MemoDelegatedDeposit<Fr: PrimeField> {
     pub id: u64,

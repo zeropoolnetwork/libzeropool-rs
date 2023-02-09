@@ -1,7 +1,7 @@
 use byteorder::{LittleEndian, ReadBytesExt};
 use libzeropool_rs::{
     delegated_deposit::{
-        MemoDelegatedDeposit, DELEGATED_DEPOSIT_MAGIC, FULL_DELEGATED_DEPOSIT_SIZE,
+        MemoDelegatedDeposit, DELEGATED_DEPOSIT_MAGIC, MEMO_DELEGATED_DEPOSIT_SIZE,
     },
     keys::Keys,
     libzeropool::{
@@ -91,10 +91,10 @@ impl TxParser {
                 // Special case: transaction contains delegated deposits
                 if memo[0..4] == DELEGATED_DEPOSIT_MAGIC {
                     let num_deposits =
-                        (memo.len() - DELEGATED_DEPOSIT_MAGIC.len()) / FULL_DELEGATED_DEPOSIT_SIZE;
+                        (memo.len() - DELEGATED_DEPOSIT_MAGIC.len()) / MEMO_DELEGATED_DEPOSIT_SIZE;
 
                     let delegated_deposits = memo[4..]
-                        .chunks(FULL_DELEGATED_DEPOSIT_SIZE)
+                        .chunks(MEMO_DELEGATED_DEPOSIT_SIZE)
                         .take(num_deposits)
                         .map(|data| MemoDelegatedDeposit::read(data))
                         .collect::<std::io::Result<Vec<_>>>()
