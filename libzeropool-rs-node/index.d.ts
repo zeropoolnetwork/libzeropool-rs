@@ -178,7 +178,6 @@ declare class DelegatedDepositsData {
 
     static create(
         deposits: FullDelegatedDeposit[],
-        dd_params: Params,
     ): Promise<DelegatedDepositsData>;
 }
 
