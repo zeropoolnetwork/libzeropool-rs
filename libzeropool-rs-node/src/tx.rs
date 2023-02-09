@@ -28,23 +28,19 @@ trait JsExt {
 
 fn string_or_num_to_u64<'a, C: Context<'a>>(cx: &mut C, value: Handle<'a, JsValue>) -> u64 {
     if value.is_a::<JsString, _>(cx) {
-        let value = value.downcast::<JsString, _>(cx).unwrap();
-        let value = value.value(cx);
+        let value = value.downcast::<JsString, _>(cx).unwrap().value(cx);
         u64::from_str(&value).unwrap()
     } else {
-        let value = value.downcast::<JsNumber, _>(cx).unwrap();
-        value.value(cx) as u64
+        value.downcast::<JsNumber, _>(cx).unwrap().value(cx) as u64
     }
 }
 
 fn string_or_num_to_num<'a, C: Context<'a>>(cx: &mut C, value: Handle<'a, JsValue>) -> Num<Fr> {
     if value.is_a::<JsString, _>(cx) {
-        let value = value.downcast::<JsString, _>(cx).unwrap();
-        let value = value.value(cx);
+        let value = value.downcast::<JsString, _>(cx).unwrap().value(cx);
         Num::from_str(&value).unwrap()
     } else {
-        let value = value.downcast::<JsNumber, _>(cx).unwrap();
-        let value = value.value(cx) as u64;
+        let value = value.downcast::<JsNumber, _>(cx).unwrap().value(cx) as u64;
         Num::from(value)
     }
 }
