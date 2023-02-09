@@ -11,7 +11,7 @@ exclude = ["index.node"]
 crate-type = ["cdylib"]
 
 [dependencies]
-libzeropool-rs = { git = "https://github.com/zeropoolnetwork/libzeropool-rs", branch = "feature/delegated-deposits", version = "0.9.0", features = ["native", "multicore"] }
+libzeropool-rs = { git = "https://github.com/zeropoolnetwork/libzeropool-rs", branch = "feature/delegated-deposits-v2", version = "0.9.0", features = ["native", "multicore"] }
 # libzeropool-rs = { path = "../libzeropool-rs", version = "0.9.0", features = ["native", "multicore"] }
 neon = { version = "0.10.0", default-features = false, features = ["channel-api", "napi-6", "promise-api"] }
 # FIXME: Using a random fork for now
