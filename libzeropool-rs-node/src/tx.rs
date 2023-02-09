@@ -19,10 +19,7 @@ use libzeropool_rs::{
 };
 use neon::prelude::*;
 
-use crate::{
-    params::{BoxedParams, Params},
-    Fr,
-};
+use crate::Fr;
 
 // TODO: How is there no similar trait in neon? Create a PR?
 trait JsExt {
@@ -33,13 +30,10 @@ fn string_or_num_to_u64<'a, C: Context<'a>>(cx: &mut C, value: Handle<'a, JsValu
     if value.is_a::<JsString, _>(cx) {
         let value = value.downcast::<JsString, _>(cx).unwrap();
         let value = value.value(cx);
-        let value = u64::from_str(&value).unwrap();
-        value
+        u64::from_str(&value).unwrap()
     } else {
         let value = value.downcast::<JsNumber, _>(cx).unwrap();
-        let value = value.value(cx);
-        let value = value as u64;
-        value
+        value.value(cx) as u64
     }
 }
 
@@ -47,14 +41,11 @@ fn string_or_num_to_num<'a, C: Context<'a>>(cx: &mut C, value: Handle<'a, JsValu
     if value.is_a::<JsString, _>(cx) {
         let value = value.downcast::<JsString, _>(cx).unwrap();
         let value = value.value(cx);
-        let value = Num::from_str(&value).unwrap();
-        value
+        Num::from_str(&value).unwrap()
     } else {
         let value = value.downcast::<JsNumber, _>(cx).unwrap();
-        let value = value.value(cx);
-        let value = value as u64;
-        let value = Num::from(value);
-        value
+        let value = value.value(cx) as u64;
+        Num::from(value)
     }
 }
 
@@ -66,11 +57,8 @@ fn full_delegated_deposit_from_js<'a, C: Context<'a>>(
     let id = string_or_num_to_u64(cx, id_js);
 
     let owner_str = obj.get::<JsString, _, _>(cx, "owner").unwrap().value(cx);
-    let owner_slice = if owner_str.starts_with("0x") {
-        &owner_str[2..]
-    } else {
-        &owner_str
-    };
+
+    let owner_slice = owner_str.strip_prefix("0x").unwrap_or(&owner_str);
     let owner = hex::decode(owner_slice).unwrap();
 
     let receiver_d_js = obj.get_value(cx, "receiver_d").unwrap();
@@ -344,7 +332,7 @@ pub fn create_delegated_deposit_tx_async(mut cx: FunctionContext) -> JsResult<Js
         .into_iter()
         .map(|obj| {
             let obj = obj.downcast_or_throw::<JsObject, _>(&mut cx).unwrap();
-            full_delegated_deposit_from_js(&mut cx, &*obj)
+            full_delegated_deposit_from_js(&mut cx, &obj)
         })
         .collect();
 

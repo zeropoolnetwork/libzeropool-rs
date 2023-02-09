@@ -89,15 +89,15 @@ impl TxParser {
                 let commitment = hex::decode(commitment).unwrap();
 
                 // Special case: transaction contains delegated deposits
-                if &memo[0..4] == &DELEGATED_DEPOSIT_MAGIC {
+                if memo[0..4] == DELEGATED_DEPOSIT_MAGIC {
                     let num_deposits =
                         (memo.len() - DELEGATED_DEPOSIT_MAGIC.len()) / FULL_DELEGATED_DEPOSIT_SIZE;
 
-                    let delegated_deposits = (&memo[4..])
+                    let delegated_deposits = memo[4..]
                         .chunks(FULL_DELEGATED_DEPOSIT_SIZE)
                         .take(num_deposits)
-                        .map(|data| std::io::Result::Ok(MemoDelegatedDeposit::read(data)?))
-                        .collect::<Result<Vec<_>, _>>()
+                        .map(|data| MemoDelegatedDeposit::read(data))
+                        .collect::<std::io::Result<Vec<_>>>()
                         .unwrap();
 
                     let in_notes_indexed = delegated_deposits
@@ -116,10 +116,7 @@ impl TxParser {
                         })
                         .collect::<Vec<_>>();
 
-                    let in_notes = in_notes_indexed
-                        .iter()
-                        .map(|n| (n.index, n.note.clone()))
-                        .collect();
+                    let in_notes = in_notes_indexed.iter().map(|n| (n.index, n.note)).collect();
 
                     let hashes = [zero_account().hash(&self.params)]
                         .iter()
@@ -148,13 +145,13 @@ impl TxParser {
                 }
 
                 let num_hashes = (&memo[0..4]).read_u32::<LittleEndian>().unwrap();
-                let hashes: Vec<_> = (&memo[4..])
+                let hashes: Vec<_> = memo[4..]
                     .chunks(32)
                     .take(num_hashes as usize)
                     .map(|bytes| Num::from_uint_reduced(NumRepr(Uint::from_little_endian(bytes))))
                     .collect();
 
-                let pair = cipher::decrypt_out(eta, &memo.clone(), params);
+                let pair = cipher::decrypt_out(eta, &memo, params);
 
                 match pair {
                     Some((account, notes)) => {

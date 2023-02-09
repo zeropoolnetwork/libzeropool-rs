@@ -344,7 +344,7 @@ impl<D: KeyValueDB, P: PoolParams> MerkleTree<D, P> {
             constants::HEIGHT as u32,
             0,
             virtual_nodes,
-            &update_boundaries,
+            update_boundaries,
         )
     }
 
