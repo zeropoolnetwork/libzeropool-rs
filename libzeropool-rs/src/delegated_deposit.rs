@@ -129,10 +129,20 @@ impl<Fr: PrimeField> DelegatedDepositData<Fr> {
         let zero_note = zero_note();
         let zero_note_hash = zero_note.hash(params);
 
-        let out_notes = deposits.iter().map(|d| d.to_delegated_deposit().to_note());
+        let full_deposits = deposits
+            .iter()
+            .map(FullDelegatedDeposit::to_delegated_deposit)
+            .chain(std::iter::repeat(DelegatedDeposit {
+                d: BoundedNum::ZERO,
+                p_d: Num::ZERO,
+                b: BoundedNum::ZERO,
+            }))
+            .take(constants::DELEGATED_DEPOSITS_NUM)
+            .collect::<Vec<_>>();
+
         let out_hashes: SizedVec<Num<P::Fr>, { constants::OUT + 1 }> =
             std::iter::once(zero_account_hash)
-                .chain(out_notes.map(|n| n.hash(params)))
+                .chain(full_deposits.iter().map(|n| n.to_note().hash(params)))
                 .chain(std::iter::repeat(zero_note_hash))
                 .take(constants::OUT + 1)
                 .collect();
@@ -143,8 +153,7 @@ impl<Fr: PrimeField> DelegatedDepositData<Fr> {
         let keccak_sum = {
             let mut data_for_keccak = Vec::new();
             data_for_keccak.extend_from_slice(&out_commitment_hash.to_uint().0.to_big_endian());
-            for deposit in deposits {
-                let deposit = deposit.to_delegated_deposit();
+            for deposit in full_deposits {
                 data_for_keccak
                     .extend_from_slice(&deposit.d.to_num().to_uint().0.to_big_endian()[22..]);
                 data_for_keccak.extend_from_slice(&deposit.p_d.to_uint().0.to_big_endian());
