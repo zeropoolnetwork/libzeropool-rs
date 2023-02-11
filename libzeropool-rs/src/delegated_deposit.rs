@@ -7,7 +7,6 @@ use libzeropool::{
     native::{
         boundednum::BoundedNum,
         delegated_deposit::{DelegatedDeposit, DelegatedDepositBatchPub, DelegatedDepositBatchSec},
-        note::Note,
         params::PoolParams,
         tx::out_commitment_hash,
     },
@@ -130,51 +129,38 @@ impl<Fr: PrimeField> DelegatedDepositData<Fr> {
         let zero_note = zero_note();
         let zero_note_hash = zero_note.hash(params);
 
-        let mut total_fee = Num::<P::Fr>::ZERO;
-        let out_notes = deposits
-            .iter()
-            .map(|d| {
-                total_fee += Num::from(d.denominated_fee);
-                d.to_delegated_deposit().to_note()
-            })
-            .chain((0..).map(|_| zero_note))
-            .take(constants::DELEGATED_DEPOSITS_NUM)
-            .collect::<SizedVec<Note<P::Fr>, { constants::DELEGATED_DEPOSITS_NUM }>>();
-
-        let out_note_hashes = out_notes.iter().map(|n| n.hash(params));
-        let out_hashes: SizedVec<Num<P::Fr>, { constants::OUT + 1 }> = [zero_account_hash]
-            .iter()
-            .copied()
-            .chain(out_note_hashes)
-            .chain((0..).map(|_| zero_note_hash))
-            .take(constants::OUT + 1)
-            .collect();
+        let out_notes = deposits.iter().map(|d| d.to_delegated_deposit().to_note());
+        let out_hashes: SizedVec<Num<P::Fr>, { constants::OUT + 1 }> =
+            std::iter::once(zero_account_hash)
+                .chain(out_notes.map(|n| n.hash(params)))
+                .chain(std::iter::repeat(zero_note_hash))
+                .take(constants::OUT + 1)
+                .collect();
 
         let out_commitment_hash = out_commitment_hash(out_hashes.as_slice(), params);
 
-        let mut data_for_keccak = Vec::new();
-        data_for_keccak.extend_from_slice(&out_commitment_hash.to_uint().0.to_big_endian());
-        data_for_keccak.extend_from_slice(&zero_account_hash.to_uint().0.to_big_endian());
-        for deposit in deposits {
-            let deposit = deposit.to_delegated_deposit();
-            data_for_keccak.extend_from_slice(&deposit.d.to_num().to_uint().0.to_big_endian());
-            data_for_keccak.extend_from_slice(&deposit.p_d.to_uint().0.to_big_endian());
-            data_for_keccak.extend_from_slice(&deposit.b.to_num().to_uint().0.to_big_endian());
-        }
-
-        let keccak_sum =
-            Num::from_uint_reduced(NumRepr(Uint::from_big_endian(&keccak256(&data_for_keccak))));
-
-        let public = DelegatedDepositBatchPub {
-            keccak_sum, // keccak256(out_commitment_hash + account + deposits)
+        // keccak256(out_commitment_hash + deposits)
+        let keccak_sum = {
+            let mut data_for_keccak = Vec::new();
+            data_for_keccak.extend_from_slice(&out_commitment_hash.to_uint().0.to_big_endian());
+            for deposit in deposits {
+                let deposit = deposit.to_delegated_deposit();
+                data_for_keccak
+                    .extend_from_slice(&deposit.d.to_num().to_uint().0.to_big_endian()[22..]);
+                data_for_keccak.extend_from_slice(&deposit.p_d.to_uint().0.to_big_endian());
+                data_for_keccak
+                    .extend_from_slice(&deposit.b.to_num().to_uint().0.to_big_endian()[24..]);
+            }
+            Num::from_uint_reduced(NumRepr(Uint::from_big_endian(&keccak256(&data_for_keccak))))
         };
 
+        let public = DelegatedDepositBatchPub { keccak_sum };
         let secret = DelegatedDepositBatchSec::<P::Fr> {
             out_commitment_hash,
             deposits: deposits
                 .iter()
                 .map(FullDelegatedDeposit::to_delegated_deposit)
-                .chain((0..).map(|_| DelegatedDeposit {
+                .chain(std::iter::repeat(DelegatedDeposit {
                     d: BoundedNum::new(Num::ZERO),
                     p_d: Num::ZERO,
                     b: BoundedNum::new(Num::ZERO),
