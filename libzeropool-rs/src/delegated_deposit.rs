@@ -170,7 +170,6 @@ impl<Fr: PrimeField> DelegatedDepositData<Fr> {
         };
 
         let secret = DelegatedDepositBatchSec::<P::Fr> {
-            out_account: zero_account,
             out_commitment_hash,
             deposits: deposits
                 .iter()

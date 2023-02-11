@@ -133,9 +133,6 @@ impl JsExt for DelegatedDepositBatchSec<Fr> {
     fn to_js<'a, C: Context<'a>>(&self, cx: &mut C) -> JsResult<'a, JsValue> {
         let obj = cx.empty_object();
 
-        let out_account = self.out_account.to_js(cx)?;
-        obj.set(cx, "out_account", out_account)?;
-
         let out_commitment_hash = cx.string(self.out_commitment_hash.to_string());
         obj.set(cx, "out_commitment_hash", out_commitment_hash)?;
 

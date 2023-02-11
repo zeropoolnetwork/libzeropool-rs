@@ -95,7 +95,6 @@ interface DelegatedDepositBatchPub {
 }
 
 interface DelegatedDepositBatchSec {
-    out_account: Account,
     out_commitment_hash: string,
     deposits: DelegatedDeposit[],
 }
