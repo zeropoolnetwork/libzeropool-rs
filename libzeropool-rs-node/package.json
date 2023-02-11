@@ -16,7 +16,6 @@
     "index.d.ts",
     "src",
     "Cargo.toml",
-    "Cargo.lock",
     "LICENSE_APACHE",
     "LICENSE_MIT",
     "README.md"
