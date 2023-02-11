@@ -11,9 +11,22 @@
     "install": "npm run build-release",
     "test": "cargo test"
   },
+  "files": [
+    "index.js",
+    "index.d.ts",
+    "src",
+    "Cargo.toml",
+    "Cargo.lock",
+    "LICENSE_APACHE",
+    "LICENSE_MIT",
+    "README.md"
+  ],
   "author": "Dmitry Vdovin <voidxnull@gmail.com>",
   "license": "MIT OR Apache-2.0",
   "dependencies": {
     "cargo-cp-artifact": "^0.1"
+  },
+  "devDependencies": {
+    "@types/node": "18.13.0"
   }
 }
