@@ -170,7 +170,7 @@ impl<Fr: PrimeField> DelegatedDepositData<Fr> {
         };
 
         let memo_data = {
-            let memo_size = 8 + 256 + 4 + 32 + 94 * deposits.len();
+            let memo_size = 4 + 58 * deposits.len();
             let mut data = Vec::with_capacity(memo_size);
             data.extend_from_slice(&DELEGATED_DEPOSIT_MAGIC);
 
