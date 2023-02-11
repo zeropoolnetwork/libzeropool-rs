@@ -42,7 +42,7 @@ pub fn prove_tx_async(mut cx: FunctionContext) -> JsResult<JsPromise> {
     let channel = cx.channel();
     let (deferred, promise) = cx.promise();
 
-    rayon::spawn(move || {
+    std::thread::spawn(move || {
         let pair = prove_tx_native(&params.inner, &*POOL_PARAMS, tr_pub, tr_sec);
         let proof = SnarkProof {
             inputs: pair.0,
@@ -67,7 +67,7 @@ pub fn prove_tree_async(mut cx: FunctionContext) -> JsResult<JsPromise> {
     let channel = cx.channel();
     let (deferred, promise) = cx.promise();
 
-    rayon::spawn(move || {
+    std::thread::spawn(move || {
         let pair = prove_tree_native(&params.inner, &*POOL_PARAMS, tr_pub, tr_sec);
         let proof = SnarkProof {
             inputs: pair.0,
@@ -92,7 +92,7 @@ pub fn prove_delegated_deposit_async(mut cx: FunctionContext) -> JsResult<JsProm
     let channel = cx.channel();
     let (deferred, promise) = cx.promise();
 
-    rayon::spawn(move || {
+    std::thread::spawn(move || {
         let (inputs, proof) =
             prove_delegated_deposit_native(&params.inner, &*POOL_PARAMS, d_pub, d_sec);
         let proof = SnarkProof { inputs, proof };
