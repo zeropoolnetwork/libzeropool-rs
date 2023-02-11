@@ -65,38 +65,6 @@ impl<Fr: PrimeField> MemoDelegatedDeposit<Fr> {
     }
 }
 
-#[derive(Clone, Serialize, Deserialize)]
-#[serde(bound(serialize = "", deserialize = ""))]
-pub struct FullDelegatedDeposit<Fr: PrimeField> {
-    pub id: u64,
-    #[serde(with = "hex")]
-    pub owner: Vec<u8>,
-    pub receiver_d: BoundedNum<Fr, { constants::DIVERSIFIER_SIZE_BITS }>,
-    pub receiver_p: Num<Fr>,
-    pub denominated_amount: u64,
-    pub denominated_fee: u64,
-    pub expired: u64,
-}
-
-impl<Fr: PrimeField> FullDelegatedDeposit<Fr> {
-    pub fn to_delegated_deposit(&self) -> DelegatedDeposit<Fr> {
-        DelegatedDeposit {
-            d: self.receiver_d,
-            p_d: self.receiver_p,
-            b: BoundedNum::new(Num::from(self.denominated_amount)),
-        }
-    }
-
-    pub fn to_memo_delegated_deposit(&self) -> MemoDelegatedDeposit<Fr> {
-        MemoDelegatedDeposit {
-            id: self.id,
-            receiver_d: self.receiver_d,
-            receiver_p: self.receiver_p,
-            denominated_amount: self.denominated_amount - self.denominated_fee,
-        }
-    }
-}
-
 #[derive(Serialize, Deserialize)]
 pub struct DelegatedDepositData<Fr: PrimeField> {
     pub public: DelegatedDepositBatchPub<Fr>,
@@ -107,7 +75,7 @@ pub struct DelegatedDepositData<Fr: PrimeField> {
 
 impl<Fr: PrimeField> DelegatedDepositData<Fr> {
     pub fn create<P>(
-        deposits: &[FullDelegatedDeposit<P::Fr>],
+        deposits: &[MemoDelegatedDeposit<P::Fr>],
         params: &P,
     ) -> Result<Self, CreateTxError>
     where
@@ -132,7 +100,7 @@ impl<Fr: PrimeField> DelegatedDepositData<Fr> {
 
         let full_deposits = deposits
             .iter()
-            .map(FullDelegatedDeposit::to_delegated_deposit)
+            .map(MemoDelegatedDeposit::to_delegated_deposit)
             .chain(std::iter::repeat(DelegatedDeposit {
                 d: BoundedNum::ZERO,
                 p_d: Num::ZERO,
@@ -168,7 +136,7 @@ impl<Fr: PrimeField> DelegatedDepositData<Fr> {
         let secret = DelegatedDepositBatchSec::<P::Fr> {
             deposits: deposits
                 .iter()
-                .map(FullDelegatedDeposit::to_delegated_deposit)
+                .map(MemoDelegatedDeposit::to_delegated_deposit)
                 .chain(std::iter::repeat(DelegatedDeposit {
                     d: BoundedNum::new(Num::ZERO),
                     p_d: Num::ZERO,
@@ -184,7 +152,7 @@ impl<Fr: PrimeField> DelegatedDepositData<Fr> {
             data.extend_from_slice(&DELEGATED_DEPOSIT_MAGIC);
 
             for deposit in deposits {
-                deposit.to_memo_delegated_deposit().write(&mut data)?;
+                deposit.write(&mut data)?;
             }
 
             data
@@ -225,17 +193,14 @@ mod tests {
         };
 
         let d = DelegatedDepositData::create(
-            &[FullDelegatedDeposit {
+            &[MemoDelegatedDeposit {
                 id: 0,
-                owner: vec![0; 20],
                 receiver_d: BoundedNum::new(Num::from_str("254501365180353910541213").unwrap()),
                 receiver_p: Num::from_str(
                     "1518610811376102436745659088373274425162017815402814928120935968131387562269",
                 )
                 .unwrap(),
                 denominated_amount: 500000000,
-                denominated_fee: 0,
-                expired: 1675838609,
             }],
             &*POOL_PARAMS,
         )

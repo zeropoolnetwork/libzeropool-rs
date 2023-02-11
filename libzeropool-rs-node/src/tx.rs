@@ -2,9 +2,10 @@ use std::str::FromStr;
 
 use libzeropool_rs::{
     client::TransactionData,
-    delegated_deposit::{DelegatedDepositData, FullDelegatedDeposit},
+    delegated_deposit::{DelegatedDepositData, MemoDelegatedDeposit},
     libzeropool::{
-        fawkes_crypto::{ff_uint::Num, native::poseidon::MerkleProof},
+        constants,
+        fawkes_crypto::{core::sizedvec::SizedVec, ff_uint::Num, native::poseidon::MerkleProof},
         native::{
             account::Account,
             boundednum::BoundedNum,
@@ -12,17 +13,22 @@ use libzeropool_rs::{
                 DelegatedDeposit, DelegatedDepositBatchPub, DelegatedDepositBatchSec,
             },
             note::Note,
-            tx::{TransferPub, TransferSec, Tx},
+            tx::{out_commitment_hash, TransferPub, TransferSec, Tx},
         },
         POOL_PARAMS,
     },
+    utils::{zero_account, zero_note},
 };
 use neon::prelude::*;
 
 use crate::Fr;
 
-trait JsExt {
+trait ToJs {
     fn to_js<'a, C: Context<'a>>(&self, cx: &mut C) -> JsResult<'a, JsValue>;
+}
+
+trait FromJs {
+    fn from_js<'a, C: Context<'a>>(cx: &mut C, value: Handle<'a, JsValue>) -> Self;
 }
 
 fn string_or_num_to_u64<'a, C: Context<'a>>(cx: &mut C, value: Handle<'a, JsValue>) -> u64 {
@@ -44,51 +50,38 @@ fn string_or_num_to_num<'a, C: Context<'a>>(cx: &mut C, value: Handle<'a, JsValu
     }
 }
 
-fn full_delegated_deposit_from_js<'a, C: Context<'a>>(
-    cx: &mut C,
-    obj: &JsObject,
-) -> FullDelegatedDeposit<Fr> {
-    let id_js = obj.get_value(cx, "id").unwrap();
-    let id = string_or_num_to_u64(cx, id_js);
+impl FromJs for MemoDelegatedDeposit<Fr> {
+    fn from_js<'a, C: Context<'a>>(cx: &mut C, value: Handle<'a, JsValue>) -> Self {
+        let obj = value.downcast::<JsObject, _>(cx).unwrap();
 
-    let owner_str = obj.get::<JsString, _, _>(cx, "owner").unwrap().value(cx);
+        let id_js = obj.get_value(cx, "id").unwrap();
+        let id = string_or_num_to_u64(cx, id_js);
 
-    let owner_slice = owner_str.strip_prefix("0x").unwrap_or(&owner_str);
-    let owner = hex::decode(owner_slice).unwrap();
+        let receiver_d_js = obj.get_value(cx, "receiver_d").unwrap();
+        let receiver_d = string_or_num_to_num(cx, receiver_d_js);
 
-    let receiver_d_js = obj.get_value(cx, "receiver_d").unwrap();
-    let receiver_d = string_or_num_to_num(cx, receiver_d_js);
+        let receiver_p = obj.get_value(cx, "receiver_p").unwrap();
+        let receiver_p = string_or_num_to_num(cx, receiver_p);
 
-    let receiver_p = obj.get_value(cx, "receiver_p").unwrap();
-    let receiver_p = string_or_num_to_num(cx, receiver_p);
+        let denominated_amount_js = obj.get_value(cx, "denominated_amount").unwrap();
+        let denominated_amount = string_or_num_to_u64(cx, denominated_amount_js);
 
-    let denominated_amount_js = obj.get_value(cx, "denominated_amount").unwrap();
-    let denominated_amount = string_or_num_to_u64(cx, denominated_amount_js);
-
-    let denominated_fee_js = obj.get_value(cx, "denominated_fee").unwrap();
-    let denominated_fee = string_or_num_to_u64(cx, denominated_fee_js);
-
-    let expired_js = obj.get_value(cx, "expired").unwrap();
-    let expired = string_or_num_to_u64(cx, expired_js);
-
-    FullDelegatedDeposit {
-        id,
-        owner,
-        receiver_d: BoundedNum::new(receiver_d),
-        receiver_p,
-        denominated_amount,
-        denominated_fee,
-        expired,
+        MemoDelegatedDeposit {
+            id,
+            receiver_d: BoundedNum::new(receiver_d),
+            receiver_p,
+            denominated_amount,
+        }
     }
 }
 
-impl JsExt for bool {
+impl ToJs for bool {
     fn to_js<'a, C: Context<'a>>(&self, cx: &mut C) -> JsResult<'a, JsValue> {
         Ok(cx.boolean(*self).upcast())
     }
 }
 
-impl<T: JsExt> JsExt for &[T] {
+impl<T: ToJs> ToJs for &[T] {
     fn to_js<'a, C: Context<'a>>(&self, cx: &mut C) -> JsResult<'a, JsValue> {
         let arr = JsArray::new(cx, self.len() as u32);
         for (i, item) in self.iter().enumerate() {
@@ -100,7 +93,7 @@ impl<T: JsExt> JsExt for &[T] {
     }
 }
 
-impl JsExt for DelegatedDepositData<Fr> {
+impl ToJs for DelegatedDepositData<Fr> {
     fn to_js<'a, C: Context<'a>>(&self, cx: &mut C) -> JsResult<'a, JsValue> {
         let obj = cx.empty_object();
 
@@ -117,7 +110,7 @@ impl JsExt for DelegatedDepositData<Fr> {
     }
 }
 
-impl JsExt for DelegatedDepositBatchPub<Fr> {
+impl ToJs for DelegatedDepositBatchPub<Fr> {
     fn to_js<'a, C: Context<'a>>(&self, cx: &mut C) -> JsResult<'a, JsValue> {
         let obj = cx.empty_object();
 
@@ -128,7 +121,7 @@ impl JsExt for DelegatedDepositBatchPub<Fr> {
     }
 }
 
-impl JsExt for DelegatedDepositBatchSec<Fr> {
+impl ToJs for DelegatedDepositBatchSec<Fr> {
     fn to_js<'a, C: Context<'a>>(&self, cx: &mut C) -> JsResult<'a, JsValue> {
         let obj = cx.empty_object();
 
@@ -139,7 +132,7 @@ impl JsExt for DelegatedDepositBatchSec<Fr> {
     }
 }
 
-impl JsExt for DelegatedDeposit<Fr> {
+impl ToJs for DelegatedDeposit<Fr> {
     fn to_js<'a, C: Context<'a>>(&self, cx: &mut C) -> JsResult<'a, JsValue> {
         let obj = cx.empty_object();
 
@@ -154,7 +147,7 @@ impl JsExt for DelegatedDeposit<Fr> {
     }
 }
 
-impl JsExt for TransactionData<Fr> {
+impl ToJs for TransactionData<Fr> {
     fn to_js<'a, C: Context<'a>>(&self, cx: &mut C) -> JsResult<'a, JsValue> {
         let obj = cx.empty_object();
 
@@ -180,7 +173,7 @@ impl JsExt for TransactionData<Fr> {
     }
 }
 
-impl JsExt for TransferPub<Fr> {
+impl ToJs for TransferPub<Fr> {
     fn to_js<'a, C: Context<'a>>(&self, cx: &mut C) -> JsResult<'a, JsValue> {
         let obj = cx.empty_object();
 
@@ -203,7 +196,7 @@ impl JsExt for TransferPub<Fr> {
     }
 }
 
-impl JsExt for TransferSec<Fr> {
+impl ToJs for TransferSec<Fr> {
     fn to_js<'a, C: Context<'a>>(&self, cx: &mut C) -> JsResult<'a, JsValue> {
         let obj = cx.empty_object();
 
@@ -228,7 +221,7 @@ impl JsExt for TransferSec<Fr> {
     }
 }
 
-impl<const L: usize> JsExt for MerkleProof<Fr, L> {
+impl<const L: usize> ToJs for MerkleProof<Fr, L> {
     fn to_js<'a, C: Context<'a>>(&self, cx: &mut C) -> JsResult<'a, JsValue> {
         let obj = cx.empty_object();
 
@@ -246,7 +239,7 @@ impl<const L: usize> JsExt for MerkleProof<Fr, L> {
     }
 }
 
-impl JsExt for Tx<Fr> {
+impl ToJs for Tx<Fr> {
     fn to_js<'a, C: Context<'a>>(&self, cx: &mut C) -> JsResult<'a, JsValue> {
         let obj = cx.empty_object();
 
@@ -270,7 +263,7 @@ impl JsExt for Tx<Fr> {
     }
 }
 
-impl JsExt for Account<Fr> {
+impl ToJs for Account<Fr> {
     fn to_js<'a, C: Context<'a>>(&self, cx: &mut C) -> JsResult<'a, JsValue> {
         let obj = cx.empty_object();
 
@@ -289,7 +282,7 @@ impl JsExt for Account<Fr> {
     }
 }
 
-impl JsExt for Note<Fr> {
+impl ToJs for Note<Fr> {
     fn to_js<'a, C: Context<'a>>(&self, cx: &mut C) -> JsResult<'a, JsValue> {
         let obj = cx.empty_object();
 
@@ -306,7 +299,7 @@ impl JsExt for Note<Fr> {
     }
 }
 
-impl JsExt for Num<Fr> {
+impl ToJs for Num<Fr> {
     fn to_js<'a, C: Context<'a>>(&self, cx: &mut C) -> JsResult<'a, JsValue> {
         let num = self.to_string();
         let num = cx.string(num);
@@ -319,10 +312,7 @@ pub fn create_delegated_deposit_tx_async(mut cx: FunctionContext) -> JsResult<Js
     let deposits_js = cx.argument::<JsArray>(0)?.to_vec(&mut cx)?;
     let deposits: Vec<_> = deposits_js
         .into_iter()
-        .map(|obj| {
-            let obj = obj.downcast_or_throw::<JsObject, _>(&mut cx).unwrap();
-            full_delegated_deposit_from_js(&mut cx, &obj)
-        })
+        .map(|obj| MemoDelegatedDeposit::from_js(&mut cx, obj))
         .collect();
 
     let channel = cx.channel();
@@ -339,4 +329,28 @@ pub fn create_delegated_deposit_tx_async(mut cx: FunctionContext) -> JsResult<Js
     });
 
     Ok(promise)
+}
+
+pub fn delegated_deposits_to_commitment(mut cx: FunctionContext) -> JsResult<JsString> {
+    let deposits_js = cx.argument::<JsArray>(0)?.to_vec(&mut cx)?;
+    let deposits: Vec<_> = deposits_js
+        .into_iter()
+        .map(|obj| MemoDelegatedDeposit::from_js(&mut cx, obj))
+        .collect();
+
+    let note_hashes = deposits
+        .into_iter()
+        .map(|d| d.to_delegated_deposit().to_note().hash(&*POOL_PARAMS));
+
+    let out_hashes: SizedVec<Num<Fr>, { constants::OUT + 1 }> =
+        std::iter::once(zero_account().hash(&*POOL_PARAMS))
+            .chain(note_hashes)
+            .chain(std::iter::repeat(zero_note().hash(&*POOL_PARAMS)))
+            .take(constants::OUT + 1)
+            .collect();
+
+    let out_commitment_hash = out_commitment_hash(out_hashes.as_slice(), &*POOL_PARAMS);
+    let res = out_commitment_hash.to_string();
+
+    Ok(cx.string(res))
 }

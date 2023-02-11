@@ -169,6 +169,13 @@ interface FullDelegatedDeposit {
     expired: string | number;
 }
 
+interface MemoDelegatedDeposit {
+    id: string | number;
+    receiver_d: string | number;
+    receiver_p: string | number;
+    denominated_amount: string | number;
+}
+
 declare class DelegatedDepositsData {
     public: DelegatedDepositBatchPub;
     secret: DelegatedDepositBatchSec;
@@ -176,8 +183,11 @@ declare class DelegatedDepositsData {
     out_commitment_hash: string;
 
     static create(
-        deposits: FullDelegatedDeposit[],
+        deposits: MemoDelegatedDeposit[],
     ): Promise<DelegatedDepositsData>;
 }
 
+declare function delegatedDepositsToCommitment(
+    deposits: MemoDelegatedDeposit[],
+): string;
 

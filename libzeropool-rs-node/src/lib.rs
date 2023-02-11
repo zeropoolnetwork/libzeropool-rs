@@ -93,5 +93,10 @@ fn main(mut cx: ModuleContext) -> NeonResult<()> {
         tx::create_delegated_deposit_tx_async,
     )?;
 
+    cx.export_function(
+        "delegatedDepositsToCommitment",
+        tx::delegated_deposits_to_commitment,
+    )?;
+
     Ok(())
 }
