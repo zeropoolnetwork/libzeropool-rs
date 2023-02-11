@@ -193,13 +193,25 @@ impl<Fr: PrimeField> DelegatedDepositData<Fr> {
 mod tests {
     use std::str::FromStr;
 
-    use libzeropool::POOL_PARAMS;
+    use libzeropool::{
+        fawkes_crypto::backend::bellman_groth16::{engines::Bn256, verifier::verify, Parameters},
+        POOL_PARAMS,
+    };
 
     use super::*;
+    use crate::proof::prove_delegated_deposit;
 
     #[test]
     #[ignore]
-    fn test_create_delegated_deposit() {
+    fn test_delegated_deposit_data_create_full() {
+        let dd_params_data = std::fs::read("../params/delegated_deposit_params.bin").unwrap();
+        let dd_params =
+            Parameters::<Bn256>::read(&mut dd_params_data.as_slice(), true, true).unwrap();
+        let dd_vk = serde_json::from_str(
+            &std::fs::read_to_string("../params/delegated_deposit_verification_key.json").unwrap(),
+        )
+        .unwrap();
+
         let d = DelegatedDepositData::create(
             &[FullDelegatedDeposit {
                 id: 0,
@@ -214,8 +226,12 @@ mod tests {
                 expired: 1675838609,
             }],
             &*POOL_PARAMS,
-        );
+        )
+        .unwrap();
 
-        assert!(true);
+        let (inputs, proof) =
+            prove_delegated_deposit(&dd_params, &*POOL_PARAMS, d.public, d.secret);
+
+        assert!(verify(&dd_vk, &proof, &inputs));
     }
 }
