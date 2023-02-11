@@ -9,11 +9,9 @@
 //! IndexedDB tests.
 
 use futures::future::TryFutureExt as _;
-
 use kvdb_shared_tests as st;
-use kvdb_web::{Database, KeyValueDB as _};
-
 use wasm_bindgen_test::*;
+use zp_kvdb_web::{Database, KeyValueDB as _};
 
 wasm_bindgen_test_configure!(run_in_browser);
 
