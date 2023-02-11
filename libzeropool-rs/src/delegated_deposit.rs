@@ -102,6 +102,7 @@ pub struct DelegatedDepositData<Fr: PrimeField> {
     pub public: DelegatedDepositBatchPub<Fr>,
     pub secret: DelegatedDepositBatchSec<Fr>,
     pub memo: Vec<u8>,
+    pub out_commitment_hash: Num<Fr>,
 }
 
 impl<Fr: PrimeField> DelegatedDepositData<Fr> {
@@ -165,7 +166,6 @@ impl<Fr: PrimeField> DelegatedDepositData<Fr> {
 
         let public = DelegatedDepositBatchPub { keccak_sum };
         let secret = DelegatedDepositBatchSec::<P::Fr> {
-            out_commitment_hash,
             deposits: deposits
                 .iter()
                 .map(FullDelegatedDeposit::to_delegated_deposit)
@@ -194,6 +194,7 @@ impl<Fr: PrimeField> DelegatedDepositData<Fr> {
             public,
             secret,
             memo: memo_data,
+            out_commitment_hash,
         })
     }
 }

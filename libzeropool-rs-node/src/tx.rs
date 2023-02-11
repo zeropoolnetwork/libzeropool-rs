@@ -21,7 +21,6 @@ use neon::prelude::*;
 
 use crate::Fr;
 
-// TODO: How is there no similar trait in neon? Create a PR?
 trait JsExt {
     fn to_js<'a, C: Context<'a>>(&self, cx: &mut C) -> JsResult<'a, JsValue>;
 }
@@ -132,9 +131,6 @@ impl JsExt for DelegatedDepositBatchPub<Fr> {
 impl JsExt for DelegatedDepositBatchSec<Fr> {
     fn to_js<'a, C: Context<'a>>(&self, cx: &mut C) -> JsResult<'a, JsValue> {
         let obj = cx.empty_object();
-
-        let out_commitment_hash = cx.string(self.out_commitment_hash.to_string());
-        obj.set(cx, "out_commitment_hash", out_commitment_hash)?;
 
         let deposits = self.deposits.as_slice().to_js(cx)?;
         obj.set(cx, "deposits", deposits)?;
