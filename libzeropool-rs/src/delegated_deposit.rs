@@ -212,15 +212,17 @@ mod tests {
     use crate::proof::prove_delegated_deposit;
 
     #[test]
-    #[ignore]
     fn test_delegated_deposit_data_create_full() {
-        let dd_params_data = std::fs::read("../params/delegated_deposit_params.bin").unwrap();
-        let dd_params =
-            Parameters::<Bn256>::read(&mut dd_params_data.as_slice(), true, true).unwrap();
-        let dd_vk = serde_json::from_str(
-            &std::fs::read_to_string("../params/delegated_deposit_verification_key.json").unwrap(),
-        )
-        .unwrap();
+        use libzeropool::{
+            circuit::delegated_deposit::{
+                check_delegated_deposit_batch, CDelegatedDepositBatchPub, CDelegatedDepositBatchSec,
+            },
+            fawkes_crypto::{
+                circuit::cs::{DebugCS, CS},
+                core::signal::Signal,
+            },
+            POOL_PARAMS,
+        };
 
         let d = DelegatedDepositData::create(
             &[FullDelegatedDeposit {
@@ -239,9 +241,15 @@ mod tests {
         )
         .unwrap();
 
-        let (inputs, proof) =
-            prove_delegated_deposit(&dd_params, &*POOL_PARAMS, d.public, d.secret);
-
-        assert!(verify(&dd_vk, &proof, &inputs));
+        let ref mut cs = DebugCS::rc_new();
+        let signal_pub = CDelegatedDepositBatchPub::alloc(cs, Some(&d.public));
+        let signal_sec = CDelegatedDepositBatchSec::alloc(cs, Some(&d.secret));
+        let mut n_constraints = cs.borrow().num_gates();
+        check_delegated_deposit_batch(&signal_pub, &signal_sec, &*POOL_PARAMS);
+        n_constraints = cs.borrow().num_gates() - n_constraints;
+        println!(
+            "check_delegated_deposit_batch constraints = {}",
+            n_constraints
+        );
     }
 }
