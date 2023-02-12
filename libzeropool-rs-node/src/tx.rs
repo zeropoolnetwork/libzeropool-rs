@@ -106,6 +106,9 @@ impl ToJs for DelegatedDepositData<Fr> {
         let memo = JsBuffer::external(cx, self.memo.clone());
         obj.set(cx, "memo", memo)?;
 
+        let out_commitment_hash = cx.string(self.out_commitment_hash.to_string());
+        obj.set(cx, "out_commitment_hash", out_commitment_hash)?;
+
         Ok(obj.upcast())
     }
 }
