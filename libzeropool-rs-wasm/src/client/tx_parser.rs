@@ -61,13 +61,14 @@ impl TxParser {
     }
 
     #[wasm_bindgen(js_name = "parseTxs")]
-    pub fn parse_txs(&self, sk: &[u8], txs: &JsValue) -> Result<ParseTxsResult, JsValue> {
+    pub fn parse_txs(&self, sk: &[u8], txs: JsValue) -> Result<ParseTxsResult, JsValue> {
         let sk = Num::<Fs>::from_uint(NumRepr(Uint::from_little_endian(sk)))
             .ok_or_else(|| js_err!("Invalid spending key"))?;
         let params = &self.params;
         let eta = Keys::derive(sk, params).eta;
 
-        let txs: Vec<IndexedTx> = txs.into_serde().map_err(|err| js_err!(&err.to_string()))?;
+        let txs: Vec<IndexedTx> =
+            serde_wasm_bindgen::from_value(txs).map_err(|err| js_err!(&err.to_string()))?;
         let parse_results: Vec<_> = txs
             .into_par_iter()
             .map(|tx| -> ParseResult {

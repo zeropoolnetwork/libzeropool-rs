@@ -201,11 +201,10 @@ impl UserAccount {
     pub fn create_deposit_optimistic(
         &self,
         deposit: IDepositData,
-        new_state: &JsValue,
+        new_state: JsValue,
     ) -> Result<TransactionData, JsValue> {
-        let new_state: StateUpdate = new_state
-            .into_serde()
-            .map_err(|err| js_err!(&err.to_string()))?;
+        let new_state: StateUpdate =
+            serde_wasm_bindgen::from_value(new_state).map_err(|err| js_err!(&err.to_string()))?;
         self.construct_tx_data(deposit.to_native()?, Some(new_state))
     }
 
@@ -226,11 +225,10 @@ impl UserAccount {
     pub fn create_transfer_optimistic(
         &self,
         transfer: ITransferData,
-        new_state: &JsValue,
+        new_state: JsValue,
     ) -> Result<TransactionData, JsValue> {
-        let new_state: StateUpdate = new_state
-            .into_serde()
-            .map_err(|err| js_err!(&err.to_string()))?;
+        let new_state: StateUpdate =
+            serde_wasm_bindgen::from_value(new_state).map_err(|err| js_err!(&err.to_string()))?;
         self.construct_tx_data(transfer.to_native()?, Some(new_state))
     }
 
@@ -243,11 +241,10 @@ impl UserAccount {
     pub fn create_withdraw_optimistic(
         &self,
         withdraw: IWithdrawData,
-        new_state: &JsValue,
+        new_state: JsValue,
     ) -> Result<TransactionData, JsValue> {
-        let new_state: StateUpdate = new_state
-            .into_serde()
-            .map_err(|err| js_err!(&err.to_string()))?;
+        let new_state: StateUpdate =
+            serde_wasm_bindgen::from_value(new_state).map_err(|err| js_err!(&err.to_string()))?;
         self.construct_tx_data(withdraw.to_native()?, Some(new_state))
     }
 
@@ -328,9 +325,8 @@ impl UserAccount {
     }
 
     #[wasm_bindgen(js_name = "updateState")]
-    pub fn update_state(&mut self, state_update: &JsValue) -> Result<(), JsValue> {
-        let state_update: StateUpdate = state_update
-            .into_serde()
+    pub fn update_state(&mut self, state_update: JsValue) -> Result<(), JsValue> {
+        let state_update: StateUpdate = serde_wasm_bindgen::from_value(state_update)
             .map_err(|err| js_err!(&err.to_string()))?;
 
         if !state_update.new_leafs.is_empty() || !state_update.new_commitments.is_empty() {
