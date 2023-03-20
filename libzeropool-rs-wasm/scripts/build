@@ -32,37 +32,39 @@ function build () {
 
   if [ "$mt" = mt ] ; then
     local out_name="libzeropool_rs_wasm_mt"
-    local out_file="$out_name.wasm"
 
     RUSTFLAGS='-C target-feature=+atomics,+bulk-memory,+mutable-globals -C link-arg=--max-memory=4294967296' \
       rustup run nightly \
         wasm-pack build --release --target web -d "$package_target_dirname" \
-        --out-name "$out_file" \
+        --out-name "$out_name" \
         -- --features "$features" -Z build-std=panic_abort,std
   else
     local out_name="libzeropool_rs_wasm"
-    local out_file="$out_name.wasm"
 
-    wasm-pack build --release --target web -d "$package_target_dirname" -- --features "$features" \
-      --out-name "$out_file"
+    wasm-pack build --release --out-name "$out_name" --target web -d "$package_target_dirname" -- --features "$features"
   fi
+
+  local out_wasm="${out_name}_bg.wasm"
 
   # Optimize the binary, since wasm-pack refuses to see wasm-opt
   if [ "$debug" = debug ] ; then
-    wasm-opt -o "$package_target_dirname/wasm-opt.wasm" --debuginfo -O3 "$package_target_dirname/$out_file" && mv "$package_target_dirname/wasm-opt.wasm" "$package_target_dirname/$out_file"
+    wasm-opt -o "$package_target_dirname/wasm-opt.wasm" --debuginfo -O3 "$package_target_dirname/$out_wasm" && mv "$package_target_dirname/wasm-opt.wasm" "$package_target_dirname/$out_wasm"
   else
-    wasm-opt -o "$package_target_dirname/wasm-opt.wasm" -O3 "$package_target_dirname/$out_file" && mv "$package_target_dirname/wasm-opt.wasm" "$package_target_dirname/$out_file"
+    wasm-opt -o "$package_target_dirname/wasm-opt.wasm" -O3 "$package_target_dirname/$out_wasm" && mv "$package_target_dirname/wasm-opt.wasm" "$package_target_dirname/$out_wasm"
   fi
 
   # Remove invalid typings
   sed -i.bak -E '/BroccoliDestroyInstance/d' "$package_target_dirname/$out_name.d.ts"
-  sed -i.bak -E '/BroccoliDestroyInstance/d' "$package_target_dirname/$out_name.wasm.d.ts"
+  sed -i.bak -E '/BroccoliDestroyInstance/d' "$package_target_dirname/${out_name}_bg.wasm.d.ts"
 
   # Patch package.json, since wasm-pack doesn't allow renaming packages
   patch_package_json "$name"
+
+  rm -r "$package_target_dirname"/*.bak
 }
 
 build web web st
-build web-mt web,multicore mt
 build web-debug web st debug
+
+build web-mt web,multicore mt
 build web-mt-debug web,multicore mt debug
