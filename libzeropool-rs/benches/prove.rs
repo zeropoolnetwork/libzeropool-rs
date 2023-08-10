@@ -18,12 +18,12 @@ fn prove_tx_benchmark(c: &mut Criterion) {
 
     let tx = acc
         .create_tx(
-            TxType::Deposit(
-                BoundedNum::new(Num::from(0)),
-                vec![],
-                BoundedNum::new(Num::from(1)),
-                vec![],
-            ),
+            TxType::Deposit {
+                fee: BoundedNum::new(Num::from(0)),
+                deposit_amount: BoundedNum::new(Num::from(1)),
+                outputs: vec![],
+            },
+            None,
             None,
         )
         .unwrap();
@@ -38,5 +38,10 @@ fn prove_tx_benchmark(c: &mut Criterion) {
     });
 }
 
-criterion_group!(benches, prove_tx_benchmark);
+criterion_group! {
+    name = benches;
+    // This can be any expression that returns a `Criterion` object.
+    config = Criterion::default().sample_size(10);
+    targets = prove_tx_benchmark
+}
 criterion_main!(benches);
