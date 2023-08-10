@@ -46,5 +46,4 @@ debug = true
 [[bench]]
 name = "prove"
 harness = false
-required-features = ["multicore"]
 
