@@ -39,10 +39,10 @@ mod tx_parser;
 
 #[derive(Serialize)]
 pub struct ParsedDelta {
-    pub v: i64,
-    pub e: i64,
-    pub index: u64,
-    pub pool_id: u64,
+    pub v: String,
+    pub e: String,
+    pub index: String,
+    pub pool_id: String,
 }
 
 #[derive(Serialize)]
@@ -169,11 +169,16 @@ impl UserAccount {
             .map_err(|err| js_err!("{}", err))?;
 
         let (v, e, index, pool_id) = parse_delta(tx.public.delta);
-        let parsed_delta = ParsedDelta {
-            v: v.try_into().unwrap(),
-            e: e.try_into().unwrap(),
-            index: index.try_into().unwrap(),
-            pool_id: pool_id.try_into().unwrap(),
+        let parsed_delta = {
+            let v: i64 = v.try_into().unwrap();
+            let e: i64 = e.try_into().unwrap();
+
+            ParsedDelta {
+                v: v.to_string(),
+                e: e.to_string(),
+                index: index.to_string(),
+                pool_id: pool_id.to_string(),
+            }
         };
 
         let tx = TransactionDataSer {

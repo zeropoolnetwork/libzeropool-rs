@@ -106,6 +106,7 @@ pub struct UserAccount<D: KeyValueDB, P: PoolParams> {
     pub pool_id: BoundedNum<P::Fr, { constants::DIVERSIFIER_SIZE_BITS }>,
     pub keys: Keys<P>,
     pub params: P,
+    // TODO: Separate state from UserAccount, pass it as an argument to create_tx
     pub state: State<D, P>,
     pub sign_callback: Option<Box<dyn Fn(&[u8]) -> Vec<u8>>>, // TODO: Find a way to make it async
 }
@@ -219,7 +220,7 @@ where
             })
         });
 
-        let tree = &self.state.tree;
+        let tree = &state.tree;
 
         let in_account_index = in_account_optimistic_index.or(state.latest_account_index);
 
@@ -248,7 +249,7 @@ where
                 .into_iter()
                 .chain(next_by_optimistic_commitment)
                 .max()
-                .unwrap_or(self.state.tree.next_index())
+                .unwrap_or(state.tree.next_index())
         }));
 
         let (fee, tx_data) = {

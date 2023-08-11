@@ -112,11 +112,14 @@ pub fn parse_delta_(delta: &str) -> IParsedDelta {
 
     let (token_amount, energy_amount, transfer_index, pool_id) = parse_delta(delta);
 
+    let token_amount: i64 = token_amount.try_into().unwrap();
+    let energy_amount: i64 = energy_amount.try_into().unwrap();
+
     let parsed_delta = ParsedDelta {
-        v: token_amount.try_into().unwrap(),
-        e: energy_amount.try_into().unwrap(),
-        index: transfer_index.try_into().unwrap(),
-        pool_id: pool_id.try_into().unwrap(),
+        v: token_amount.to_string(),
+        e: energy_amount.to_string(),
+        index: transfer_index.to_string(),
+        pool_id: pool_id.to_string(),
     };
 
     serde_wasm_bindgen::to_value(&parsed_delta)
