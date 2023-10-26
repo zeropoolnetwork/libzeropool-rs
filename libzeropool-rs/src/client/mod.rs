@@ -32,11 +32,14 @@ use crate::{
     random::CustomRng,
     utils::{keccak256, zero_note, zero_proof},
 };
+use crate::merkle::MerkleTree;
 
 pub mod state;
 
 #[derive(Debug, Error)]
 pub enum CreateTxError {
+    #[error("Too many inputs: expected {max} max got {got}")]
+    TooManyInputs { max: usize, got: usize },
     #[error("Too many outputs: expected {max} max got {got}")]
     TooManyOutputs { max: usize, got: usize },
     #[error("Could not get merkle proof for leaf {0}")]
@@ -51,7 +54,7 @@ pub enum CreateTxError {
 
 #[derive(Serialize, Deserialize, Default, Clone)]
 pub struct StateFragment<Fr: PrimeField> {
-    pub new_leafs: Vec<(u64, Vec<Hash<Fr>>)>,
+    pub new_leaves: Vec<(u64, Vec<Hash<Fr>>)>,
     pub new_commitments: Vec<(u64, Hash<Fr>)>,
     pub new_accounts: Vec<(u64, Account<Fr>)>,
     pub new_notes: Vec<(u64, Note<Fr>)>,
@@ -102,39 +105,35 @@ pub enum TxType<Fr: PrimeField> {
     },
 }
 
-pub struct UserAccount<D: KeyValueDB, P: PoolParams> {
+pub struct UserAccount<P: PoolParams> {
     pub pool_id: BoundedNum<P::Fr, { constants::DIVERSIFIER_SIZE_BITS }>,
     pub keys: Keys<P>,
     pub params: P,
-    // TODO: Separate state from UserAccount, pass it as an argument to create_tx
-    pub state: State<D, P>,
     pub sign_callback: Option<Box<dyn Fn(&[u8]) -> Vec<u8>>>, // TODO: Find a way to make it async
 }
 
-impl<'p, D, P> UserAccount<D, P>
+impl<'p, P> UserAccount<P>
 where
-    D: KeyValueDB,
     P: PoolParams,
     P::Fr: 'static,
 {
     /// Initializes UserAccount with a spending key that has to be an element of the prime field Fs (p = 6554484396890773809930967563523245729705921265872317281365359162392183254199).
-    pub fn new(sk: Num<P::Fs>, state: State<D, P>, params: P) -> Self {
+    pub fn new(sk: Num<P::Fs>, params: P) -> Self {
         let keys = Keys::derive(sk, &params);
 
         UserAccount {
             // For now it is constant, but later should be provided by user
             pool_id: BoundedNum::new(Num::ZERO),
             keys,
-            state,
             params,
             sign_callback: None,
         }
     }
 
     /// Same as constructor but accepts arbitrary data as spending key.
-    pub fn from_seed(seed: &[u8], state: State<D, P>, params: P) -> Self {
+    pub fn from_seed(seed: &[u8], params: P) -> Self {
         let sk = reduce_sk(seed);
-        Self::new(sk, state, params)
+        Self::new(sk, params)
     }
 
     fn generate_address_components(
@@ -178,79 +177,45 @@ where
     }
 
     /// Constructs a transaction.
-    pub fn create_tx(
+    /// # Arguments
+    /// * `tx` - transaction type and data
+    /// * `in_account` - previous account (None if it's a first transaction)
+    /// * `in_notes` - optional input notes
+    /// * `delta_index` - current pool index
+    pub fn create_tx<D: KeyValueDB>(
         &self,
         tx: TxType<P::Fr>,
-        delta_index: Option<u64>,
-        extra_state: Option<StateFragment<P::Fr>>,
+        in_account: Option<(u64, Account<P::Fr>)>,
+        in_notes: Vec<(u64, Note<P::Fr>)>,
+        delta_index: u64,
+        tree: &MerkleTree<D, P>
     ) -> Result<TransactionData<P::Fr>, CreateTxError> {
+        if in_notes.len() > constants::IN {
+            return Err(CreateTxError::TooManyInputs {
+                max: constants::IN,
+                got: in_notes.len(),
+            });
+        }
+
         let mut rng = CustomRng;
         let keys = self.keys.clone();
-        let state = &self.state;
 
-        let extra_state = extra_state.unwrap_or(StateFragment {
-            new_leafs: [].to_vec(),
-            new_commitments: [].to_vec(),
-            new_accounts: [].to_vec(),
-            new_notes: [].to_vec(),
+        let is_first_tx = in_account.is_none();
+        let (in_account_index, in_account) = in_account.unwrap_or_else(|| {
+            // Initial account should have d = pool_id to protect from reply attacks
+            let d = self.pool_id;
+            let p_d = derive_key_p_d(d.to_num(), self.keys.eta, &self.params).x;
+            let acc = Account {
+                d: self.pool_id,
+                p_d,
+                i: BoundedNum::new(Num::ZERO),
+                b: BoundedNum::new(Num::ZERO),
+                e: BoundedNum::new(Num::ZERO),
+            };
+
+            (0, acc)
         });
 
-        // initial input account (from optimistic state)
-        let (in_account_optimistic_index, in_account_optimistic) = {
-            let last_acc = extra_state.new_accounts.last();
-            match last_acc {
-                Some(last_acc) => (Some(last_acc.0), Some(last_acc.1)),
-                _ => (None, None),
-            }
-        };
-
-        // initial input account (from non-optimistic state)
-        let in_account = in_account_optimistic.unwrap_or_else(|| {
-            state.latest_account.unwrap_or_else(|| {
-                // Initial account should have d = pool_id to protect from reply attacks
-                let d = self.pool_id;
-                let p_d = derive_key_p_d(d.to_num(), self.keys.eta, &self.params).x;
-                Account {
-                    d: self.pool_id,
-                    p_d,
-                    i: BoundedNum::new(Num::ZERO),
-                    b: BoundedNum::new(Num::ZERO),
-                    e: BoundedNum::new(Num::ZERO),
-                }
-            })
-        });
-
-        let tree = &state.tree;
-
-        let in_account_index = in_account_optimistic_index.or(state.latest_account_index);
-
-        // initial usable note index
-        let next_usable_index = state
-            .earliest_usable_index_optimistic(&extra_state.new_accounts, &extra_state.new_notes);
-
-        let latest_note_index_optimistic = extra_state
-            .new_notes
-            .last()
-            .map(|indexed_note| indexed_note.0)
-            .unwrap_or(state.latest_note_index);
-
-        // Should be provided by relayer together with note proofs, but as a fallback
-        // take the next index of the tree (optimistic part included).
-        let delta_index = Num::from(delta_index.unwrap_or_else(|| {
-            let next_by_optimistic_leaf = extra_state.new_leafs.last().map(|leafs| {
-                (((leafs.0 + (leafs.1.len() as u64)) >> constants::OUTPLUSONELOG) + 1)
-                    << constants::OUTPLUSONELOG
-            });
-            let next_by_optimistic_commitment =
-                extra_state.new_commitments.last().map(|commitment| {
-                    ((commitment.0 >> constants::OUTPLUSONELOG) + 1) << constants::OUTPLUSONELOG
-                });
-            next_by_optimistic_leaf
-                .into_iter()
-                .chain(next_by_optimistic_commitment)
-                .max()
-                .unwrap_or(state.tree.next_index())
-        }));
 
         let (fee, tx_data) = {
             let mut tx_data: Vec<u8> = vec![];
@@ -297,36 +262,14 @@ where
             }
         };
 
-        // Optimistic available notes
-        let optimistic_available_notes = extra_state
-            .new_notes
-            .into_iter()
-            .filter(|indexed_note| indexed_note.0 >= next_usable_index);
-
-        // Fetch constants::IN usable notes from state
-        let in_notes_original: Vec<(u64, Note<P::Fr>)> = state
-            .txs
-            .iter_slice(next_usable_index..=state.latest_note_index)
-            .filter_map(|(index, tx)| match tx {
-                Transaction::Note(note) => Some((index, note)),
-                _ => None,
-            })
-            .chain(optimistic_available_notes)
-            .take(constants::IN)
-            .collect();
-
-        let spend_interval_index = in_notes_original
+        let spend_interval_index = in_notes
             .last()
             .map(|(index, _)| *index + 1)
-            .unwrap_or(if latest_note_index_optimistic > 0 {
-                latest_note_index_optimistic + 1
-            } else {
-                0
-            });
+            .unwrap_or(0);
 
         // Calculate total balance (account + constants::IN notes).
         let mut input_value = in_account.b.to_num();
-        for (_index, note) in &in_notes_original {
+        for (_index, note) in &in_notes {
             input_value += note.b.to_num();
         }
 
@@ -371,14 +314,14 @@ where
         // By default all account energy will be withdrawn on withdraw tx
         let mut delta_energy = Num::ZERO;
 
-        let in_account_pos = in_account_index.unwrap_or(0);
-
+        let delta_index = Num::from(delta_index);
         let mut input_energy = in_account.e.to_num();
-        input_energy += in_account.b.to_num() * (delta_index - Num::from(in_account_pos));
+        input_energy += in_account.b.to_num() * (delta_index - Num::from(in_account_index));
 
-        for (note_index, note) in &in_notes_original {
+        for (note_index, note) in &in_notes {
             input_energy += note.b.to_num() * (delta_index - Num::from(*note_index));
         }
+
         let new_balance = match &tx {
             TxType::Transfer { .. } => {
                 if input_value.to_uint() >= (output_value + fee.as_num()).to_uint() {
@@ -445,7 +388,7 @@ where
         let nullifier = nullifier(
             in_account_hash,
             keys.eta,
-            in_account_pos.into(),
+            in_account_index.into(),
             &self.params,
         );
 
@@ -469,14 +412,14 @@ where
                 t: rng.gen(),
             }
         });
-        let in_notes: SizedVec<Note<P::Fr>, { constants::IN }> = in_notes_original
+        let in_notes_prepared: SizedVec<Note<P::Fr>, { constants::IN }> = in_notes
             .iter()
             .map(|(_, note)| note)
             .cloned()
             .chain(owned_zero_notes)
             .take(constants::IN)
             .collect();
-        let in_note_hashes = in_notes.iter().map(|note| note.hash(&self.params));
+        let in_note_hashes = in_notes_prepared.iter().map(|note| note.hash(&self.params));
         let input_hashes: SizedVec<_, { constants::IN + 1 }> = [in_account_hash]
             .iter()
             .copied()
@@ -502,13 +445,7 @@ where
             *self.pool_id.clone().as_num(),
         );
 
-        // calculate virtual subtree from the optimistic state
-        let new_leafs = extra_state.new_leafs.iter().cloned();
-        let new_commitments = extra_state.new_commitments.iter().cloned();
-        let (mut virtual_nodes, update_boundaries) =
-            tree.get_virtual_subtree(new_leafs, new_commitments);
-
-        let root: Num<P::Fr> = tree.get_root_optimistic(&mut virtual_nodes, &update_boundaries);
+        let root = tree.get_root();
 
         // memo = tx_specific_data, ciphertext, user_defined_data
         let mut memo_data = {
@@ -532,24 +469,24 @@ where
         };
 
         let tx = Tx {
-            input: (in_account, in_notes),
+            input: (in_account, in_notes_prepared),
             output: (out_account, out_notes),
         };
 
         let (eddsa_s, eddsa_r) = tx_sign(keys.sk, tx_hash, &self.params);
 
-        let account_proof = in_account_index.map_or_else(
-            || Ok(zero_proof()),
-            |i| {
-                tree.get_proof_optimistic_index(i, &mut virtual_nodes, &update_boundaries)
-                    .ok_or(CreateTxError::ProofNotFound(i))
-            },
-        )?;
-        let note_proofs = in_notes_original
+        let account_proof = if !is_first_tx {
+            tree.get_leaf_proof(in_account_index)
+                .ok_or(CreateTxError::ProofNotFound(in_account_index))?
+        } else {
+            zero_proof()
+        };
+
+        let note_proofs = in_notes
             .iter()
             .copied()
             .map(|(index, _note)| {
-                tree.get_proof_optimistic_index(index, &mut virtual_nodes, &update_boundaries)
+                tree.get_leaf_proof(index)
                     .ok_or(CreateTxError::ProofNotFound(index))
             })
             .chain((0..).map(|_| Ok(zero_proof())))
