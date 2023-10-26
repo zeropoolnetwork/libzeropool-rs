@@ -145,11 +145,11 @@ where
         }
     }
 
-    pub fn get_all_txs(&self) -> Vec<(u64, Transaction<P::Fr>)> {
+    pub fn all_txs(&self) -> Vec<(u64, Transaction<P::Fr>)> {
         self.txs.iter().collect()
     }
 
-    pub fn get_usable_notes(&self) -> Vec<(u64, Note<P::Fr>)> {
+    pub fn usable_notes(&self) -> Vec<(u64, Note<P::Fr>)> {
         let next_usable_index = self.earliest_usable_index();
 
         // Fetch all usable notes from the state
@@ -160,6 +160,10 @@ where
                 _ => None,
             })
             .collect()
+    }
+
+    pub fn latest_account(&self) -> Option<NativeAccount<P::Fr>> {
+        self.latest_account
     }
 
     /// Return an index of a earliest usable note.
