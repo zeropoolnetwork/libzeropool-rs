@@ -54,6 +54,22 @@ where
     }
 }
 
+#[cfg(feature = "native")]
+impl<P> State<WebDatabase, P>
+where
+    P: PoolParams,
+    P::Fr: 'static,
+{
+    pub async fn init_native(db_id: String, params: P) -> Self {
+        let merkle_db_name = format!("zeropool.{}.smt.db", &db_id);
+        let tx_db_name = format!("zeropool.{}.txs.db", &db_id);
+        let tree = MerkleTree::new_native(&merkle_db_name, params.clone()).await;
+        let txs = TxStorage::new_native(&tx_db_name).await;
+
+        Self::new(tree, txs)
+    }
+}
+
 impl<P> State<MemoryDatabase, P>
 where
     P: PoolParams,

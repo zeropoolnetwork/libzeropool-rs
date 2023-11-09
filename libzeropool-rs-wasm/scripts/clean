@@ -1,5 +1,0 @@
-#!/usr/bin/env bash
-
-PARENT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )/.." &> /dev/null && pwd )"
-
-find "$PARENT_DIR/target" -mindepth 1 ! -name '.gitkeep' -delete

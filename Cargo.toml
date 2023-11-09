@@ -1,10 +1,9 @@
 [workspace]
 members = [
-    "libzeropool-rs-wasm",
-    "libzeropool-rs",
-    "libzeropool-rs-node",
     "libs/kvdb-web",
     "libs/kvdb-persy",
+    "zeropool-state",
+    "zeropool-client",
 ]
 
 [patch.crates-io]
