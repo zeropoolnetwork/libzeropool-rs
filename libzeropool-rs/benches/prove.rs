@@ -9,7 +9,7 @@ use libzeropool::{
 };
 use libzeropool_rs::{
     client::{state::State, TxType, UserAccount},
-    proof::prove_tx,
+    proof_groth16::prove_tx,
 };
 
 fn prove_tx_benchmark(c: &mut Criterion) {

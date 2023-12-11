@@ -11,7 +11,7 @@ use libzeropool_rs::{
         },
         POOL_PARAMS,
     },
-    proof::{prove_tree as prove_tree_native, prove_tx as prove_tx_native},
+    proof_groth16::{prove_tree as prove_tree_native, prove_tx as prove_tx_native},
 };
 use neon::prelude::*;
 use serde::{Deserialize, Serialize};

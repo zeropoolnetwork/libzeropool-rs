@@ -39,6 +39,8 @@ web = ["getrandom/js", "kvdb-web"]
 node = ["getrandom/js"]
 native = ["kvdb-persy"]
 multicore = ["bellman/multicore"]
+groth16 = ["libzeropool/groth16"]
+plonk = ["libzeropool/plonk"]
 
 [profile.bench]
 debug = true

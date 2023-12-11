@@ -17,3 +17,7 @@ neon-serde = { package = "neon-serde3", version = "0.10" }
 rayon = "1.5.3"
 serde = "1.0.136"
 
+[features]
+groth16 = ["libzeropool-rs/groth16"]
+plonk = ["libzeropool-rs/plonk"]
+
