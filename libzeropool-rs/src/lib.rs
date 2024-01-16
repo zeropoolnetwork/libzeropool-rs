@@ -12,3 +12,11 @@ pub mod random;
 pub mod sparse_array;
 pub mod store;
 pub mod utils;
+
+pub mod proof {
+    #[doc(inline)]
+    #[cfg(feature = "groth16")]
+    pub use crate::proof_groth16::*;
+    #[cfg(feature = "plonk")]
+    pub use crate::proof_plonk::*;
+}

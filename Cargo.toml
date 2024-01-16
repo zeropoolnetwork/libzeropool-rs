@@ -1,8 +1,9 @@
 [workspace]
+resolver = "2"
 members = [
     "libzeropool-rs-wasm",
     "libzeropool-rs",
-    "libzeropool-rs-node",
+#    "libzeropool-rs-node",
     "libs/kvdb-web",
     "libs/kvdb-persy",
 ]
