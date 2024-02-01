@@ -28,10 +28,18 @@ function build () {
   local mt=$3
   local debug=$4
 
+  if [[ $features == *"groth16"* ]]; then
+    local prover_suffix="_groth16"
+  elif [[ $features == *"plonk"* ]]; then
+    local prover_suffix="_plonk"
+  else
+    local prover_suffix=""
+  fi
+
   local package_target_dirname="$TARGET_DIR/$name"
 
   if [ "$mt" = mt ] ; then
-    local out_name="libzeropool_rs_wasm_mt"
+    local out_name="libzeropool_rs_wasm${prover_suffix}_mt"
 
     RUSTFLAGS='-C target-feature=+atomics,+bulk-memory,+mutable-globals -C link-arg=--max-memory=4294967296' \
       rustup run nightly \
@@ -39,7 +47,7 @@ function build () {
         --out-name "$out_name" \
         -- --features "$features" -Z build-std=panic_abort,std
   else
-    local out_name="libzeropool_rs_wasm"
+    local out_name="libzeropool_rs_wasm${prover_suffix}"
 
     wasm-pack build --release --out-name "$out_name" --target web -d "$package_target_dirname" -- --features "$features"
   fi
@@ -63,8 +71,14 @@ function build () {
   rm -r "$package_target_dirname"/*.bak
 }
 
-build web web st
-build web-debug web st debug
+# groth16
+build web web,groth16 st
+build web-debug web,groth16 st debug
+build web-mt web,multicore,groth16 mt
+build web-mt-debug web,multicore,groth16 mt debug
 
-build web-mt web,multicore mt
-build web-mt-debug web,multicore mt debug
+# plonk
+build plonk-web web,plonk st
+build plonk-web-debug web,plonk st debug
+build plonk-web-mt web,multicore,plonk mt
+build plonk-web-mt-debug web,multicore,plonk mt debug

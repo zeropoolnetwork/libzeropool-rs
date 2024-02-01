@@ -16,6 +16,8 @@ bundler = ["libzeropool-rs/web"]
 web = ["libzeropool-rs/web"]
 nodejs = ["libzeropool-rs/node"]
 multicore = ["libzeropool-rs/multicore", "wasm-bindgen-rayon"]
+groth16 = ["libzeropool-rs/groth16"]
+plonk = ["libzeropool-rs/plonk"]
 
 [dependencies]
 wasm-bindgen = { version = "0.2.84" }

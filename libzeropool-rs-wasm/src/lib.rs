@@ -1,10 +1,18 @@
 use std::{convert::TryInto, str::FromStr};
 
+#[cfg(feature = "groth16")]
+use libzeropool_rs::libzeropool::fawkes_crypto::backend::bellman_groth16::{
+    engines::Bn256, prover::Proof as Groth16Proof,
+};
+#[cfg(feature = "plonk")]
+use libzeropool_rs::libzeropool::fawkes_crypto::backend::plonk::{
+    engines::Bn256, prover::Proof as PlonkProof,
+};
 use libzeropool_rs::{
     address::{format_address, parse_address},
     libzeropool::{
         constants,
-        fawkes_crypto::{backend::bellman_groth16::engines::Bn256, ff_uint::Num},
+        fawkes_crypto::ff_uint::Num,
         native::{
             boundednum::BoundedNum,
             params::{PoolBN256, PoolParams as PoolParamsTrait},
@@ -40,6 +48,11 @@ pub type PoolParams = PoolBN256;
 pub type Fr = <PoolParams as PoolParamsTrait>::Fr;
 pub type Fs = <PoolParams as PoolParamsTrait>::Fs;
 pub type Engine = Bn256;
+
+#[cfg(feature = "groth16")]
+pub type SnarkProof = Groth16Proof<Engine>;
+#[cfg(feature = "plonk")]
+pub type SnarkProof = PlonkProof;
 
 lazy_static::lazy_static! {
     static ref CONSTANTS: SerConstants = SerConstants::new();
